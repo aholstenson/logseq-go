@@ -675,4 +675,22 @@ var _ = Describe("Output", func() {
 			Expect(buf.String()).To(Equal("abc\nkey:: value\ndef"))
 		})
 	})
+
+	Describe("Advanced commands", func() {
+		Describe("Query", func() {
+			It("can write query", func() {
+				err := writer.Write(content.NewAdvancedCommand("QUERY", "abc"))
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(buf.String()).To(Equal("#+BEGIN_QUERY\nabc\n#+END_QUERY"))
+			})
+
+			It("can write query ending in newline", func() {
+				err := writer.Write(content.NewAdvancedCommand("QUERY", "abc\n"))
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(buf.String()).To(Equal("#+BEGIN_QUERY\nabc\n#+END_QUERY"))
+			})
+		})
+	})
 })

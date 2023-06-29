@@ -947,6 +947,60 @@ var _ = Describe("Parsing", func() {
 			})
 		})
 	})
+
+	Describe("Advanced commands", func() {
+		Describe("Query", func() {
+			It("can parse", func() {
+				block, err := markdown.ParseString("#+BEGIN_QUERY\nraw text\n#+END_QUERY\n")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(EqualNode(content.NewBlock(
+					content.NewAdvancedCommand("QUERY", "raw text\n"),
+				)))
+			})
+
+			It("can parse and keep indentation", func() {
+				block, err := markdown.ParseString("#+BEGIN_QUERY\n  raw text\n#+END_QUERY\n")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(EqualNode(content.NewBlock(
+					content.NewAdvancedCommand("QUERY", "  raw text\n"),
+				)))
+			})
+
+			It("can parse multiple lines", func() {
+				block, err := markdown.ParseString("#+BEGIN_QUERY\nraw text\nraw text\n#+END_QUERY\n")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(EqualNode(content.NewBlock(
+					content.NewAdvancedCommand("QUERY", "raw text\nraw text\n"),
+				)))
+			})
+
+			It("can parse multiple lines with indentation", func() {
+				block, err := markdown.ParseString("#+BEGIN_QUERY\nraw text\n  raw text\n#+END_QUERY\n")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(EqualNode(content.NewBlock(
+					content.NewAdvancedCommand("QUERY", "raw text\n  raw text\n"),
+				)))
+			})
+
+			It("keeps indentation when parsed in a list", func() {
+				block, err := markdown.ParseString("* #+BEGIN_QUERY\n  raw text\n    raw text\n  #+END_QUERY\n")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(EqualNode(content.NewBlock(
+					content.NewList(
+						content.ListTypeUnordered,
+						content.NewListItem(
+							content.NewAdvancedCommand("QUERY", "raw text\n  raw text\n"),
+						),
+					),
+				)))
+			})
+		})
+	})
 })
 
 type equalNode struct {

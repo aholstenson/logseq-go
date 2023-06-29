@@ -21,6 +21,9 @@ var propertyRegex = regexp.MustCompile(`^([a-zA-Z0-9_-]+)::\s*`)
 func init() {
 	markdownParser = parser.NewParser(
 		parser.WithBlockParsers(parser.DefaultBlockParsers()...),
+		parser.WithBlockParsers(
+			util.Prioritized(&beginEndParser{}, 899),
+		),
 		parser.WithInlineParsers(parser.DefaultInlineParsers()...),
 		parser.WithInlineParsers(
 			util.Prioritized(&pageLinkParser{}, 199),
@@ -90,6 +93,8 @@ func convert(src []byte, in ast.Node) (content.Node, error) {
 		return convertImage(src, node)
 	case *ast.ThematicBreak:
 		return content.NewThematicBreak(), nil
+	case *beginEnd:
+		return convertBeginEnd(src, node)
 	}
 
 	return nil, fmt.Errorf("Could not convert node: %T", in)
@@ -431,4 +436,15 @@ func convertImage(src []byte, node *ast.Image) (*content.Image, error) {
 		return nil, err
 	}
 	return image, nil
+}
+
+func convertBeginEnd(src []byte, node *beginEnd) (*content.AdvancedComamnd, error) {
+	codeBuf := bytes.Buffer{}
+	for i := 0; i < node.Lines().Len(); i++ {
+		line := node.Lines().At(i)
+		_, _ = codeBuf.Write(line.Value(src))
+	}
+
+	raw := content.NewAdvancedCommand(node.Variant, codeBuf.String())
+	return raw, nil
 }

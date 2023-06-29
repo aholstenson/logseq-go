@@ -43,9 +43,9 @@ func (p *debugPrinter) Field(name string, value string) {
 
 	p.builder.WriteString(strings.Repeat("  ", p.level))
 	p.builder.WriteString(name)
-	p.builder.WriteString("=")
+	p.builder.WriteString("='")
 	p.builder.WriteString(value)
-	p.builder.WriteString("\n")
+	p.builder.WriteString("'\n")
 }
 
 func (p *debugPrinter) Children(self HasChildren) {
