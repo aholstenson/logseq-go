@@ -3,11 +3,14 @@ package markdown
 import (
 	"fmt"
 	"io"
+	"regexp"
 	"strings"
 	"unicode"
 
 	"github.com/aholstenson/logseq-go/content"
 )
+
+var urlRegexp = regexp.MustCompile(`^(?:http|https|ftp)://[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-z]+(?::\d+)?(?:[/#?][-a-zA-Z0-9@:%_+.~#$!?&/=\(\);,'">\^{}\[\]` + "`" + `]*)?`)
 
 type EscapeFunc func(rune) bool
 
@@ -290,6 +293,11 @@ func (w *Output) writeLink(node *content.Link) error {
 }
 
 func (w *Output) writeAutoLink(node *content.AutoLink) error {
+	if urlRegexp.Match([]byte(node.Target)) {
+		// No need for brackets, Logseq will automatically linkify the URL.
+		return w.writeRaw(node.Target)
+	}
+
 	err := w.writeRaw("<")
 	if err != nil {
 		return err

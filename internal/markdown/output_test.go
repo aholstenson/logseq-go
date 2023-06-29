@@ -170,7 +170,14 @@ var _ = Describe("Output", func() {
 				err := writer.Write(content.NewAutoLink("https://example.com"))
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(buf.String()).To(Equal("<https://example.com>"))
+				Expect(buf.String()).To(Equal("https://example.com"))
+			})
+
+			It("can write a non-automatic auto link", func() {
+				err := writer.Write(content.NewAutoLink("www.example.com"))
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(buf.String()).To(Equal("<www.example.com>"))
 			})
 		})
 

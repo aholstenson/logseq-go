@@ -249,7 +249,7 @@ var _ = Describe("Parsing", func() {
 			)))
 		})
 
-		It("can parse autolink", func() {
+		It("can parse auto link", func() {
 			block, err := markdown.ParseString("<https://example.com>")
 			Expect(err).ToNot(HaveOccurred())
 
@@ -260,13 +260,35 @@ var _ = Describe("Parsing", func() {
 			)))
 		})
 
-		It("can parse autolink without brackets", func() {
+		It("can parse auto link without brackets", func() {
 			block, err := markdown.ParseString("https://example.com")
 			Expect(err).ToNot(HaveOccurred())
 
 			Expect(block).To(EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewAutoLink("https://example.com"),
+				),
+			)))
+		})
+
+		It("link with only www prefix is not an auto link", func() {
+			block, err := markdown.ParseString("www.example.com")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("www.example.com"),
+				),
+			)))
+		})
+
+		It("e-mails are not auto linked", func() {
+			block, err := markdown.ParseString("test@example.com")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("test@example.com"),
 				),
 			)))
 		})

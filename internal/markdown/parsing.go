@@ -18,6 +18,8 @@ var markdownParser parser.Parser
 
 var propertyRegex = regexp.MustCompile(`^([a-zA-Z0-9_-]+)::\s*`)
 
+var neverMatch = regexp.MustCompile(`\A\z`)
+
 func init() {
 	markdownParser = parser.NewParser(
 		parser.WithBlockParsers(parser.DefaultBlockParsers()...),
@@ -28,7 +30,10 @@ func init() {
 		parser.WithInlineParsers(
 			util.Prioritized(&pageLinkParser{}, 199),
 			util.Prioritized(&tagParser{}, 999),
-			util.Prioritized(extension.NewLinkifyParser(), 998),
+			util.Prioritized(extension.NewLinkifyParser(
+				extension.WithLinkifyEmailRegexp(neverMatch),
+				extension.WithLinkifyWWWRegexp(neverMatch),
+			), 998),
 		),
 		parser.WithParagraphTransformers(parser.DefaultParagraphTransformers()...),
 	)
