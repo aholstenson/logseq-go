@@ -699,5 +699,21 @@ var _ = Describe("Output", func() {
 				Expect(buf.String()).To(Equal("#+BEGIN_QUERY\nabc\n#+END_QUERY"))
 			})
 		})
+
+		Describe("Quote", func() {
+			It("can write quote", func() {
+				err := writer.Write(content.NewAdvancedCommand("QUOTE", "abc"))
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(buf.String()).To(Equal("#+BEGIN_QUOTE\nabc\n#+END_QUOTE"))
+			})
+
+			It("can write quote ending in newline", func() {
+				err := writer.Write(content.NewAdvancedCommand("QUOTE", "abc\n"))
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(buf.String()).To(Equal("#+BEGIN_QUOTE\nabc\n#+END_QUOTE"))
+			})
+		})
 	})
 })

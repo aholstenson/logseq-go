@@ -1022,6 +1022,26 @@ var _ = Describe("Parsing", func() {
 				)))
 			})
 		})
+
+		Describe("Quote", func() {
+			It("can parse", func() {
+				block, err := markdown.ParseString("#+BEGIN_QUOTE\nraw text\n#+END_QUOTE\n")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(EqualNode(content.NewBlock(
+					content.NewAdvancedCommand("QUOTE", "raw text\n"),
+				)))
+			})
+
+			It("can parse multiple lines", func() {
+				block, err := markdown.ParseString("#+BEGIN_QUOTE\nraw text\nraw text\n#+END_QUOTE\n")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(EqualNode(content.NewBlock(
+					content.NewAdvancedCommand("QUOTE", "raw text\nraw text\n"),
+				)))
+			})
+		})
 	})
 })
 
