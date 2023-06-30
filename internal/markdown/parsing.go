@@ -443,7 +443,7 @@ func convertImage(src []byte, node *ast.Image) (*content.Image, error) {
 	return image, nil
 }
 
-func convertBeginEnd(src []byte, node *beginEnd) (*content.AdvancedComamnd, error) {
+func convertBeginEnd(src []byte, node *beginEnd) (*content.AdvancedCommand, error) {
 	codeBuf := bytes.Buffer{}
 	for i := 0; i < node.Lines().Len(); i++ {
 		line := node.Lines().At(i)

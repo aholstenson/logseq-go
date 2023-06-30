@@ -1,26 +1,26 @@
 package content
 
-type AdvancedComamnd struct {
+type AdvancedCommand struct {
 	baseNode
 
 	Type  string
 	Value string
 }
 
-func NewAdvancedCommand(variant string, value string) *AdvancedComamnd {
-	return &AdvancedComamnd{
+func NewAdvancedCommand(variant string, value string) *AdvancedCommand {
+	return &AdvancedCommand{
 		Type:  variant,
 		Value: value,
 	}
 }
 
-func (h *AdvancedComamnd) debug(p *debugPrinter) {
+func (h *AdvancedCommand) debug(p *debugPrinter) {
 	p.StartType("AdvancedCommand")
 	p.Field("type", h.Type)
 	p.Field("value", h.Value)
 	p.EndType()
 }
 
-func (h *AdvancedComamnd) isBlock() {}
+func (h *AdvancedCommand) isBlock() {}
 
-var _ BlockNode = (*AdvancedComamnd)(nil)
+var _ BlockNode = (*AdvancedCommand)(nil)
