@@ -374,6 +374,17 @@ var _ = Describe("Parsing", func() {
 				),
 			)))
 		})
+
+		It("can parse block reference", func() {
+			block, err := markdown.ParseString("((0b48a6c6-93ca-4d35-b945-6c59007f7962))")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewBlockRef("0b48a6c6-93ca-4d35-b945-6c59007f7962"),
+				),
+			)))
+		})
 	})
 
 	Describe("Images", func() {

@@ -34,6 +34,10 @@ func EscapeWikiLink(r rune) bool {
 	return r == ']'
 }
 
+func EscapeBlockRef(r rune) bool {
+	return r == ')'
+}
+
 // Output is used to write Markdown to an output buffer. It will help keep
 // track of list indentation and when to add newlines.
 type Output struct {
@@ -82,6 +86,8 @@ func (w *Output) Write(n content.Node) error {
 		return w.writePageLink(node)
 	case *content.Hashtag:
 		return w.writeHashtag(node)
+	case *content.BlockRef:
+		return w.writeBlockRef(node)
 	case *content.Image:
 		return w.writeImage(node)
 	case *content.Heading:
@@ -370,6 +376,25 @@ func (w *Output) writeHashtag(node *content.Hashtag) error {
 		if err != nil {
 			return err
 		}
+	}
+
+	return nil
+}
+
+func (w *Output) writeBlockRef(node *content.BlockRef) error {
+	err := w.writeRaw("((")
+	if err != nil {
+		return err
+	}
+
+	err = w.write(node.ID, EscapeWikiLink)
+	if err != nil {
+		return err
+	}
+
+	err = w.writeRaw("))")
+	if err != nil {
+		return err
 	}
 
 	return nil

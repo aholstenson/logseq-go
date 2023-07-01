@@ -28,6 +28,7 @@ func init() {
 		),
 		parser.WithInlineParsers(parser.DefaultInlineParsers()...),
 		parser.WithInlineParsers(
+			util.Prioritized(&blockRefParser{}, 198),
 			util.Prioritized(&pageLinkParser{}, 199),
 			util.Prioritized(&tagParser{}, 999),
 			util.Prioritized(extension.NewLinkifyParser(
@@ -82,6 +83,8 @@ func convert(src []byte, in ast.Node) (content.Node, error) {
 		return content.NewHashtag(node.Page), nil
 	case *pageLink:
 		return content.NewPageLink(node.Page), nil
+	case *blockRef:
+		return content.NewBlockRef(node.ID), nil
 	case *ast.FencedCodeBlock:
 		return convertFencedCodeBlock(src, node)
 	case *ast.CodeBlock:

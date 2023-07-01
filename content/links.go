@@ -105,3 +105,26 @@ func (l *Hashtag) debug(p *debugPrinter) {
 }
 
 var _ InlineNode = (*Hashtag)(nil)
+
+type BlockRef struct {
+	baseNode
+
+	// ID is the id of the block to reference.
+	ID string
+}
+
+func NewBlockRef(id string) *BlockRef {
+	return &BlockRef{
+		ID: id,
+	}
+}
+
+func (b *BlockRef) debug(p *debugPrinter) {
+	p.StartType("BlockRef")
+	p.Field("id", b.ID)
+	p.EndType()
+}
+
+func (l *BlockRef) isInline() {}
+
+var _ InlineNode = (*BlockRef)(nil)

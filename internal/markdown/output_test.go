@@ -212,6 +212,15 @@ var _ = Describe("Output", func() {
 				Expect(buf.String()).To(Equal("#[[abc def]]"))
 			})
 		})
+
+		Describe("Block references", func() {
+			It("can write a block reference", func() {
+				err := writer.Write(content.NewBlockRef("abc"))
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(buf.String()).To(Equal("((abc))"))
+			})
+		})
 	})
 
 	Describe("Images", func() {
