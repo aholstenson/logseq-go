@@ -443,13 +443,17 @@ func convertImage(src []byte, node *ast.Image) (*content.Image, error) {
 	return image, nil
 }
 
-func convertBeginEnd(src []byte, node *beginEnd) (*content.AdvancedCommand, error) {
+func convertBeginEnd(src []byte, node *beginEnd) (content.Node, error) {
 	codeBuf := bytes.Buffer{}
 	for i := 0; i < node.Lines().Len(); i++ {
 		line := node.Lines().At(i)
 		_, _ = codeBuf.Write(line.Value(src))
 	}
 
-	raw := content.NewAdvancedCommand(node.Variant, codeBuf.String())
-	return raw, nil
+	switch node.Variant {
+	case "QUERY":
+		return content.NewQueryCommand(codeBuf.String()), nil
+	default:
+		return content.NewAdvancedCommand(node.Variant, codeBuf.String()), nil
+	}
 }

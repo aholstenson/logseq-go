@@ -971,13 +971,84 @@ var _ = Describe("Parsing", func() {
 	})
 
 	Describe("Advanced commands", func() {
+		It("can parse", func() {
+			block, err := markdown.ParseString("#+BEGIN_ABCDEF\nraw text\n#+END_ABCDEF\n")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewAdvancedCommand("ABCDEF", "raw text\n"),
+			)))
+		})
+
+		It("can parse and keep indentation", func() {
+			block, err := markdown.ParseString("#+BEGIN_ABCDEF\n  raw text\n#+END_ABCDEF\n")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewAdvancedCommand("ABCDEF", "  raw text\n"),
+			)))
+		})
+
+		It("can parse multiple lines", func() {
+			block, err := markdown.ParseString("#+BEGIN_ABCDEF\nraw text\nmore raw text\n#+END_ABCDEF\n")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewAdvancedCommand("ABCDEF", "raw text\nmore raw text\n"),
+			)))
+		})
+
+		It("can parse multiple lines and keep indentation", func() {
+			block, err := markdown.ParseString("#+BEGIN_ABCDEF\n  raw text\n  more raw text\n#+END_ABCDEF\n")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewAdvancedCommand("ABCDEF", "  raw text\n  more raw text\n"),
+			)))
+		})
+
+		It("can parse multiple lines and keep indentation with empty lines", func() {
+			block, err := markdown.ParseString("#+BEGIN_ABCDEF\n  raw text\n\n  more raw text\n#+END_ABCDEF\n")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewAdvancedCommand("ABCDEF", "  raw text\n\n  more raw text\n"),
+			)))
+		})
+
+		It("can parse multiple lines and keep indentation with empty lines at the end", func() {
+			block, err := markdown.ParseString("#+BEGIN_ABCDEF\n  raw text\n  more raw text\n\n#+END_ABCDEF\n")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewAdvancedCommand("ABCDEF", "  raw text\n  more raw text\n\n"),
+			)))
+		})
+
+		It("keeps indentation when parsed in a list", func() {
+			block, err := markdown.ParseString("* Item\n  #+BEGIN_ABCDEF\n  raw text\n    raw text\n  #+END_ABCDEF\n")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewList(
+					content.ListTypeUnordered,
+					content.NewListItem(
+						content.NewParagraph(
+							content.NewText("Item"),
+						),
+						content.NewAdvancedCommand("ABCDEF", "raw text\n  raw text\n"),
+					),
+				),
+			)))
+		})
+
 		Describe("Query", func() {
 			It("can parse", func() {
 				block, err := markdown.ParseString("#+BEGIN_QUERY\nraw text\n#+END_QUERY\n")
 				Expect(err).ToNot(HaveOccurred())
 
 				Expect(block).To(EqualNode(content.NewBlock(
-					content.NewAdvancedCommand("QUERY", "raw text\n"),
+					content.NewQueryCommand("raw text\n"),
 				)))
 			})
 
@@ -986,7 +1057,7 @@ var _ = Describe("Parsing", func() {
 				Expect(err).ToNot(HaveOccurred())
 
 				Expect(block).To(EqualNode(content.NewBlock(
-					content.NewAdvancedCommand("QUERY", "  raw text\n"),
+					content.NewQueryCommand("  raw text\n"),
 				)))
 			})
 
@@ -995,7 +1066,7 @@ var _ = Describe("Parsing", func() {
 				Expect(err).ToNot(HaveOccurred())
 
 				Expect(block).To(EqualNode(content.NewBlock(
-					content.NewAdvancedCommand("QUERY", "raw text\nraw text\n"),
+					content.NewQueryCommand("raw text\nraw text\n"),
 				)))
 			})
 
@@ -1004,7 +1075,7 @@ var _ = Describe("Parsing", func() {
 				Expect(err).ToNot(HaveOccurred())
 
 				Expect(block).To(EqualNode(content.NewBlock(
-					content.NewAdvancedCommand("QUERY", "raw text\n  raw text\n"),
+					content.NewQueryCommand("raw text\n  raw text\n"),
 				)))
 			})
 
@@ -1016,7 +1087,7 @@ var _ = Describe("Parsing", func() {
 					content.NewList(
 						content.ListTypeUnordered,
 						content.NewListItem(
-							content.NewAdvancedCommand("QUERY", "raw text\n  raw text\n"),
+							content.NewQueryCommand("raw text\n  raw text\n"),
 						),
 					),
 				)))

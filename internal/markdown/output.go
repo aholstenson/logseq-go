@@ -104,6 +104,8 @@ func (w *Output) Write(n content.Node) error {
 		return w.writeProperties(node)
 	case *content.AdvancedCommand:
 		return w.writeAdvancedCommand(node)
+	case *content.QueryCommand:
+		return w.writeBeginEnd("QUERY", node.Query)
 	default:
 		return fmt.Errorf("unsupported node: %T", node)
 	}
@@ -685,17 +687,21 @@ func (w *Output) writeProperties(node *content.Properties) error {
 }
 
 func (w *Output) writeAdvancedCommand(node *content.AdvancedCommand) error {
+	return w.writeBeginEnd(node.Type, node.Value)
+}
+
+func (w *Output) writeBeginEnd(variant string, value string) error {
 	err := w.startBlock("")
 	if err != nil {
 		return err
 	}
 
-	err = w.writeRaw("#+BEGIN_" + node.Type + "\n")
+	err = w.writeRaw("#+BEGIN_" + variant + "\n")
 	if err != nil {
 		return err
 	}
 
-	err = w.writeRaw(node.Value)
+	err = w.writeRaw(value)
 	if err != nil {
 		return err
 	}
@@ -707,7 +713,7 @@ func (w *Output) writeAdvancedCommand(node *content.AdvancedCommand) error {
 		}
 	}
 
-	err = w.writeRaw("#+END_" + node.Type)
+	err = w.writeRaw("#+END_" + variant)
 	if err != nil {
 		return err
 	}

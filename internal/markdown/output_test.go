@@ -684,16 +684,37 @@ var _ = Describe("Output", func() {
 	})
 
 	Describe("Advanced commands", func() {
+		It("can write", func() {
+			err := writer.Write(content.NewAdvancedCommand("ABC", "def"))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal("#+BEGIN_ABC\ndef\n#+END_ABC"))
+		})
+
+		It("can write multiple lines", func() {
+			err := writer.Write(content.NewAdvancedCommand("ABC", "def\nghi"))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal("#+BEGIN_ABC\ndef\nghi\n#+END_ABC"))
+		})
+
+		It("can write and indent is kept", func() {
+			err := writer.Write(content.NewAdvancedCommand("ABC", "def\n  ghi"))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal("#+BEGIN_ABC\ndef\n  ghi\n#+END_ABC"))
+		})
+
 		Describe("Query", func() {
 			It("can write query", func() {
-				err := writer.Write(content.NewAdvancedCommand("QUERY", "abc"))
+				err := writer.Write(content.NewQueryCommand("abc"))
 				Expect(err).ToNot(HaveOccurred())
 
 				Expect(buf.String()).To(Equal("#+BEGIN_QUERY\nabc\n#+END_QUERY"))
 			})
 
 			It("can write query ending in newline", func() {
-				err := writer.Write(content.NewAdvancedCommand("QUERY", "abc\n"))
+				err := writer.Write(content.NewQueryCommand("abc\n"))
 				Expect(err).ToNot(HaveOccurred())
 
 				Expect(buf.String()).To(Equal("#+BEGIN_QUERY\nabc\n#+END_QUERY"))
