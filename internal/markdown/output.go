@@ -38,6 +38,10 @@ func EscapeBlockRef(r rune) bool {
 	return r == ')'
 }
 
+func EscapeMacroArgument(r rune) bool {
+	return r == '}' || r == '"'
+}
+
 // Output is used to write Markdown to an output buffer. It will help keep
 // track of list indentation and when to add newlines.
 type Output struct {
@@ -90,6 +94,8 @@ func (w *Output) Write(n content.Node) error {
 		return w.writeBlockRef(node)
 	case *content.Image:
 		return w.writeImage(node)
+	case *content.Macro:
+		return w.writeMacro(node)
 	case *content.Heading:
 		return w.writeHeading(node)
 	case *content.RawHTMLBlock:
@@ -439,6 +445,70 @@ func (w *Output) writeImage(node *content.Image) error {
 	}
 
 	err = w.writeRaw(")")
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (w *Output) writeMacro(node *content.Macro) error {
+	err := w.writeRaw("{{")
+	if err != nil {
+		return err
+	}
+
+	// Validate the macro name, it can not contain whitespace.
+	for _, r := range node.Name {
+		if unicode.IsSpace(r) {
+			return fmt.Errorf("macro name can not contain whitespace")
+		}
+	}
+
+	err = w.writeRaw(node.Name)
+	if err != nil {
+		return err
+	}
+
+	if node.Arguments != nil {
+		for _, arg := range node.Arguments {
+			err = w.writeRaw(" ")
+			if err != nil {
+				return err
+			}
+
+			// Check if the argument contains whitespace, if so, it must be
+			// quoted.
+			quoted := false
+			for _, r := range arg {
+				if unicode.IsSpace(r) {
+					quoted = true
+					break
+				}
+			}
+
+			if quoted {
+				err = w.writeRaw("\"")
+				if err != nil {
+					return err
+				}
+			}
+
+			err = w.write(arg, EscapeMacroArgument)
+			if err != nil {
+				return err
+			}
+
+			if quoted {
+				err = w.writeRaw("\"")
+				if err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	err = w.writeRaw("}}")
 	if err != nil {
 		return err
 	}

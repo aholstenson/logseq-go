@@ -28,6 +28,7 @@ func init() {
 		),
 		parser.WithInlineParsers(parser.DefaultInlineParsers()...),
 		parser.WithInlineParsers(
+			util.Prioritized(&macroParser{}, 197),
 			util.Prioritized(&blockRefParser{}, 198),
 			util.Prioritized(&pageLinkParser{}, 199),
 			util.Prioritized(&tagParser{}, 999),
@@ -85,6 +86,8 @@ func convert(src []byte, in ast.Node) (content.Node, error) {
 		return content.NewPageLink(node.Page), nil
 	case *blockRef:
 		return content.NewBlockRef(node.ID), nil
+	case *macro:
+		return convertMacro(src, node)
 	case *ast.FencedCodeBlock:
 		return convertFencedCodeBlock(src, node)
 	case *ast.CodeBlock:
@@ -326,6 +329,10 @@ func convertLink(src []byte, node *ast.Link) (*content.Link, error) {
 	}
 	link.Title = unescapeString(node.Title)
 	return link, nil
+}
+
+func convertMacro(src []byte, node *macro) (*content.Macro, error) {
+	return content.NewMacro(node.Name, node.Arguments...), nil
 }
 
 func convertEmphasis(src []byte, node *ast.Emphasis) (content.HasChildren, error) {

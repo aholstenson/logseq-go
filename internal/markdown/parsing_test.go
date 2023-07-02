@@ -375,6 +375,19 @@ var _ = Describe("Parsing", func() {
 			)))
 		})
 
+		It("can parse multiple wiki-style links", func() {
+			block, err := markdown.ParseString("[[This is a link]] and [[this is another link]]")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewPageLink("This is a link"),
+					content.NewText(" and "),
+					content.NewPageLink("this is another link"),
+				),
+			)))
+		})
+
 		It("can parse block reference", func() {
 			block, err := markdown.ParseString("((0b48a6c6-93ca-4d35-b945-6c59007f7962))")
 			Expect(err).ToNot(HaveOccurred())
@@ -412,6 +425,131 @@ var _ = Describe("Parsing", func() {
 						"https://example.com/image.png",
 						content.NewText("This is an image"),
 					).WithTitle("Title"),
+				),
+			)))
+		})
+	})
+
+	Describe("Macros", func() {
+		It("can parse macro with only name", func() {
+			block, err := markdown.ParseString("{{macro}}")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewMacro("macro"),
+				),
+			)))
+		})
+
+		It("can parse macro with name and arguments", func() {
+			block, err := markdown.ParseString("{{macro arg1 arg2}}")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewMacro("macro", "arg1", "arg2"),
+				),
+			)))
+		})
+
+		It("can parse macro with name and quoted arguments", func() {
+			block, err := markdown.ParseString("{{macro \"arg1\" \"arg2\"}}")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewMacro("macro", "arg1", "arg2"),
+				),
+			)))
+		})
+
+		It("can parse macro with name and quoted argument with escape", func() {
+			block, err := markdown.ParseString("{{macro \"arg1\\\"\"}}")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewMacro("macro", "arg1\""),
+				),
+			)))
+		})
+
+		It("can parse macro with name containing dash", func() {
+			block, err := markdown.ParseString("{{macro-name}}")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewMacro("macro-name"),
+				),
+			)))
+		})
+
+		It("can handle macro starting with three curly braces", func() {
+			block, err := markdown.ParseString("{{{macro}}}")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewMacro("macro"),
+				),
+			)))
+		})
+
+		It("can handle macro starting with three curly braces with arguments", func() {
+			block, err := markdown.ParseString("{{{macro arg1 arg2}}}")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewMacro("macro", "arg1", "arg2"),
+				),
+			)))
+		})
+
+		It("empty macro is parsed as text", func() {
+			block, err := markdown.ParseString("{{}}")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("{{}}"),
+				),
+			)))
+		})
+
+		It("macro that does not end is parsed as text", func() {
+			block, err := markdown.ParseString("{{macro")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("{{macro"),
+				),
+			)))
+		})
+
+		It("macro without closing curly brace is parsed as text", func() {
+			block, err := markdown.ParseString("{{macro}")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("{{macro}"),
+				),
+			)))
+		})
+
+		It("can handle multiple macros", func() {
+			block, err := markdown.ParseString("{{macro1}} {{macro2}}")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewMacro("macro1"),
+					content.NewText(" "),
+					content.NewMacro("macro2"),
 				),
 			)))
 		})

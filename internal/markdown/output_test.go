@@ -253,6 +253,36 @@ var _ = Describe("Output", func() {
 		})
 	})
 
+	Describe("Macros", func() {
+		It("can write a macro", func() {
+			err := writer.Write(content.NewMacro("abc"))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal("{{abc}}"))
+		})
+
+		It("can write a macro with arguments", func() {
+			err := writer.Write(content.NewMacro("abc", "def"))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal("{{abc def}}"))
+		})
+
+		It("can write a macro with multiple arguments", func() {
+			err := writer.Write(content.NewMacro("abc", "def", "ghi"))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal("{{abc def ghi}}"))
+		})
+
+		It("can write a macro with argument that needs escaping", func() {
+			err := writer.Write(content.NewMacro("abc", "def ghi"))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal("{{abc \"def ghi\"}}"))
+		})
+	})
+
 	Describe("Headings", func() {
 		It("can write a heading", func() {
 			err := writer.Write(content.NewHeading(1, content.NewText("abc")))
