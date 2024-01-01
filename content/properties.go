@@ -1,9 +1,11 @@
 package content
 
+// Properties is a collection of Property nodes.
 type Properties struct {
 	baseNodeWithChildren
 }
 
+// NewProperties creates a new Properties node with the given Property children.
 func NewProperties(children ...*Property) *Properties {
 	p := &Properties{}
 	p.self = p
@@ -14,6 +16,7 @@ func NewProperties(children ...*Property) *Properties {
 	return p
 }
 
+// Get a Property node by name. Will return nil if no Property with the given name exists.
 func (p *Properties) Get(key string) *Property {
 	for _, child := range p.Children() {
 		if property, ok := child.(*Property); ok && property.Name == key {
@@ -24,6 +27,7 @@ func (p *Properties) Get(key string) *Property {
 	return nil
 }
 
+// Set a Property node by name. If a Property with the given name already exists, it will be replaced.
 func (p *Properties) Set(key string, nodes ...Node) {
 	property := p.Get(key)
 	if property == nil {
@@ -34,6 +38,7 @@ func (p *Properties) Set(key string, nodes ...Node) {
 	property.SetChildren(nodes...)
 }
 
+// Remove a Property node by name. If a Property with the given name does not exist this does nothing.
 func (p *Properties) Remove(key string) {
 	property := p.Get(key)
 	if property != nil {
@@ -49,12 +54,15 @@ func (p *Properties) debug(p2 *debugPrinter) {
 
 var _ Node = (*Properties)(nil)
 
+// Property is a node that represents a property, which is a key that can have multiple values.
 type Property struct {
 	baseNodeWithChildren
 
+	// Name is the name of the property.
 	Name string
 }
 
+// NewProperty creates a new Property node with the given name and values.
 func NewProperty(name string, children ...Node) *Property {
 	property := &Property{Name: name}
 	property.self = property

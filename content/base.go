@@ -19,6 +19,7 @@ type Node interface {
 	// RemoveSelf this node from its parent.
 	RemoveSelf()
 
+	// ReplaceWith replaces this node with the given node.
 	ReplaceWith(node Node)
 
 	debug(*debugPrinter)
