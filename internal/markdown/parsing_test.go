@@ -1191,6 +1191,28 @@ var _ = Describe("Parsing", func() {
 			)))
 		})
 
+		It("trailing items in list parsed correctly", func() {
+			block, err := markdown.ParseString("* Item\n  #+BEGIN_ABCDEF\n  raw text\n    raw text\n  #+END_ABCDEF\n* Item2")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewList(
+					content.ListTypeUnordered,
+					content.NewListItem(
+						content.NewParagraph(
+							content.NewText("Item"),
+						),
+						content.NewAdvancedCommand("ABCDEF", "raw text\n  raw text\n"),
+					),
+					content.NewListItem(
+						content.NewParagraph(
+							content.NewText("Item2"),
+						),
+					),
+				),
+			)))
+		})
+
 		Describe("Query", func() {
 			It("can parse", func() {
 				block, err := markdown.ParseString("#+BEGIN_QUERY\nraw text\n#+END_QUERY\n")

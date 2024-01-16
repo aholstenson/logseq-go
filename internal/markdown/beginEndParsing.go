@@ -91,7 +91,11 @@ func (b *beginEndParser) Continue(node ast.Node, reader text.Reader, pc parser.C
 	// Check if the line starts with #+END_ and the type
 	searchFor := []byte("#+END_" + data.keyword)
 	if bytes.HasPrefix(line[pos:], searchFor) && util.IsBlank(line[pos+len(searchFor):]) {
-		reader.Advance(segment.Stop - segment.Start)
+		newline := 1
+		if line[len(line)-1] != '\n' {
+			newline = 0
+		}
+		reader.Advance(segment.Stop - segment.Start - newline + segment.Padding)
 		return parser.Close
 	}
 
