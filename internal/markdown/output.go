@@ -659,7 +659,15 @@ func (w *Output) writeCodeBlock(node *content.CodeBlock) error {
 		return err
 	}
 
-	err = w.writeRaw("\n```")
+	// If the code does not end with a blank line, we add a newline
+	if !strings.HasSuffix(node.Code, "\n") {
+		err = w.writeRaw("\n")
+		if err != nil {
+			return err
+		}
+	}
+
+	err = w.writeRaw("```")
 	if err != nil {
 		return err
 	}

@@ -546,6 +546,13 @@ var _ = Describe("Output", func() {
 
 			Expect(buf.String()).To(Equal("abc\n\n```\npackage main\n```"))
 		})
+
+		It("ending newline in code block is ignored", func() {
+			err := writer.Write(content.NewCodeBlock("package main\n"))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal("```\npackage main\n```"))
+		})
 	})
 
 	Describe("HTML", func() {
