@@ -189,6 +189,15 @@ func (w *Output) writeText(node *content.Text) error {
 }
 
 func (w *Output) writeEmphasis(node *content.Emphasis) error {
+	if _, ok := node.PreviousSibling().(*content.Emphasis); ok {
+		// Writing two emphasis nodes next to each other is not valid Markdown,
+		// so we add a space between them as a compromise.
+		err := w.writeRaw(" ")
+		if err != nil {
+			return err
+		}
+	}
+
 	err := w.writeRaw("*")
 	if err != nil {
 		return err

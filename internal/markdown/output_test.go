@@ -83,6 +83,16 @@ var _ = Describe("Output", func() {
 			Expect(buf.String()).To(Equal("*abc*"))
 		})
 
+		It("can write emphasis + emphasis", func() {
+			err := writer.Write(content.NewParagraph(
+				content.NewEmphasis(content.NewText("abc")),
+				content.NewEmphasis(content.NewText("def")),
+			))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal("*abc* *def*"))
+		})
+
 		It("can write emphasis wrapping multiple text nodes", func() {
 			err := writer.Write(content.NewEmphasis(content.NewText("abc"), content.NewText("def")))
 			Expect(err).ToNot(HaveOccurred())
