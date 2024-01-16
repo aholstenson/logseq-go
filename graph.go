@@ -2,7 +2,6 @@ package logseq
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -49,7 +48,6 @@ func Open(directory string) (*Graph, error) {
 func (g *Graph) Journal(date time.Time) (*Page, error) {
 	filename := date.Format(g.journalNameFormat) + ".md"
 	path := filepath.Join(g.directory, g.config.JournalsDir, filename)
-	log.Println(filename)
 
 	page, err := g.openExisting(path)
 	if os.IsNotExist(err) {
