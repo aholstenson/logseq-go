@@ -5,7 +5,7 @@ go 1.20
 require (
 	github.com/onsi/ginkgo/v2 v2.10.0
 	github.com/onsi/gomega v1.27.8
-	github.com/yuin/goldmark v1.5.4
+	github.com/yuin/goldmark v1.6.0
 	golang.org/x/text v0.9.0
 	olympos.io/encoding/edn v0.0.0-20201019073823-d3554ca0b0a3
 )
