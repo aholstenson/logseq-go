@@ -1,5 +1,7 @@
 package content
 
+import "github.com/google/uuid"
+
 // Block is a piece of information in an outline, either belonging to a page
 // or another block.
 type Block struct {
@@ -36,6 +38,17 @@ func (b *Block) Blocks() BlockList {
 		}
 	}
 	return blocks
+}
+
+func (b *Block) ID() (string, bool) {
+	p := b.Properties()
+	id := p.Get("id")
+	if id != nil {
+		return id.FirstChild().(*Text).Value, false
+	}
+
+	p.Set("id", NewText(uuid.NewString()))
+	return uuid.NewString(), true
 }
 
 func (b *Block) Properties() *Properties {

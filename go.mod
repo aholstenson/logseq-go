@@ -3,6 +3,7 @@ module github.com/aholstenson/logseq-go
 go 1.20
 
 require (
+	github.com/google/uuid v1.5.0
 	github.com/onsi/ginkgo/v2 v2.10.0
 	github.com/onsi/gomega v1.27.8
 	github.com/yuin/goldmark v1.6.0
