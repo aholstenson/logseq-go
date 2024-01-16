@@ -3,7 +3,7 @@
 logseq-go is a Go library to work with a [Logseq](https://logseq.com) graph,
 with support for reading and modifying journals and pages.
 
-**Note:** This library is still in early development, it may destroy your data
+⚠️ **Note:** This library is still in early development, it may destroy your data
 when pages are modified. Please open issues if you find any bugs.
 
 ## Usage
@@ -35,3 +35,5 @@ Known issues:
 - Indentation of blocks is not preserved, Logseq always uses tabs for
   indentation of blocks, while this library currently aligns the blocks to
   the indentation of the parent block.
+- Logbooks of TODOs are not supported yet and saving a page that contains logbook
+  entries will incorrectly escape the `[` and `]` characters.
