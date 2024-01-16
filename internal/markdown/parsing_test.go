@@ -565,6 +565,24 @@ var _ = Describe("Parsing", func() {
 			)))
 		})
 
+		It("can parse code block with newlines", func() {
+			block, err := markdown.ParseString("```\nThis is\na code block\n```")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewCodeBlock("This is\na code block\n"),
+			)))
+		})
+
+		It("can parse code block with blank lines", func() {
+			block, err := markdown.ParseString("```\nThis is\n\na code block\n```")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewCodeBlock("This is\n\na code block\n"),
+			)))
+		})
+
 		It("can parse code block with language", func() {
 			block, err := markdown.ParseString("```go\nThis is a code block\n```")
 			Expect(err).ToNot(HaveOccurred())
@@ -580,6 +598,17 @@ var _ = Describe("Parsing", func() {
 
 			Expect(block).To(EqualNode(content.NewBlock(
 				content.NewCodeBlock("This is an indented code block\n"),
+			)))
+		})
+
+		It("can parse code block with blank lines in block", func() {
+			block, err := markdown.ParseString("- ```\n  This is\n  \n  a code block\n  ```")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewBlock(
+					content.NewCodeBlock("This is\n\na code block\n"),
+				),
 			)))
 		})
 	})
