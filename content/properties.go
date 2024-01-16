@@ -52,7 +52,10 @@ func (p *Properties) debug(p2 *debugPrinter) {
 	p2.EndType()
 }
 
+func (p *Properties) isBlock() {}
+
 var _ Node = (*Properties)(nil)
+var _ BlockNode = (*Properties)(nil)
 
 // Property is a node that represents a property, which is a key that can have multiple values.
 type Property struct {

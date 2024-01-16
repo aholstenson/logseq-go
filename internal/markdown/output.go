@@ -565,12 +565,16 @@ func (w *Output) writeHeading(node *content.Heading) error {
 }
 
 func (w *Output) writeParagraph(node *content.Paragraph) error {
-	err := w.startBlock("")
-	if err != nil {
-		return err
+	if _, previousProperties := node.PreviousSibling().(*content.Properties); w.out.HasWrittenAtCurrentIndent() && !previousProperties {
+		err := w.out.WriteString("\n\n")
+		if err != nil {
+			return err
+		}
 	}
 
-	err = w.writeChildren(node)
+	w.out.PushIndentation("")
+
+	err := w.writeChildren(node)
 	if err != nil {
 		return err
 	}

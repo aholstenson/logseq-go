@@ -757,6 +757,34 @@ var _ = Describe("Output", func() {
 
 			Expect(buf.String()).To(Equal("abc\nkey:: value\ndef"))
 		})
+
+		It("can write properties with paragraph as previous sibling", func() {
+			err := writer.Write(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("abc"),
+				),
+				content.NewProperties(
+					content.NewProperty("key", content.NewText("value")),
+				),
+			))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal("abc\nkey:: value"))
+		})
+
+		It("can write properties with paragraph as next sibling", func() {
+			err := writer.Write(content.NewBlock(
+				content.NewProperties(
+					content.NewProperty("key", content.NewText("value")),
+				),
+				content.NewParagraph(
+					content.NewText("abc"),
+				),
+			))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal("key:: value\nabc"))
+		})
 	})
 
 	Describe("Advanced commands", func() {
