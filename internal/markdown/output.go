@@ -217,6 +217,15 @@ func (w *Output) writeEmphasis(node *content.Emphasis) error {
 }
 
 func (w *Output) writeStrong(node *content.Strong) error {
+	if _, ok := node.PreviousSibling().(*content.Strong); ok {
+		// Writing two strong nodes next to each other is not valid Markdown,
+		// so we add a space between them as a compromise.
+		err := w.writeRaw(" ")
+		if err != nil {
+			return err
+		}
+	}
+
 	err := w.writeRaw("**")
 	if err != nil {
 		return err
