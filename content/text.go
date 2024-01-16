@@ -169,7 +169,9 @@ func NewBlockquote(children ...Node) *Blockquote {
 	b := &Blockquote{}
 	b.self = b
 	b.childValidator = allowOnlyBlockNodes
-	b.AddChildren(children...)
+	for _, child := range addAutomaticParagraphs(children) {
+		b.AddChild(child)
+	}
 	return b
 }
 
