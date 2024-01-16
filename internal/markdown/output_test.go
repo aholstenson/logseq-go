@@ -131,6 +131,16 @@ var _ = Describe("Output", func() {
 			Expect(buf.String()).To(Equal("***abc***"))
 		})
 
+		It("can write strong + emphasis", func() {
+			err := writer.Write(content.NewParagraph(
+				content.NewStrong(content.NewText("abc")),
+				content.NewEmphasis(content.NewText("def")),
+			))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal("**abc***def*"))
+		})
+
 		It("can write code", func() {
 			err := writer.Write(content.NewCodeSpan("abc"))
 			Expect(err).ToNot(HaveOccurred())
