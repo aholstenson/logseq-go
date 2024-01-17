@@ -32,8 +32,5 @@ that is causing the issue.
 
 Known issues:
 
-- Indentation of blocks is not preserved, Logseq always uses tabs for
-  indentation of blocks, while this library currently aligns the blocks to
-  the indentation of the parent block.
 - Logbooks of TODOs are not supported yet and saving a page that contains logbook
   entries will incorrectly escape the `[` and `]` characters.
