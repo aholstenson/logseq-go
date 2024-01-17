@@ -264,9 +264,11 @@ func convertToBlock(src []byte, node ast.Node) (*content.Block, error) {
 			var property *content.Property
 			shouldLookForProperty := true
 
-			for _, textNode := range p.Children() {
-				if text, ok := textNode.(*content.Text); ok {
-					if shouldLookForProperty {
+			var previousNode content.Node
+			previousNodeBreak := true
+			for _, paragraphNode := range p.Children() {
+				if text, ok := paragraphNode.(*content.Text); ok {
+					if shouldLookForProperty && previousNodeBreak {
 						shouldLookForProperty = false
 
 						// Check if this matches the property pattern. If it does
@@ -284,6 +286,11 @@ func convertToBlock(src []byte, node ast.Node) (*content.Block, error) {
 
 							// Remove the property key from the text node.
 							text.Value = text.Value[matches[1]:]
+
+							if previousText, ok := previousNode.(*content.Text); ok {
+								previousText.SoftLineBreak = false
+								previousText.HardLineBreak = false
+							}
 						}
 					}
 
@@ -293,20 +300,40 @@ func convertToBlock(src []byte, node ast.Node) (*content.Block, error) {
 							// Reset line breaks as the don't make sense for properties.
 							text.HardLineBreak = false
 							text.SoftLineBreak = false
-							property.AddChild(text)
+
+							if text.Value == "" {
+								text.RemoveSelf()
+							} else {
+								property.AddChild(text)
+							}
 						}
 
 						// Reset to look for a new property.
 						shouldLookForProperty = true
 						property = nil
+						previousNodeBreak = true
 					} else if property != nil {
 						// No newline, add to current property.
-						property.AddChild(text)
+						if text.Value == "" {
+							text.RemoveSelf()
+						} else {
+							property.AddChild(text)
+						}
+
+						previousNodeBreak = false
 					}
 				} else {
-					// Non-text nodes never start a search for new properties.
-					shouldLookForProperty = false
+					if property != nil {
+						property.AddChild(paragraphNode)
+						previousNodeBreak = false
+					} else {
+						// Non-text nodes never start a search for new properties.
+						shouldLookForProperty = false
+						previousNodeBreak = false
+					}
 				}
+
+				previousNode = paragraphNode
 			}
 
 			// If we have a property we can stop looking for properties.

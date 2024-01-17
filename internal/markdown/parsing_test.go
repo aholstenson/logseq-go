@@ -1124,7 +1124,7 @@ var _ = Describe("Parsing", func() {
 
 				Expect(block).To(EqualNode(content.NewBlock(
 					content.NewParagraph(
-						content.NewText("This is a paragraph").WithSoftLineBreak(),
+						content.NewText("This is a paragraph"),
 						content.NewProperties(
 							content.NewProperty("key", content.NewText("value")),
 						),
@@ -1138,11 +1138,25 @@ var _ = Describe("Parsing", func() {
 
 				Expect(block).To(EqualNode(content.NewBlock(
 					content.NewParagraph(
-						content.NewText("Line 1").WithSoftLineBreak(),
+						content.NewText("Line 1"),
 						content.NewProperties(
 							content.NewProperty("key", content.NewText("value")),
 						),
 						content.NewText("Line 2"),
+					),
+				)))
+			})
+
+			It("can parse property with non text nodes", func() {
+				block, err := markdown.ParseString("key:: [[link]]\nThis is a paragraph\n")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(EqualNode(content.NewBlock(
+					content.NewParagraph(
+						content.NewProperties(
+							content.NewProperty("key", content.NewPageLink("link")),
+						),
+						content.NewText("This is a paragraph"),
 					),
 				)))
 			})
