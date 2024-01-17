@@ -41,6 +41,18 @@ func (p *Page) RemoveBlock(block *content.Block) {
 	p.root.RemoveChild(block)
 }
 
+func (p *Page) PrependBlock(block *content.Block) {
+	p.root.PrependChild(block)
+}
+
+func (p *Page) InsertBlockAfter(block *content.Block, after *content.Block) {
+	p.root.InsertChildAfter(block, after)
+}
+
+func (p *Page) InsertBlockBefore(block *content.Block, before *content.Block) {
+	p.root.InsertChildBefore(block, before)
+}
+
 func (p *Page) Save() error {
 	data, err := markdown.AsString(p.root)
 	if err != nil {

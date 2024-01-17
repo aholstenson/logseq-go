@@ -63,7 +63,7 @@ func (n *baseNode) RemoveSelf() {
 
 func (n *baseNode) ReplaceWith(node Node) {
 	if n.parent != nil {
-		n.parent.InsertBefore(node, n)
+		n.parent.InsertChildBefore(node, n)
 		n.RemoveSelf()
 	}
 }
@@ -124,11 +124,11 @@ type HasChildren interface {
 	// ReplaceChild replaces a child of this node with another node.
 	ReplaceChild(oldNode Node, newNode Node) bool
 
-	// InsertBefore inserts a node before another node.
-	InsertBefore(node Node, before Node) bool
+	// InsertChildBefore inserts a node before another node.
+	InsertChildBefore(node Node, before Node) bool
 
-	// InsertBefore inserts a node before another node.
-	InsertAfter(node Node, after Node) bool
+	// InsertChildBefore inserts a node before another node.
+	InsertChildAfter(node Node, after Node) bool
 }
 
 type baseNodeWithChildren struct {
@@ -293,7 +293,7 @@ func (c *baseNodeWithChildren) ReplaceChild(oldNode Node, newNode Node) bool {
 	return true
 }
 
-func (c *baseNodeWithChildren) InsertBefore(node Node, before Node) bool {
+func (c *baseNodeWithChildren) InsertChildBefore(node Node, before Node) bool {
 	if before.Parent() != c.self {
 		return false
 	}
@@ -319,7 +319,7 @@ func (c *baseNodeWithChildren) InsertBefore(node Node, before Node) bool {
 	return true
 }
 
-func (c *baseNodeWithChildren) InsertAfter(node Node, after Node) bool {
+func (c *baseNodeWithChildren) InsertChildAfter(node Node, after Node) bool {
 	if after.Parent() != c.self {
 		return false
 	}
@@ -331,12 +331,13 @@ func (c *baseNodeWithChildren) InsertAfter(node Node, after Node) bool {
 
 	node.setParent(c.self)
 
-	if after.NextSibling() == nil {
+	next := after.NextSibling()
+	if next == nil {
 		c.lastChild = node
 		node.setNextSibling(nil)
 	} else {
-		after.NextSibling().setPreviousSibling(node)
-		node.setNextSibling(after.NextSibling())
+		next.setPreviousSibling(node)
+		node.setNextSibling(next)
 	}
 
 	after.setNextSibling(node)

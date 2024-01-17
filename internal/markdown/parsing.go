@@ -240,7 +240,7 @@ func convertToBlock(src []byte, node ast.Node) (*content.Block, error) {
 						lastBlock.PrependChild(node)
 					} else {
 						// Insert after the last node.
-						lastBlock.InsertAfter(node, lastNode)
+						lastBlock.InsertChildAfter(node, lastNode)
 					}
 				} else {
 					return nil, errors.New("Last node is not a block")
@@ -279,7 +279,7 @@ func convertToBlock(src []byte, node ast.Node) (*content.Block, error) {
 
 							if properties.Parent() == nil {
 								// The properties container has to be inserted
-								p.InsertBefore(properties, text)
+								p.InsertChildBefore(properties, text)
 							}
 
 							// Remove the property key from the text node.
