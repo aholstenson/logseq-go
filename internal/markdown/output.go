@@ -727,10 +727,37 @@ func (w *Output) writeBlock(node *content.Block) error {
 		}
 	}
 
+	w.endBlock()
+
+	hasParentBlock := false
+	if _, ok := node.Parent().(*content.Block); ok {
+		hasParentBlock = true
+	}
+
+	previousIndent := ""
+	if hasParentBlock {
+		// As Logseq uses tabs for indentation of blocks we pop the current
+		// indentation which is the two spaces to align content with "- " of
+		// the list item. This allows the indentation to be only tabs for
+		// blocks
+		previousIndent = w.out.PopIndentation()
+	}
+
 	// Output the sub blocks
 	blocks := node.Blocks()
 	if len(blocks) > 0 {
-		w.startBlock("")
+		if w.out.HasWrittenAtCurrentIndent() {
+			err := w.out.WriteString("\n")
+			if err != nil {
+				return err
+			}
+		}
+
+		if hasParentBlock {
+			w.out.PushIndentation("\t")
+		} else {
+			w.out.PushIndentation("")
+		}
 
 		i := 0
 		for _, child := range blocks {
@@ -757,10 +784,14 @@ func (w *Output) writeBlock(node *content.Block) error {
 			w.out.PopIndentation()
 		}
 
-		w.endBlock()
+		w.out.PopIndentation()
 	}
 
-	w.endBlock()
+	if hasParentBlock {
+		// Push the previous indentation back on the stack
+		w.out.PushIndentation(previousIndent)
+	}
+
 	return nil
 }
 

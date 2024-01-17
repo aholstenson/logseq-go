@@ -32,6 +32,10 @@ func (w *writer) TrailingWhitespace() []byte {
 	return w.currentIndent[w.trailingSpaceIndex:]
 }
 
+func (w *writer) IndentationLevel() int {
+	return len(w.indentLengths)
+}
+
 func (w *writer) PushIndentation(v string) {
 	w.indentLengths = append(w.indentLengths, len(w.currentIndent))
 	w.currentIndent = append(w.currentIndent, []byte(v)...)
@@ -39,8 +43,10 @@ func (w *writer) PushIndentation(v string) {
 	w.didWrite = append(w.didWrite, false)
 }
 
-func (w *writer) PopIndentation() {
+func (w *writer) PopIndentation() string {
 	last := w.indentLengths[len(w.indentLengths)-1]
+	lastIndent := w.currentIndent[last:]
+
 	w.indentLengths = w.indentLengths[:len(w.indentLengths)-1]
 	w.currentIndent = w.currentIndent[:last]
 	w.updateTrailingSpaceIndex()
@@ -52,11 +58,13 @@ func (w *writer) PopIndentation() {
 	if didWrite {
 		w.didWrite[len(w.didWrite)-1] = didWrite
 	}
+
+	return string(lastIndent)
 }
 
 func (w *writer) updateTrailingSpaceIndex() {
 	for i := len(w.currentIndent) - 1; i >= 0; i-- {
-		if w.currentIndent[i] != ' ' {
+		if w.currentIndent[i] != ' ' && w.currentIndent[i] != '\t' {
 			w.trailingSpaceIndex = i + 1
 			return
 		}

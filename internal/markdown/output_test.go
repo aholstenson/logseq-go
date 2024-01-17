@@ -665,7 +665,7 @@ var _ = Describe("Output", func() {
 			))
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(buf.String()).To(Equal("abc\n\n- block 1\n- block 2"))
+			Expect(buf.String()).To(Equal("abc\n- block 1\n- block 2"))
 		})
 
 		It("can write nested blocks", func() {
@@ -678,7 +678,7 @@ var _ = Describe("Output", func() {
 			))
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(buf.String()).To(Equal("abc\n\n- block 1\n\n  - block 2"))
+			Expect(buf.String()).To(Equal("abc\n- block 1\n\t- block 2"))
 		})
 
 		It("can write block with content containing new lines with sub-blocks", func() {
@@ -691,7 +691,7 @@ var _ = Describe("Output", func() {
 			))
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(buf.String()).To(Equal("abc\ndef\n\n- block 1"))
+			Expect(buf.String()).To(Equal("abc\ndef\n- block 1"))
 		})
 
 		It("can write block with sub-blocks that contain new lines", func() {
