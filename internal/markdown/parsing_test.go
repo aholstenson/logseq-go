@@ -1027,6 +1027,56 @@ var _ = Describe("Parsing", func() {
 			)))
 		})
 
+		It("can parse empty sub-block", func() {
+			block, err := markdown.ParseString("- Item 1\n-\n")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewBlock(
+					content.NewParagraph(
+						content.NewText("Item 1"),
+					),
+				),
+				content.NewBlock(),
+			)))
+		})
+
+		It("can parse empty sub-block with content in main block", func() {
+			block, err := markdown.ParseString("Test\n-\n")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("Test"),
+				),
+				content.NewBlock(),
+			)))
+		})
+
+		It("can parse empty sub-block with content in main block", func() {
+			block, err := markdown.ParseString("Test  \n-\n")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("Test"),
+				),
+				content.NewBlock(),
+			)))
+		})
+
+		It("non-breaking dash does not start block", func() {
+			block, err := markdown.ParseString("[[Test]]-\n")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewPageLink("Test"),
+					content.NewText("-"),
+				),
+			)))
+		})
+
 		Describe("Malformed blocks", func() {
 			It("trailing content is added to last block", func() {
 				block, err := markdown.ParseString("This is a paragraph\n\n- Item 1\n- Item 2\n\nThis is a trailing paragraph\n")

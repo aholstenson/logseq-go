@@ -22,9 +22,17 @@ var neverMatch = regexp.MustCompile(`\A\z`)
 
 func init() {
 	markdownParser = parser.NewParser(
-		parser.WithBlockParsers(parser.DefaultBlockParsers()...),
 		parser.WithBlockParsers(
+			util.Prioritized(parser.NewThematicBreakParser(), 200),
+			util.Prioritized(parser.NewListParser(), 300),
+			util.Prioritized(parser.NewListItemParser(), 400),
+			util.Prioritized(parser.NewCodeBlockParser(), 500),
+			util.Prioritized(parser.NewATXHeadingParser(), 600),
+			util.Prioritized(parser.NewFencedCodeBlockParser(), 700),
+			util.Prioritized(parser.NewBlockquoteParser(), 800),
 			util.Prioritized(&beginEndParser{}, 899),
+			util.Prioritized(parser.NewHTMLBlockParser(), 900),
+			util.Prioritized(parser.NewParagraphParser(), 1000),
 		),
 		parser.WithInlineParsers(parser.DefaultInlineParsers()...),
 		parser.WithInlineParsers(
@@ -186,6 +194,34 @@ func convertToBlock(src []byte, node ast.Node) (*content.Block, error) {
 				// No list of blocks encountered yet, treat nodes as content
 				// to main block.
 				block.AddChild(node)
+
+				if p, ok := node.(*content.Paragraph); ok {
+					// Logseq handles a "-" without a trailing space as block
+					// but Goldmark will parse it as a text item in a paragraph
+					var previousNode content.Node
+					var previousNodeBreak bool
+					for _, paragraphNode := range p.Children() {
+						if text, ok := paragraphNode.(*content.Text); ok {
+							if text.Value == "-" && previousNodeBreak {
+								text.RemoveSelf()
+
+								newBlock := content.NewBlock()
+								block.AddChild(newBlock)
+
+								if previousText, ok := previousNode.(*content.Text); ok {
+									previousText.SoftLineBreak = false
+									previousText.HardLineBreak = false
+								}
+							}
+
+							previousNodeBreak = text.HardLineBreak || text.SoftLineBreak
+						} else {
+							previousNodeBreak = false
+						}
+
+						previousNode = paragraphNode
+					}
+				}
 			} else {
 				// We have parsed blocks so this is trailing content, in Logseq
 				// this seems to be added to the last block.
