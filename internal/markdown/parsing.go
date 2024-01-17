@@ -458,12 +458,7 @@ func convertBlockquote(src []byte, node *ast.Blockquote) (*content.Blockquote, e
 
 // convertList converts an ast.List into either a list or a block.
 func convertList(src []byte, node *ast.List) (*content.List, error) {
-	listType := content.ListTypeUnordered
-	if node.Marker == '.' {
-		listType = content.ListTypeOrdered
-	}
-
-	list := content.NewList(listType)
+	list := content.NewListFromMarker(node.Marker)
 	for child := node.FirstChild(); child != nil; child = child.NextSibling() {
 		item, err := convertListItem(src, child)
 		if err != nil {

@@ -398,6 +398,17 @@ var _ = Describe("Output", func() {
 				Expect(buf.String()).To(Equal("* abc"))
 			})
 
+			It("can write an unordered list with + marker", func() {
+				err := writer.Write(content.NewListFromMarker('+',
+					content.NewListItem(
+						content.NewParagraph(content.NewText("abc")),
+					),
+				))
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(buf.String()).To(Equal("+ abc"))
+			})
+
 			It("can write multiple unordered lists", func() {
 				err := writer.Write(content.NewUnorderedList(content.NewListItem(content.NewParagraph(content.NewText("abc")))))
 				Expect(err).ToNot(HaveOccurred())

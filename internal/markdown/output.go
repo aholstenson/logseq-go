@@ -598,9 +598,9 @@ func (w *Output) writeList(node *content.List) error {
 		i++
 		var marker string
 		if node.Type == content.ListTypeOrdered {
-			marker = fmt.Sprintf("%d.", i)
+			marker = fmt.Sprintf("%d", i) + string(node.Marker)
 		} else {
-			marker = "*"
+			marker = string(node.Marker)
 		}
 
 		err := w.out.WriteString(marker + " ")

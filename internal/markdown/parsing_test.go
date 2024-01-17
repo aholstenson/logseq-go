@@ -750,8 +750,7 @@ var _ = Describe("Parsing", func() {
 					Expect(err).ToNot(HaveOccurred())
 
 					Expect(block).To(EqualNode(content.NewBlock(
-						content.NewList(
-							content.ListTypeUnordered,
+						content.NewListFromMarker('+',
 							content.NewListItem(
 								content.NewParagraph(
 									content.NewText("Item 1"),
@@ -843,14 +842,12 @@ var _ = Describe("Parsing", func() {
 				Expect(err).ToNot(HaveOccurred())
 
 				Expect(block).To(EqualNode(content.NewBlock(
-					content.NewList(
-						content.ListTypeUnordered,
+					content.NewListFromMarker('+',
 						content.NewListItem(
 							content.NewParagraph(
 								content.NewText("Item 1"),
 							),
-							content.NewList(
-								content.ListTypeUnordered,
+							content.NewListFromMarker('*',
 								content.NewListItem(
 									content.NewParagraph(
 										content.NewText("Item 2"),
