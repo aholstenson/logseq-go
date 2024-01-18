@@ -10,7 +10,8 @@ const (
 type List struct {
 	baseNodeWithChildren
 
-	Type ListType
+	Type   ListType
+	Marker byte
 }
 
 func NewList(typ ListType, items ...*ListItem) *List {
@@ -21,6 +22,29 @@ func NewList(typ ListType, items ...*ListItem) *List {
 	for _, item := range items {
 		list.AddChild(item)
 	}
+	switch typ {
+	case ListTypeOrdered:
+		list.Marker = '.'
+	case ListTypeUnordered:
+		list.Marker = '*'
+	}
+	return list
+}
+
+func NewListFromMarker(marker byte, items ...*ListItem) *List {
+	var list *List
+	switch marker {
+	case '*', '+':
+		list = NewUnorderedList(items...)
+	case '-':
+		list = NewUnorderedList(items...)
+		marker = '*'
+	case '.', ')':
+		list = NewOrderedList(items...)
+	default:
+		list = NewUnorderedList(items...)
+	}
+	list.Marker = marker
 	return list
 }
 
@@ -40,6 +64,7 @@ func (l *List) debug(p *debugPrinter) {
 	case ListTypeUnordered:
 		p.Field("type", "unordered")
 	}
+	p.Field("marker", string(l.Marker))
 	p.Children(l)
 	p.EndType()
 }
