@@ -33,6 +33,30 @@ var _ = Describe("Parsing", func() {
 			)))
 		})
 
+		It("can parse text with newline", func() {
+			block, err := markdown.ParseString("This is some basic text\nwith a newline")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("This is some basic text").WithSoftLineBreak(),
+					content.NewText("with a newline"),
+				),
+			)))
+		})
+
+		It("can parse text with hard newline", func() {
+			block, err := markdown.ParseString("This is some basic text  \nwith a newline")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("This is some basic text").WithHardLineBreak(),
+					content.NewText("with a newline"),
+				),
+			)))
+		})
+
 		It("can parse heading", func() {
 			block, err := markdown.ParseString("# Headline")
 			Expect(err).ToNot(HaveOccurred())
@@ -60,6 +84,18 @@ var _ = Describe("Parsing", func() {
 				content.NewParagraph(
 					content.NewText("This is some basic text"),
 				),
+			)))
+		})
+
+		It("can parse heading and text with only single newline", func() {
+			block, err := markdown.ParseString("# Headline\nThis is some basic text")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewHeading(1, content.NewText("Headline")),
+				content.NewParagraph(
+					content.NewText("This is some basic text"),
+				).WithPreviousLineType(content.PreviousLineTypeNonBlank),
 			)))
 		})
 
@@ -656,6 +692,20 @@ var _ = Describe("Parsing", func() {
 			)))
 		})
 
+		It("can parse blockquote spanning multiple lines without marker", func() {
+			block, err := markdown.ParseString("> This is a blockquote\nwith multiple lines\n")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewBlockquote(
+					content.NewParagraph(
+						content.NewText("This is a blockquote").WithSoftLineBreak(),
+						content.NewText("with multiple lines"),
+					),
+				),
+			)))
+		})
+
 		It("can parse blockquote with header", func() {
 			block, err := markdown.ParseString("> # This is a header\n> And this is a paragraph\n")
 			Expect(err).ToNot(HaveOccurred())
@@ -667,8 +717,40 @@ var _ = Describe("Parsing", func() {
 					),
 					content.NewParagraph(
 						content.NewText("And this is a paragraph"),
+					).WithPreviousLineType(content.PreviousLineTypeNonBlank),
+				),
+			)))
+		})
+
+		It("can parse blockquote followed by a paragraph", func() {
+			block, err := markdown.ParseString("> This is a blockquote\n\nThis is a paragraph")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewBlockquote(
+					content.NewParagraph(
+						content.NewText("This is a blockquote"),
 					),
 				),
+				content.NewParagraph(
+					content.NewText("This is a paragraph"),
+				),
+			)))
+		})
+
+		It("can parse paragraph interrupted by blockquote", func() {
+			block, err := markdown.ParseString("This is a paragraph\n> This is a blockquote")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("This is a paragraph"),
+				),
+				content.NewBlockquote(
+					content.NewParagraph(
+						content.NewText("This is a blockquote"),
+					),
+				).WithPreviousLineType(content.PreviousLineTypeNonBlank),
 			)))
 		})
 	})
@@ -765,6 +847,30 @@ var _ = Describe("Parsing", func() {
 					)))
 				})
 			})
+
+			Describe("With stars and pluses", func() {
+				It("can parse", func() {
+					block, err := markdown.ParseString("* Item 1\n+ Item 2\n")
+					Expect(err).ToNot(HaveOccurred())
+
+					Expect(block).To(EqualNode(content.NewBlock(
+						content.NewListFromMarker('*',
+							content.NewListItem(
+								content.NewParagraph(
+									content.NewText("Item 1"),
+								),
+							),
+						),
+						content.NewListFromMarker('+',
+							content.NewListItem(
+								content.NewParagraph(
+									content.NewText("Item 2"),
+								),
+							),
+						).WithPreviousLineType(content.PreviousLineTypeNonBlank),
+					)))
+				})
+			})
 		})
 
 		Describe("Ordered lists", func() {
@@ -853,7 +959,7 @@ var _ = Describe("Parsing", func() {
 										content.NewText("Item 2"),
 									),
 								),
-							),
+							).WithPreviousLineType(content.PreviousLineTypeNonBlank),
 						),
 					),
 				)))
@@ -1203,7 +1309,7 @@ var _ = Describe("Parsing", func() {
 								content.NewText("Item 2"),
 							),
 						),
-					),
+					).WithPreviousLineType(content.PreviousLineTypeNonBlank),
 				)))
 			})
 		})

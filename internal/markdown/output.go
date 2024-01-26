@@ -117,7 +117,7 @@ func (w *Output) Write(n content.Node) error {
 	case *content.AdvancedCommand:
 		return w.writeAdvancedCommand(node)
 	case *content.QueryCommand:
-		return w.writeBeginEnd("QUERY", node.Query)
+		return w.writeBeginEnd(node, "QUERY", node.Query)
 	default:
 		return fmt.Errorf("unsupported node: %T", node)
 	}
@@ -140,9 +140,26 @@ func (w *Output) write(s string, escapeFunc EscapeFunc) error {
 	return w.writeRaw(out.String())
 }
 
-func (w *Output) startBlock(marker string) error {
+func (w *Output) startBlock(node content.BlockNode, marker string) error {
 	if w.out.HasWrittenAtCurrentIndent() {
-		err := w.out.WriteString("\n\n")
+		var prefix string
+		if pl, ok := node.(content.PreviousLineAware); ok {
+			switch pl.PreviousLineType() {
+			case content.PreviousLineTypeBlank:
+				prefix = "\n\n"
+			case content.PreviousLineTypeNonBlank:
+				prefix = "\n"
+			case content.PreviousLineTypeAutomatic:
+				// TODO: Implementation that determines if a blank line is needed
+				prefix = "\n\n"
+			default:
+				return fmt.Errorf("unknown previous line type: %d", pl.PreviousLineType())
+			}
+		} else {
+			prefix = "\n\n"
+		}
+
+		err := w.out.WriteString(prefix)
 		if err != nil {
 			return err
 		}
@@ -535,7 +552,7 @@ func (w *Output) writeMacro(node *content.Macro) error {
 }
 
 func (w *Output) writeRawHTMLBlock(node *content.RawHTMLBlock) error {
-	err := w.startBlock("")
+	err := w.startBlock(node, "")
 	if err != nil {
 		return err
 	}
@@ -550,7 +567,7 @@ func (w *Output) writeRawHTMLBlock(node *content.RawHTMLBlock) error {
 }
 
 func (w *Output) writeHeading(node *content.Heading) error {
-	err := w.startBlock(strings.Repeat("#", node.Level) + " ")
+	err := w.startBlock(node, strings.Repeat("#", node.Level)+" ")
 	if err != nil {
 		return err
 	}
@@ -584,7 +601,7 @@ func (w *Output) writeParagraph(node *content.Paragraph) error {
 }
 
 func (w *Output) writeList(node *content.List) error {
-	err := w.startBlock("")
+	err := w.startBlock(node, "")
 	if err != nil {
 		return err
 	}
@@ -630,7 +647,7 @@ func (w *Output) writeList(node *content.List) error {
 }
 
 func (w *Output) writeBlockquote(node *content.Blockquote) error {
-	err := w.startBlock("> ")
+	err := w.startBlock(node, "> ")
 	if err != nil {
 		return err
 	}
@@ -654,7 +671,7 @@ func (w *Output) writeBlockquote(node *content.Blockquote) error {
 }
 
 func (w *Output) writeCodeBlock(node *content.CodeBlock) error {
-	err := w.startBlock("")
+	err := w.startBlock(node, "")
 	if err != nil {
 		return err
 	}
@@ -699,7 +716,7 @@ func (w *Output) writeCodeBlock(node *content.CodeBlock) error {
 }
 
 func (w *Output) writeThematicBreak(node *content.ThematicBreak) error {
-	err := w.startBlock("")
+	err := w.startBlock(node, "")
 	if err != nil {
 		return err
 	}
@@ -714,7 +731,7 @@ func (w *Output) writeThematicBreak(node *content.ThematicBreak) error {
 }
 
 func (w *Output) writeBlock(node *content.Block) error {
-	err := w.startBlock("")
+	err := w.startBlock(node, "")
 	if err != nil {
 		return err
 	}
@@ -843,11 +860,11 @@ func (w *Output) writeProperties(node *content.Properties) error {
 }
 
 func (w *Output) writeAdvancedCommand(node *content.AdvancedCommand) error {
-	return w.writeBeginEnd(node.Type, node.Value)
+	return w.writeBeginEnd(node, node.Type, node.Value)
 }
 
-func (w *Output) writeBeginEnd(variant string, value string) error {
-	err := w.startBlock("")
+func (w *Output) writeBeginEnd(node content.BlockNode, variant string, value string) error {
+	err := w.startBlock(node, "")
 	if err != nil {
 		return err
 	}

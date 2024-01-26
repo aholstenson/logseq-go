@@ -352,6 +352,7 @@ func convertParagraph(src []byte, node *ast.Paragraph) (*content.Paragraph, erro
 	if err != nil {
 		return nil, err
 	}
+	updatePreviousLine(node, paragraph)
 	return paragraph, nil
 }
 
@@ -431,6 +432,9 @@ func convertFencedCodeBlock(src []byte, node *ast.FencedCodeBlock) (*content.Cod
 
 	code := content.NewCodeBlock(codeBuf.String())
 	code.Language = string(node.Language(src))
+
+	updatePreviousLine(node, code)
+
 	return code, nil
 }
 
@@ -444,6 +448,8 @@ func convertCodeBlock(src []byte, node *ast.CodeBlock) (*content.CodeBlock, erro
 	}
 
 	code := content.NewCodeBlock(codeBuf.String())
+
+	updatePreviousLine(node, code)
 	return code, nil
 }
 
@@ -453,6 +459,9 @@ func convertBlockquote(src []byte, node *ast.Blockquote) (*content.Blockquote, e
 	if err != nil {
 		return nil, err
 	}
+
+	updatePreviousLine(node, blockquote)
+
 	return blockquote, nil
 }
 
@@ -466,6 +475,9 @@ func convertList(src []byte, node *ast.List) (*content.List, error) {
 		}
 		list.AddChild(item)
 	}
+
+	updatePreviousLine(node, list)
+
 	return list, nil
 }
 
@@ -523,5 +535,23 @@ func convertBeginEnd(src []byte, node *beginEnd) (content.Node, error) {
 		return content.NewQueryCommand(codeBuf.String()), nil
 	default:
 		return content.NewAdvancedCommand(node.Variant, codeBuf.String()), nil
+	}
+}
+
+// updatePreviousLine updates the PreviousLineType of the target based on the
+// node. This takes the information Goldmark parsed out and transfers it to
+// our nodes.
+func updatePreviousLine(node ast.Node, target content.PreviousLineAware) {
+	if node.HasBlankPreviousLines() {
+		target.SetPreviousLineType(content.PreviousLineTypeAutomatic)
+	} else {
+		// Parsing didn't indicate blank lines before the node, but we might
+		// be the first node on this level in which case we set the type to
+		// automatic
+		if node.PreviousSibling() == nil {
+			target.SetPreviousLineType(content.PreviousLineTypeAutomatic)
+		} else {
+			target.SetPreviousLineType(content.PreviousLineTypeNonBlank)
+		}
 	}
 }

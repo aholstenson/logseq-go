@@ -2,6 +2,7 @@ package content
 
 type CodeBlock struct {
 	baseNode
+	previousLineAwareImpl
 
 	// Language gets the language of this code block.
 	Language string
@@ -18,6 +19,11 @@ func NewCodeBlock(code string) *CodeBlock {
 
 func (c *CodeBlock) WithLanguage(language string) *CodeBlock {
 	c.Language = language
+	return c
+}
+
+func (c *CodeBlock) WithPreviousLineType(previousLineType PreviousLineType) *CodeBlock {
+	c.previousLineType = previousLineType
 	return c
 }
 

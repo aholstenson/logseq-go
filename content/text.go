@@ -141,6 +141,7 @@ var _ InlineNode = (*Strong)(nil)
 
 type Paragraph struct {
 	baseNodeWithChildren
+	previousLineAwareImpl
 }
 
 func NewParagraph(children ...Node) *Paragraph {
@@ -153,8 +154,14 @@ func NewParagraph(children ...Node) *Paragraph {
 
 func (p *Paragraph) debug(pr *debugPrinter) {
 	pr.StartType("Paragraph")
+	debugPreviousLineAware(pr, p)
 	pr.Children(p)
 	pr.EndType()
+}
+
+func (p *Paragraph) WithPreviousLineType(t PreviousLineType) *Paragraph {
+	p.previousLineType = t
+	return p
 }
 
 func (p *Paragraph) isBlock() {}
@@ -163,6 +170,7 @@ var _ BlockNode = (*Paragraph)(nil)
 
 type Blockquote struct {
 	baseNodeWithChildren
+	previousLineAwareImpl
 }
 
 func NewBlockquote(children ...Node) *Blockquote {
@@ -177,8 +185,14 @@ func NewBlockquote(children ...Node) *Blockquote {
 
 func (b *Blockquote) debug(p *debugPrinter) {
 	p.StartType("Blockquote")
+	debugPreviousLineAware(p, b)
 	p.Children(b)
 	p.EndType()
+}
+
+func (b *Blockquote) WithPreviousLineType(t PreviousLineType) *Blockquote {
+	b.previousLineType = t
+	return b
 }
 
 func (b *Blockquote) isBlock() {}

@@ -131,6 +131,38 @@ type HasChildren interface {
 	InsertChildAfter(node Node, after Node) bool
 }
 
+// PreviousLineType contains information about the previous line, commonly
+// saved while parsing.
+type PreviousLineType int
+
+const (
+	// PreviousLineTypeAutomatic is the default value, which lets block nodes
+	// pick what kind of previous line type they want.
+	PreviousLineTypeAutomatic PreviousLineType = iota
+	// PreviousLineTypeBlank is used when the previous line was blank.
+	PreviousLineTypeBlank
+	// PreviousLineTypeNonBlank is used when the previous line was not blank.
+	// Such as when something interrupts as paragraph.
+	PreviousLineTypeNonBlank
+)
+
+// PreviousLineAware is an interface that can be implemented by block nodes
+// to get information about the previous line.
+//
+// This information is used when generating Markdown output to keep the
+// Markdown close to the original input.
+//
+// Most implementations of this interface are encouraged to also provide a
+// helper method `WithPreviousLineType` that sets the previous line type
+// and returns the node.
+type PreviousLineAware interface {
+	// PreviousLineType gets the type of the previous line.
+	PreviousLineType() PreviousLineType
+
+	// SetPreviousLineType sets the type of the previous line.
+	SetPreviousLineType(PreviousLineType)
+}
+
 type baseNodeWithChildren struct {
 	baseNode
 
@@ -347,6 +379,31 @@ func (c *baseNodeWithChildren) InsertChildAfter(node Node, after Node) bool {
 }
 
 var _ HasChildren = (*baseNodeWithChildren)(nil)
+
+type previousLineAwareImpl struct {
+	previousLineType PreviousLineType
+}
+
+func (p *previousLineAwareImpl) PreviousLineType() PreviousLineType {
+	return p.previousLineType
+}
+
+func (p *previousLineAwareImpl) SetPreviousLineType(previousLineType PreviousLineType) {
+	p.previousLineType = previousLineType
+}
+
+var _ PreviousLineAware = (*previousLineAwareImpl)(nil)
+
+func debugPreviousLineAware(p *debugPrinter, node PreviousLineAware) {
+	switch node.PreviousLineType() {
+	case PreviousLineTypeAutomatic:
+		p.Field("previousLineType", "automatic")
+	case PreviousLineTypeBlank:
+		p.Field("previousLineType", "blank")
+	case PreviousLineTypeNonBlank:
+		p.Field("previousLineType", "non-blank")
+	}
+}
 
 func allowOnlyInlineNodes(node Node) bool {
 	_, ok := node.(InlineNode)
