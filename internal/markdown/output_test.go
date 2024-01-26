@@ -311,6 +311,33 @@ var _ = Describe("Output", func() {
 
 			Expect(buf.String()).To(Equal("{{abc \"def ghi\"}}"))
 		})
+
+		Describe("Query", func() {
+			It("can write a query", func() {
+				err := writer.Write(content.NewQuery("abc"))
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(buf.String()).To(Equal("{{query abc}}"))
+			})
+		})
+
+		Describe("Page embed", func() {
+			It("can write a page embed", func() {
+				err := writer.Write(content.NewPageEmbed("abc"))
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(buf.String()).To(Equal("{{embed [[abc]]}}"))
+			})
+		})
+
+		Describe("Block embed", func() {
+			It("can write a block embed", func() {
+				err := writer.Write(content.NewBlockEmbed("abc"))
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(buf.String()).To(Equal("{{embed ((abc))}}"))
+			})
+		})
 	})
 
 	Describe("Headings", func() {

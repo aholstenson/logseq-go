@@ -35,3 +35,70 @@ func (m *Macro) debug(p *debugPrinter) {
 func (m *Macro) isInline() {}
 
 var _ InlineNode = (*Macro)(nil)
+
+// Query represents a simple query in the source, on the form `{{query datalog query}}`.
+type Query struct {
+	baseNode
+
+	Query string
+}
+
+func NewQuery(query string) *Query {
+	return &Query{
+		Query: query,
+	}
+}
+
+func (q *Query) debug(p *debugPrinter) {
+	p.StartType("Query")
+	p.Field("query", q.Query)
+	p.EndType()
+}
+
+func (q *Query) isInline() {}
+
+var _ InlineNode = (*Query)(nil)
+
+type PageEmbed struct {
+	baseNode
+
+	To string
+}
+
+func NewPageEmbed(to string) *PageEmbed {
+	return &PageEmbed{
+		To: to,
+	}
+}
+
+func (p *PageEmbed) debug(pr *debugPrinter) {
+	pr.StartType("PageEmbed")
+	pr.Field("to", p.To)
+	pr.EndType()
+}
+
+func (p *PageEmbed) isInline() {}
+
+var _ InlineNode = (*PageEmbed)(nil)
+
+type BlockEmbed struct {
+	baseNode
+
+	ID string
+}
+
+func NewBlockEmbed(id string) *BlockEmbed {
+	return &BlockEmbed{
+		ID: id,
+	}
+}
+
+func (b *BlockEmbed) debug(pr *debugPrinter) {
+	pr.StartType("BlockEmbed")
+	pr.Field("id", b.ID)
+	pr.EndType()
+}
+
+func (b *BlockEmbed) isInline() {}
+
+var _ InlineNode = (*BlockEmbed)(nil)

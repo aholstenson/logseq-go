@@ -666,6 +666,67 @@ var _ = Describe("Parsing", func() {
 				),
 			)))
 		})
+
+		Describe("Query", func() {
+			It("can parse query", func() {
+				block, err := markdown.ParseString("{{query datalog query}}")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(EqualNode(content.NewBlock(
+					content.NewParagraph(
+						content.NewQuery("datalog query"),
+					),
+				)))
+			})
+		})
+
+		Describe("PageEmbed", func() {
+			It("can parse page embed", func() {
+				block, err := markdown.ParseString("{{embed [[page]]}}")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(EqualNode(content.NewBlock(
+					content.NewParagraph(
+						content.NewPageEmbed("page"),
+					),
+				)))
+			})
+
+			It("embed without closing square bracket is parsed as macro", func() {
+				block, err := markdown.ParseString("{{embed [[page]}}")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(EqualNode(content.NewBlock(
+					content.NewParagraph(
+						content.NewMacro("embed", "[[page]"),
+					),
+				)))
+			})
+		})
+
+		Describe("BlockEmbed", func() {
+			It("can parse block embed", func() {
+				block, err := markdown.ParseString("{{embed ((block))}}")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(EqualNode(content.NewBlock(
+					content.NewParagraph(
+						content.NewBlockEmbed("block"),
+					),
+				)))
+			})
+
+			It("embed without closing parenthesis is parsed as macro", func() {
+				block, err := markdown.ParseString("{{embed ((block)}}")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(EqualNode(content.NewBlock(
+					content.NewParagraph(
+						content.NewMacro("embed", "((block)"),
+					),
+				)))
+			})
+		})
 	})
 
 	Describe("Code blocks", func() {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strings"
 
 	"github.com/aholstenson/logseq-go/content"
 	"github.com/yuin/goldmark/ast"
@@ -395,7 +396,24 @@ func convertLink(src []byte, node *ast.Link) (*content.Link, error) {
 	return link, nil
 }
 
-func convertMacro(src []byte, node *macro) (*content.Macro, error) {
+func convertMacro(src []byte, node *macro) (content.Node, error) {
+	switch node.Name {
+	case "query":
+		return content.NewQuery(node.Arguments[0]), nil
+	case "embed":
+		// Either a [[page]] or a ((block))
+		if len(node.Arguments) == 0 {
+			break
+		}
+
+		arg := node.Arguments[0]
+		if strings.HasPrefix(arg, "((") && strings.HasSuffix(arg, "))") {
+			return content.NewBlockEmbed(arg[2 : len(arg)-2]), nil
+		} else if strings.HasPrefix(arg, "[[") && strings.HasSuffix(arg, "]]") {
+			return content.NewPageEmbed(arg[2 : len(arg)-2]), nil
+		}
+	}
+
 	return content.NewMacro(node.Name, node.Arguments...), nil
 }
 
