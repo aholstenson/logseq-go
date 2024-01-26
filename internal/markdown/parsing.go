@@ -18,7 +18,7 @@ var markdownParser parser.Parser
 
 var propertyRegex = regexp.MustCompile(`^([a-zA-Z0-9_-]+)::\s*`)
 
-var neverMatch = regexp.MustCompile(`\A\z`)
+var neverMatch = regexp.MustCompile(`$.^`)
 
 func init() {
 	markdownParser = parser.NewParser(
