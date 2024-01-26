@@ -478,8 +478,30 @@ var _ = Describe("Parsing", func() {
 			)))
 		})
 
-		It("can parse macro with name and arguments", func() {
-			block, err := markdown.ParseString("{{macro arg1 arg2}}")
+		It("macro with one non-quoted argument", func() {
+			block, err := markdown.ParseString("{{macro arg}}")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewMacro("macro", "arg"),
+				),
+			)))
+		})
+
+		It("macro with one non-quoted argument and spaces", func() {
+			block, err := markdown.ParseString("{{macro arg with spaces}}")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewMacro("macro", "arg with spaces"),
+				),
+			)))
+		})
+
+		It("can parse macro with name and two arguments separated by comma", func() {
+			block, err := markdown.ParseString("{{macro arg1,arg2}}")
 			Expect(err).ToNot(HaveOccurred())
 
 			Expect(block).To(EqualNode(content.NewBlock(
@@ -489,13 +511,68 @@ var _ = Describe("Parsing", func() {
 			)))
 		})
 
-		It("can parse macro with name and quoted arguments", func() {
-			block, err := markdown.ParseString("{{macro \"arg1\" \"arg2\"}}")
+		It("can parse macro with name and two arguments separated by comma and space", func() {
+			block, err := markdown.ParseString("{{macro arg1, arg2}}")
 			Expect(err).ToNot(HaveOccurred())
 
 			Expect(block).To(EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewMacro("macro", "arg1", "arg2"),
+				),
+			)))
+		})
+
+		It("can parse macro with name and one quoted argument", func() {
+			block, err := markdown.ParseString("{{macro \"arg1\", arg2}}")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewMacro("macro", "\"arg1\"", "arg2"),
+				),
+			)))
+		})
+
+		It("can parse macro with name and quoted arguments", func() {
+			block, err := markdown.ParseString("{{macro \"arg1\", \"arg2\"}}")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewMacro("macro", "\"arg1\"", "\"arg2\""),
+				),
+			)))
+		})
+
+		It("can parse macro with name and one quoted argument containing a comma", func() {
+			block, err := markdown.ParseString("{{macro \"arg1,\", arg2}}")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewMacro("macro", "\"arg1,\"", "arg2"),
+				),
+			)))
+		})
+
+		It("fails macro with name and one quoted argument wrongly separated", func() {
+			block, err := markdown.ParseString("{{macro \"arg1,\" arg2}}")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("{{macro \"arg1,\" arg2}}"),
+				),
+			)))
+		})
+
+		It("fails macro with name and one argument followed by a trailing comma", func() {
+			block, err := markdown.ParseString("{{macro arg1,}}")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("{{macro arg1,}}"),
 				),
 			)))
 		})
@@ -506,7 +583,7 @@ var _ = Describe("Parsing", func() {
 
 			Expect(block).To(EqualNode(content.NewBlock(
 				content.NewParagraph(
-					content.NewMacro("macro", "arg1\""),
+					content.NewMacro("macro", "\"arg1\\\"\""),
 				),
 			)))
 		})
@@ -534,7 +611,7 @@ var _ = Describe("Parsing", func() {
 		})
 
 		It("can handle macro starting with three curly braces with arguments", func() {
-			block, err := markdown.ParseString("{{{macro arg1 arg2}}}")
+			block, err := markdown.ParseString("{{{macro arg1, arg2}}}")
 			Expect(err).ToNot(HaveOccurred())
 
 			Expect(block).To(EqualNode(content.NewBlock(
