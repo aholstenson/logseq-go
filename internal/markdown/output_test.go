@@ -141,6 +141,20 @@ var _ = Describe("Output", func() {
 			Expect(buf.String()).To(Equal("**abc***def*"))
 		})
 
+		It("can write strikethrough", func() {
+			err := writer.Write(content.NewStrikethrough(content.NewText("abc")))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal("~~abc~~"))
+		})
+
+		It("can write strikethrough that contains ~~", func() {
+			err := writer.Write(content.NewStrikethrough(content.NewText("abc~~def")))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal("~~abc~\\~def~~"))
+		})
+
 		It("can write code", func() {
 			err := writer.Write(content.NewCodeSpan("abc"))
 			Expect(err).ToNot(HaveOccurred())

@@ -10,6 +10,7 @@ import (
 	"github.com/aholstenson/logseq-go/content"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/extension"
+	east "github.com/yuin/goldmark/extension/ast"
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/text"
 	"github.com/yuin/goldmark/util"
@@ -35,12 +36,17 @@ func init() {
 			util.Prioritized(parser.NewHTMLBlockParser(), 900),
 			util.Prioritized(parser.NewParagraphParser(), 1000),
 		),
-		parser.WithInlineParsers(parser.DefaultInlineParsers()...),
 		parser.WithInlineParsers(
+			util.Prioritized(parser.NewCodeSpanParser(), 100),
 			util.Prioritized(&macroParser{}, 197),
 			util.Prioritized(&blockRefParser{}, 198),
 			util.Prioritized(&pageLinkParser{}, 199),
 			util.Prioritized(&tagParser{}, 999),
+			util.Prioritized(parser.NewLinkParser(), 200),
+			util.Prioritized(parser.NewAutoLinkParser(), 300),
+			util.Prioritized(parser.NewRawHTMLParser(), 400),
+			util.Prioritized(parser.NewEmphasisParser(), 500),
+			util.Prioritized(extension.NewStrikethroughParser(), 501),
 			util.Prioritized(extension.NewLinkifyParser(
 				extension.WithLinkifyEmailRegexp(neverMatch),
 				extension.WithLinkifyWWWRegexp(neverMatch),
@@ -83,6 +89,8 @@ func convert(src []byte, in ast.Node) (content.Node, error) {
 		return convertText(src, node)
 	case *ast.Emphasis:
 		return convertEmphasis(src, node)
+	case *east.Strikethrough:
+		return convertStrikethrough(src, node)
 	case *ast.CodeSpan:
 		return convertCodeSpan(src, node)
 	case *ast.Link:
@@ -450,6 +458,15 @@ func convertEmphasis(src []byte, node *ast.Emphasis) (content.HasChildren, error
 		return nil, err
 	}
 	return result, nil
+}
+
+func convertStrikethrough(src []byte, node *east.Strikethrough) (*content.Strikethrough, error) {
+	strikethrough := content.NewStrikethrough()
+	err := convertChildren(src, node, strikethrough)
+	if err != nil {
+		return nil, err
+	}
+	return strikethrough, nil
 }
 
 func convertCodeSpan(src []byte, node *ast.CodeSpan) (*content.CodeSpan, error) {

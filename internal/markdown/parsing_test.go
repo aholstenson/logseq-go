@@ -156,6 +156,75 @@ var _ = Describe("Parsing", func() {
 			)))
 		})
 
+		It("can parse strikethrough", func() {
+			block, err := markdown.ParseString("This is ~~strikethrough~~ text")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("This is "),
+					content.NewStrikethrough(content.NewText("strikethrough")),
+					content.NewText(" text"),
+				),
+			)))
+		})
+
+		It("can parse strikethrough and strong", func() {
+			block, err := markdown.ParseString("This is ~~**strikethrough and strong**~~ text")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("This is "),
+					content.NewStrikethrough(
+						content.NewStrong(
+							content.NewText("strikethrough and strong"),
+						),
+					),
+					content.NewText(" text"),
+				),
+			)))
+		})
+
+		It("can parse strikethrough with ~ inline", func() {
+			block, err := markdown.ParseString("This is ~~strike~through~~ text")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("This is "),
+					content.NewStrikethrough(content.NewText("strike~through")),
+					content.NewText(" text"),
+				),
+			)))
+		})
+
+		It("can parse strikethrough with ~~ inline", func() {
+			block, err := markdown.ParseString("This is ~~strike~~through~~ text")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("This is "),
+					content.NewStrikethrough(content.NewText("strike")),
+					content.NewText("through~~ text"),
+				),
+			)))
+		})
+
+		It("can parse strikethrough with escaped ~", func() {
+			block, err := markdown.ParseString("This is ~~strike\\~~through~~ text")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("This is "),
+					content.NewStrikethrough(content.NewText("strike~~through")),
+					content.NewText(" text"),
+				),
+			)))
+		})
+
 		It("can parse code", func() {
 			block, err := markdown.ParseString("This is `code` text")
 			Expect(err).ToNot(HaveOccurred())

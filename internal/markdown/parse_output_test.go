@@ -53,6 +53,7 @@ var _ = Describe("Parsing then outputting", func() {
 		FullyEqual("Strikethrough text with newline", "~~Basic\ncontent~~")
 		FullyEqual("Strikethrough text with hard newline", "~~Basic\\\ncontent~~")
 		Varies("Strikethrough text with hard newline via two spaces", "~~Basic  \ncontent~~", "~~Basic\\\ncontent~~")
+		FullyEqual("Strikethrough text containing escaped ~~", "~~Bas~\\~ic~~ content")
 
 		// Code text maintains spaces and newlines
 		FullyEqual("Code text", "`Basic` content")

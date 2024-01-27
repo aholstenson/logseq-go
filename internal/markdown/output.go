@@ -12,44 +12,54 @@ import (
 
 var urlRegexp = regexp.MustCompile(`^(?:http|https|ftp)://[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-z]+(?::\d+)?(?:[/#?][-a-zA-Z0-9@:%_+.~#$!?&/=\(\);,'">\^{}\[\]` + "`" + `]*)?`)
 
-type EscapeFunc func(rune) bool
+type EscapeFunc func(rune, rune) bool
 
-func EscapeNone(r rune) bool {
+func EscapeNone(rune, rune) bool {
 	return false
 }
 
-func EscapePotentialMarkdown(r rune) bool {
-	return r == '*' || r == '_' || r == '[' || r == ']'
+func EscapePotentialMarkdown(prev rune, r rune) bool {
+	if r == '*' || r == '_' || r == '[' || r == ']' {
+		return true
+	}
+
+	if prev == '~' && r == '~' {
+		return true
+	}
+
+	return false
 }
 
-func EscapeLinkURL(r rune) bool {
+func EscapeLinkURL(prev rune, r rune) bool {
 	return r == '(' || r == ')'
 }
 
-func EscapeLinkTitle(r rune) bool {
+func EscapeLinkTitle(prev rune, r rune) bool {
 	return r == '"' || r == '\'' || r == ')'
 }
 
-func EscapeWikiLink(r rune) bool {
+func EscapeWikiLink(prev rune, r rune) bool {
 	return r == ']'
 }
 
-func EscapeBlockRef(r rune) bool {
+func EscapeBlockRef(prev rune, r rune) bool {
 	return r == ')'
 }
 
-func EscapeMacroQuotedArgument(r rune) bool {
+func EscapeMacroQuotedArgument(prev rune, r rune) bool {
 	return r == '"'
 }
 
 func EscapeString(str string, f EscapeFunc) string {
 	out := strings.Builder{}
+	p := rune(0)
 	for _, r := range str {
-		if f(r) {
+		if f(p, r) {
 			out.WriteRune('\\')
 		}
 
 		out.WriteRune(r)
+		p = r
 	}
 
 	return out.String()
@@ -93,6 +103,8 @@ func (w *Output) Write(n content.Node) error {
 		return w.writeEmphasis(node)
 	case *content.Strong:
 		return w.writeStrong(node)
+	case *content.Strikethrough:
+		return w.writeStrikethrough(node)
 	case *content.CodeSpan:
 		return w.writeCodeSpan(node)
 	case *content.Link:
@@ -150,12 +162,14 @@ func (w *Output) writeRaw(s string) error {
 
 func (w *Output) write(s string, escapeFunc EscapeFunc) error {
 	out := strings.Builder{}
+	p := rune(0)
 	for _, r := range s {
-		if escapeFunc(r) {
+		if escapeFunc(p, r) {
 			out.WriteRune('\\')
 		}
 
 		out.WriteRune(r)
+		p = r
 	}
 
 	return w.writeRaw(out.String())
@@ -275,6 +289,25 @@ func (w *Output) writeStrong(node *content.Strong) error {
 	}
 
 	err = w.writeRaw("**")
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (w *Output) writeStrikethrough(node *content.Strikethrough) error {
+	err := w.writeRaw("~~")
+	if err != nil {
+		return err
+	}
+
+	err = w.writeChildren(node)
+	if err != nil {
+		return err
+	}
+
+	err = w.writeRaw("~~")
 	if err != nil {
 		return err
 	}

@@ -144,6 +144,28 @@ type Paragraph struct {
 	previousLineAwareImpl
 }
 
+type Strikethrough struct {
+	baseNodeWithChildren
+}
+
+func NewStrikethrough(children ...Node) *Strikethrough {
+	s := &Strikethrough{}
+	s.self = s
+	s.childValidator = allowOnlyInlineNodes
+	s.AddChildren(children...)
+	return s
+}
+
+func (s *Strikethrough) isInline() {}
+
+func (s *Strikethrough) debug(p *debugPrinter) {
+	p.StartType("Strikethrough")
+	p.Children(s)
+	p.EndType()
+}
+
+var _ InlineNode = (*Strikethrough)(nil)
+
 func NewParagraph(children ...Node) *Paragraph {
 	p := &Paragraph{}
 	p.self = p
