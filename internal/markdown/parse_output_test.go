@@ -85,4 +85,17 @@ var _ = Describe("Parsing then outputting", func() {
 		FullyEqual("Code block after paragraph", "Paragraph\n\n```go\nfunc main() {\n\tfmt.Println(\"Hello world\")\n}\n```")
 		FullyEqual("Code block interrupting paragraph", "Paragraph\n```go\nfunc main() {\n\tfmt.Println(\"Hello world\")\n}\n```")
 	})
+
+	Describe("Macros", func() {
+		FullyEqual("Macro with no arguments", "{{poem}}")
+		FullyEqual("Macro with one argument", "{{poem red}}")
+		FullyEqual("Macro with two arguments", "{{poem red, blue}}")
+		Varies("Macro with two arguments, no space", "{{poem red,blue}}", "{{poem red, blue}}")
+		FullyEqual("Macro with one argument and spaces", "{{poem red blue}}")
+		FullyEqual("Macro with quoted argument with comma", "{{poem \"red, blue\"}}")
+
+		Describe("Invalid", func() {
+			FullyEqual("Macro without end", "{{poem red blue")
+		})
+	})
 })

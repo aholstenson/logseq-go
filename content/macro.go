@@ -7,6 +7,10 @@ import "strings"
 // Macros share their syntax with some built-ins, such as `{{query}}` and `{{embed}}`,
 // but are otherwise user-defined. If a supported built-in is found it will be parsed
 // as its own node type, such as `Query`, `PageEmbed` or `BlockEmbed`.
+//
+// In Logseq arguments are optional, but must be comma separated. Arguments can be quoted,
+// in which case they can contain commas. In this library arguments will be
+// normalized, if a comma is in the argument it will be quoted in the output.
 type Macro struct {
 	baseNode
 

@@ -302,14 +302,21 @@ var _ = Describe("Output", func() {
 			err := writer.Write(content.NewMacro("abc", "def", "ghi"))
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(buf.String()).To(Equal("{{abc def ghi}}"))
+			Expect(buf.String()).To(Equal("{{abc def, ghi}}"))
 		})
 
-		It("can write a macro with argument that needs escaping", func() {
+		It("can write a macro with argument that contains spaces", func() {
 			err := writer.Write(content.NewMacro("abc", "def ghi"))
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(buf.String()).To(Equal("{{abc \"def ghi\"}}"))
+			Expect(buf.String()).To(Equal("{{abc def ghi}}"))
+		})
+
+		It("can write a macro with argument that contains commas", func() {
+			err := writer.Write(content.NewMacro("abc", "def, ghi"))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal("{{abc \"def, ghi\"}}"))
 		})
 
 		Describe("Query", func() {

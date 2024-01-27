@@ -147,7 +147,7 @@ func (t *macroParser) Parse(parent ast.Node, block text.Reader, pc parser.Contex
 		case macroParseStateArgumentQuote:
 			if line[i] == '"' && line[i-1] != '\\' {
 				// Quote is being ended
-				value := string(line[start : i+1])
+				value := unescapeString(line[start+1 : i])
 				arguments = append(arguments, value)
 
 				state = macroParseStateExpectComma

@@ -528,7 +528,7 @@ var _ = Describe("Parsing", func() {
 
 			Expect(block).To(EqualNode(content.NewBlock(
 				content.NewParagraph(
-					content.NewMacro("macro", "\"arg1\"", "arg2"),
+					content.NewMacro("macro", "arg1", "arg2"),
 				),
 			)))
 		})
@@ -539,7 +539,7 @@ var _ = Describe("Parsing", func() {
 
 			Expect(block).To(EqualNode(content.NewBlock(
 				content.NewParagraph(
-					content.NewMacro("macro", "\"arg1\"", "\"arg2\""),
+					content.NewMacro("macro", "arg1", "arg2"),
 				),
 			)))
 		})
@@ -550,7 +550,7 @@ var _ = Describe("Parsing", func() {
 
 			Expect(block).To(EqualNode(content.NewBlock(
 				content.NewParagraph(
-					content.NewMacro("macro", "\"arg1,\"", "arg2"),
+					content.NewMacro("macro", "arg1,", "arg2"),
 				),
 			)))
 		})
@@ -583,7 +583,29 @@ var _ = Describe("Parsing", func() {
 
 			Expect(block).To(EqualNode(content.NewBlock(
 				content.NewParagraph(
-					content.NewMacro("macro", "\"arg1\\\"\""),
+					content.NewMacro("macro", "arg1\""),
+				),
+			)))
+		})
+
+		It("can parse macro with name and quote in the middle of argument", func() {
+			block, err := markdown.ParseString("{{macro ar\"g1}}")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewMacro("macro", "ar\"g1"),
+				),
+			)))
+		})
+
+		It("can parse macro with name and quote in the middle of argument followed by another arg", func() {
+			block, err := markdown.ParseString("{{macro ar\"g1, arg2}}")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewMacro("macro", "ar\"g1", "arg2"),
 				),
 			)))
 		})
@@ -680,7 +702,7 @@ var _ = Describe("Parsing", func() {
 			})
 		})
 
-		Describe("PageEmbed", func() {
+		Describe("Page embed", func() {
 			It("can parse page embed", func() {
 				block, err := markdown.ParseString("{{embed [[page]]}}")
 				Expect(err).ToNot(HaveOccurred())
@@ -704,7 +726,7 @@ var _ = Describe("Parsing", func() {
 			})
 		})
 
-		Describe("BlockEmbed", func() {
+		Describe("Block embed", func() {
 			It("can parse block embed", func() {
 				block, err := markdown.ParseString("{{embed ((block))}}")
 				Expect(err).ToNot(HaveOccurred())

@@ -38,8 +38,8 @@ func EscapeBlockRef(r rune) bool {
 	return r == ')'
 }
 
-func EscapeMacroArgument(r rune) bool {
-	return r == '}' || r == '"'
+func EscapeMacroQuotedArgument(r rune) bool {
+	return r == '"'
 }
 
 func EscapeString(str string, f EscapeFunc) string {
@@ -525,17 +525,24 @@ func (w *Output) writeMacro(node content.Node, name string, arguments []string) 
 	}
 
 	if arguments != nil {
-		for _, arg := range arguments {
-			err = w.writeRaw(" ")
-			if err != nil {
-				return err
+		for i, arg := range arguments {
+			if i == 0 {
+				err = w.writeRaw(" ")
+				if err != nil {
+					return err
+				}
+			} else {
+				err = w.writeRaw(", ")
+				if err != nil {
+					return err
+				}
 			}
 
-			// Check if the argument contains whitespace, if so, it must be
-			// quoted.
+			// Check if the argument contains a comma, if so we need to quote
+			// the argument.
 			quoted := false
 			for _, r := range arg {
-				if unicode.IsSpace(r) {
+				if r == ',' {
 					quoted = true
 					break
 				}
@@ -546,15 +553,18 @@ func (w *Output) writeMacro(node content.Node, name string, arguments []string) 
 				if err != nil {
 					return err
 				}
-			}
 
-			err = w.write(arg, EscapeMacroArgument)
-			if err != nil {
-				return err
-			}
+				err = w.write(arg, EscapeMacroQuotedArgument)
+				if err != nil {
+					return err
+				}
 
-			if quoted {
 				err = w.writeRaw("\"")
+				if err != nil {
+					return err
+				}
+			} else {
+				err = w.write(arg, EscapeNone)
 				if err != nil {
 					return err
 				}
