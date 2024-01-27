@@ -345,6 +345,22 @@ var _ = Describe("Output", func() {
 				Expect(buf.String()).To(Equal("{{embed ((abc))}}"))
 			})
 		})
+
+		Describe("Cloze", func() {
+			It("can write a cloze", func() {
+				err := writer.Write(content.NewCloze("abc"))
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(buf.String()).To(Equal("{{cloze abc}}"))
+			})
+
+			It("can write cloze with cue", func() {
+				err := writer.Write(content.NewClozeWithCue("abc", "def"))
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(buf.String()).To(Equal("{{cloze abc \\ def}}"))
+			})
+		})
 	})
 
 	Describe("Headings", func() {

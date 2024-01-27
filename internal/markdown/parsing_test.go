@@ -749,6 +749,30 @@ var _ = Describe("Parsing", func() {
 				)))
 			})
 		})
+
+		Describe("Cloze", func() {
+			It("can parse cloze with only answer", func() {
+				block, err := markdown.ParseString("{{cloze answer}}")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(EqualNode(content.NewBlock(
+					content.NewParagraph(
+						content.NewCloze("answer"),
+					),
+				)))
+			})
+
+			It("can parse cloze with answer and cue", func() {
+				block, err := markdown.ParseString("{{cloze answer \\ cue}}")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(EqualNode(content.NewBlock(
+					content.NewParagraph(
+						content.NewClozeWithCue("answer", "cue"),
+					),
+				)))
+			})
+		})
 	})
 
 	Describe("Code blocks", func() {

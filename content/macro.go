@@ -106,3 +106,33 @@ func (b *BlockEmbed) debug(pr *debugPrinter) {
 func (b *BlockEmbed) isInline() {}
 
 var _ InlineNode = (*BlockEmbed)(nil)
+
+type Cloze struct {
+	baseNode
+
+	Answer string
+
+	Cue string
+}
+
+func NewCloze(answer string) *Cloze {
+	return NewClozeWithCue(answer, "")
+}
+
+func NewClozeWithCue(answer string, cue string) *Cloze {
+	return &Cloze{
+		Answer: answer,
+		Cue:    cue,
+	}
+}
+
+func (c *Cloze) debug(pr *debugPrinter) {
+	pr.StartType("Cloze")
+	pr.Field("answer", c.Answer)
+	pr.Field("cue", c.Cue)
+	pr.EndType()
+}
+
+func (c *Cloze) isInline() {}
+
+var _ InlineNode = (*Cloze)(nil)

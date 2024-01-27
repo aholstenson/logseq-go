@@ -115,6 +115,8 @@ func (w *Output) Write(n content.Node) error {
 		return w.writeMacro(node, "embed", []string{"[[" + EscapeString(node.To, EscapeWikiLink) + "]]"})
 	case *content.BlockEmbed:
 		return w.writeMacro(node, "embed", []string{"((" + EscapeString(node.ID, EscapeBlockRef) + "))"})
+	case *content.Cloze:
+		return w.writeCloze(node)
 	case *content.Heading:
 		return w.writeHeading(node)
 	case *content.RawHTMLBlock:
@@ -504,6 +506,16 @@ func (w *Output) writeImage(node *content.Image) error {
 	}
 
 	return nil
+}
+
+func (w *Output) writeCloze(node *content.Cloze) error {
+	cue := strings.TrimSpace(node.Cue)
+	answer := strings.TrimSpace(node.Answer)
+	if cue != "" {
+		return w.writeMacro(node, "cloze", []string{answer + " \\ " + cue})
+	} else {
+		return w.writeMacro(node, "cloze", []string{answer})
+	}
 }
 
 func (w *Output) writeMacro(node content.Node, name string, arguments []string) error {

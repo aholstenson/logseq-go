@@ -412,6 +412,24 @@ func convertMacro(src []byte, node *macro) (content.Node, error) {
 		} else if strings.HasPrefix(arg, "[[") && strings.HasSuffix(arg, "]]") {
 			return content.NewPageEmbed(arg[2 : len(arg)-2]), nil
 		}
+	case "cloze":
+		// {{cloze answer \\ cue}} or {{cloze answer}}
+		if len(node.Arguments) == 0 {
+			break
+		}
+
+		arg := strings.Join(node.Arguments, ", ")
+		cueIdx := strings.LastIndex(arg, "\\")
+		if cueIdx < 0 {
+			return content.NewCloze(
+				strings.TrimSpace(arg),
+			), nil
+		} else {
+			return content.NewClozeWithCue(
+				strings.TrimSpace(arg[:cueIdx]),
+				strings.TrimSpace(arg[cueIdx+1:]),
+			), nil
+		}
 	}
 
 	return content.NewMacro(node.Name, node.Arguments...), nil
