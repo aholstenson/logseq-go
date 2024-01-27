@@ -795,6 +795,15 @@ var _ = Describe("Output", func() {
 			Expect(buf.String()).To(Equal("key:: value"))
 		})
 
+		It("can write properties with non-text value", func() {
+			err := writer.Write(content.NewProperties(
+				content.NewProperty("key", content.NewAutoLink("https://example.com")),
+			))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal("key:: https://example.com"))
+		})
+
 		It("can write paragraph with properties at the end", func() {
 			err := writer.Write(content.NewParagraph(
 				content.NewText("abc"),
