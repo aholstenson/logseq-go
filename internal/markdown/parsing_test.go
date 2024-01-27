@@ -1734,6 +1734,23 @@ var _ = Describe("Parsing", func() {
 			})
 		})
 	})
+
+	Describe("Tasks", func() {
+		It("Can parse LOGBOOK", func() {
+			block, err := markdown.ParseString("TODO Task\n:LOGBOOK:\nCLOCK: [2023-06-26 Mon 17:25:56]--[2023-06-26 Mon 17:25:56] =>  00:00:00\nCLOCK: [2023-06-26 Mon 17:25:57]--[2023-06-26 Mon 17:25:58] =>  00:00:01\n:END:")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("TODO Task"),
+				),
+				content.NewLogbook(
+					content.NewLogbookEntryRaw("CLOCK: [2023-06-26 Mon 17:25:56]--[2023-06-26 Mon 17:25:56] =>  00:00:00"),
+					content.NewLogbookEntryRaw("CLOCK: [2023-06-26 Mon 17:25:57]--[2023-06-26 Mon 17:25:58] =>  00:00:01"),
+				).WithPreviousLineType(content.PreviousLineTypeNonBlank),
+			)))
+		})
+	})
 })
 
 type equalNode struct {

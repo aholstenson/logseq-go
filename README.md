@@ -29,8 +29,3 @@ out wrong after having been read and saved again.
 
 If this happens to you, please do open an issue with an example of content
 that is causing the issue.
-
-Known issues:
-
-- Logbooks of TODOs are not supported yet and saving a page that contains logbook
-  entries will incorrectly escape the `[` and `]` characters.

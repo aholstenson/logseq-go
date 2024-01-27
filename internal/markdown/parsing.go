@@ -32,6 +32,7 @@ func init() {
 			util.Prioritized(parser.NewATXHeadingParser(), 600),
 			util.Prioritized(parser.NewFencedCodeBlockParser(), 700),
 			util.Prioritized(parser.NewBlockquoteParser(), 800),
+			util.Prioritized(&logbookParser{}, 898),
 			util.Prioritized(&beginEndParser{}, 899),
 			util.Prioritized(parser.NewHTMLBlockParser(), 900),
 			util.Prioritized(parser.NewParagraphParser(), 1000),
@@ -123,6 +124,8 @@ func convert(src []byte, in ast.Node) (content.Node, error) {
 		return content.NewThematicBreak(), nil
 	case *beginEnd:
 		return convertBeginEnd(src, node)
+	case *logbook:
+		return convertLogbook(src, node)
 	}
 
 	return nil, fmt.Errorf("Could not convert node: %T", in)
@@ -589,6 +592,19 @@ func convertBeginEnd(src []byte, node *beginEnd) (content.Node, error) {
 	default:
 		return content.NewAdvancedCommand(node.Variant, codeBuf.String()), nil
 	}
+}
+
+func convertLogbook(src []byte, node *logbook) (content.Node, error) {
+	logbook := content.NewLogbook()
+	for i := 0; i < node.Lines().Len(); i++ {
+		line := node.Lines().At(i)
+		value := strings.TrimSuffix(string(line.Value(src)), "\n")
+		logbook.AddChild(content.NewLogbookEntryRaw(value))
+	}
+
+	updatePreviousLine(node, logbook)
+
+	return logbook, nil
 }
 
 // updatePreviousLine updates the PreviousLineType of the target based on the

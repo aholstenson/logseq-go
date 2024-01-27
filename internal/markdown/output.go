@@ -151,6 +151,8 @@ func (w *Output) Write(n content.Node) error {
 		return w.writeAdvancedCommand(node)
 	case *content.QueryCommand:
 		return w.writeBeginEnd(node, "QUERY", node.Query)
+	case *content.Logbook:
+		return w.writeLogbook(node)
 	default:
 		return fmt.Errorf("unsupported node: %T", node)
 	}
@@ -961,6 +963,45 @@ func (w *Output) writeBeginEnd(node content.BlockNode, variant string, value str
 	}
 
 	err = w.writeRaw("#+END_" + variant)
+	if err != nil {
+		return err
+	}
+
+	w.endBlock()
+	return nil
+}
+
+func (w *Output) writeLogbook(node *content.Logbook) error {
+	err := w.startBlock(node, "")
+	if err != nil {
+		return err
+	}
+
+	err = w.writeRaw(":LOGBOOK:\n")
+	if err != nil {
+		return err
+	}
+
+	for _, entry := range node.Children() {
+		switch e := entry.(type) {
+		case *content.LogbookEntryRaw:
+			err = w.writeRaw(e.Value)
+			if err != nil {
+				return err
+			}
+
+			if !strings.HasSuffix(e.Value, "\n") {
+				err = w.writeRaw("\n")
+				if err != nil {
+					return err
+				}
+			}
+		default:
+			return fmt.Errorf("unsupported logbook entry: %T", entry)
+		}
+	}
+
+	err = w.writeRaw(":END:")
 	if err != nil {
 		return err
 	}

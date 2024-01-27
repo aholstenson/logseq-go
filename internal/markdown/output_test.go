@@ -916,4 +916,34 @@ var _ = Describe("Output", func() {
 			})
 		})
 	})
+
+	Describe("Tasks", func() {
+		Describe("Logbooks", func() {
+			It("can write empty logbook", func() {
+				err := writer.Write(content.NewLogbook())
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(buf.String()).To(Equal(":LOGBOOK:\n:END:"))
+			})
+
+			It("can write logbook with raw entry", func() {
+				err := writer.Write(content.NewLogbook(
+					content.NewLogbookEntryRaw("abc"),
+				))
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(buf.String()).To(Equal(":LOGBOOK:\nabc\n:END:"))
+			})
+
+			It("can write logbook with several raw entries", func() {
+				err := writer.Write(content.NewLogbook(
+					content.NewLogbookEntryRaw("abc"),
+					content.NewLogbookEntryRaw("def"),
+				))
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(buf.String()).To(Equal(":LOGBOOK:\nabc\ndef\n:END:"))
+			})
+		})
+	})
 })
