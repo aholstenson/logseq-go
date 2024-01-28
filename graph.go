@@ -6,8 +6,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/aholstenson/logseq-go/content"
-	"github.com/aholstenson/logseq-go/internal/markdown"
 	"github.com/aholstenson/logseq-go/internal/utils"
 )
 
@@ -44,86 +42,62 @@ func Open(directory string) (*Graph, error) {
 	}, nil
 }
 
-// Journal returns the journal for the given date.
-func (g *Graph) Journal(date time.Time) (*Page, error) {
-	filename := date.Format(g.journalNameFormat) + ".md"
-	path := filepath.Join(g.directory, g.config.JournalsDir, filename)
-
-	page, err := g.openExisting(path)
-	if os.IsNotExist(err) {
-		// TODO: Create empty journal
-		if g.config.DefaultTemplates.Journals == "" {
-			// No template, create empty journal
-			return &Page{
-				path:  path,
-				root:  content.NewBlock(),
-				isNew: true,
-			}, nil
-		} else {
-			// Load the template
-			templatePath := filepath.Join(g.directory, g.config.DefaultTemplates.Journals)
-			template, err := g.openExisting(templatePath)
-			if err != nil {
-				return nil, fmt.Errorf("failed to load template: %w", err)
-			}
-
-			return &Page{
-				path:  path,
-				root:  template.root,
-				isNew: true,
-			}, nil
-		}
-	}
-
-	return page, err
+func (g *Graph) Directory() string {
+	return g.directory
 }
 
-// Page returns the page for the given path.
-func (g *Graph) Page(title string) (*Page, error) {
+func (g *Graph) NewTransaction() *Transaction {
+	return newTransaction(g)
+}
+
+// Journal returns a read-only version of the journal page for the given date.
+func (g *Graph) OpenJournalPage(date time.Time) (*JournalPage, error) {
+	path, err := g.journalPath(date)
+	if err != nil {
+		return nil, err
+	}
+
+	templatePath := filepath.Join(g.directory, g.config.DefaultTemplates.Journals)
+
+	pageImpl, err := newPage(path, templatePath)
+	if err != nil {
+		return nil, err
+	}
+
+	return &JournalPage{
+		pageImpl: *pageImpl,
+		date:     date,
+	}, nil
+}
+
+func (g *Graph) journalPath(date time.Time) (string, error) {
+	filename := date.Format(g.journalNameFormat) + ".md"
+	return filepath.Join(g.directory, g.config.JournalsDir, filename), nil
+}
+
+// Page returns a read-only version of a page for the given path.
+func (g *Graph) OpenPage(title string) (*NotePage, error) {
+	path, err := g.pagePath(title)
+	if err != nil {
+		return nil, err
+	}
+
+	pageImpl, err := newPage(path, "")
+	if err != nil {
+		return nil, err
+	}
+
+	return &NotePage{
+		pageImpl: *pageImpl,
+		title:    title,
+	}, nil
+}
+
+func (g *Graph) pagePath(title string) (string, error) {
 	path, err := utils.TitleToFilename(g.config.File.NameFormat, title)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
-	path = filepath.Join(g.directory, path+".md")
-
-	page, err := g.openExisting(path)
-	if os.IsNotExist(err) {
-		return &Page{
-			path:  path,
-			root:  content.NewBlock(),
-			isNew: true,
-		}, nil
-	}
-
-	return page, err
-}
-
-func (g *Graph) openExisting(path string) (*Page, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		// If the file does not exist we return an empty page.
-		if os.IsNotExist(err) {
-			// TODO: Create empty page
-		}
-
-		return nil, err
-	}
-
-	block, err := markdown.Parse(data)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse markdown: %w", err)
-	}
-
-	// Check if the block has content, in which case we wrap it
-	if len(block.Content()) > 0 {
-		block = content.NewBlock(
-			block,
-		)
-	}
-
-	return &Page{
-		path: path,
-		root: block,
-	}, nil
+	return filepath.Join(g.directory, path+".md"), nil
 }
