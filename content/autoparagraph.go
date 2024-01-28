@@ -1,9 +1,9 @@
 package content
 
-// addAutomaticParagraphs wraps all nodes that are not blocks in paragraphs.
+// AddAutomaticParagraphs wraps all nodes that are not blocks in paragraphs.
 // This enables the user to create nodes without having to think too much about
 // the structure of the document.
-func addAutomaticParagraphs(nodes []Node) []Node {
+func AddAutomaticParagraphs(nodes []Node) []Node {
 	var currentParagraph *Paragraph
 
 	rewrittenNodes := make([]Node, 0, len(nodes))

@@ -14,7 +14,7 @@ func NewBlock(children ...Node) *Block {
 	block := &Block{}
 	block.self = block
 	block.childValidator = allowOnlyBlockNodes
-	for _, child := range addAutomaticParagraphs(children) {
+	for _, child := range AddAutomaticParagraphs(children) {
 		block.AddChild(child)
 	}
 	return block

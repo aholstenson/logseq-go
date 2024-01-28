@@ -99,7 +99,7 @@ type ListItem struct {
 func NewListItem(items ...Node) *ListItem {
 	li := &ListItem{}
 	li.self = li
-	li.AddChildren(addAutomaticParagraphs(items)...)
+	li.AddChildren(AddAutomaticParagraphs(items)...)
 	return li
 }
 
