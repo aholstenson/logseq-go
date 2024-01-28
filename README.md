@@ -29,3 +29,7 @@ out wrong after having been read and saved again.
 
 If this happens to you, please do open an issue with an example of content
 that is causing the issue.
+
+## License
+
+This project is licensed under the MIT license, see [LICENSE](LICENSE).
