@@ -42,7 +42,7 @@ func (b *Block) Blocks() BlockList {
 
 func (b *Block) ID() (string, bool) {
 	p := b.Properties()
-	id := p.Get("id")
+	id := p.GetAsNode("id")
 	if id != nil {
 		return id.FirstChild().(*Text).Value, false
 	}
@@ -51,37 +51,23 @@ func (b *Block) ID() (string, bool) {
 	return uuid.NewString(), true
 }
 
+// Properties gets the properties node for this block. This follows the Logseq
+// implementation where properties at the start of the block are the ones that
+// are indexed.
+//
+// If such properties do not exist, they are created to allow for easy
+// manipulation of properties.
 func (b *Block) Properties() *Properties {
 	if b.properties == nil {
-		// There are no properties right now, try to find them.
-	_outer:
-		for _, child := range b.Children() {
-			if properties, ok := child.(*Properties); ok {
-				b.properties = properties
-				break
-			} else if paragraph, ok := child.(*Paragraph); ok {
-				// Look for properties in the paragraph
-				for _, child := range paragraph.Children() {
-					if properties, ok := child.(*Properties); ok {
-						b.properties = properties
-						break _outer
-					}
-				}
-			}
+		// There are no properties right now, find or create them
+		firstChild := b.FirstChild()
+		if properties, ok := firstChild.(*Properties); ok {
+			b.properties = properties
 		}
 
 		if b.properties == nil {
 			b.properties = NewProperties()
-
-			if paragraph, ok := b.FirstChild().(*Paragraph); ok {
-				// Insert the properties at the start of the paragraph
-				paragraph.PrependChild(b.properties)
-			} else {
-				// The block doesn't start with a paragraph, create one
-				paragraph = NewParagraph()
-				b.PrependChild(paragraph)
-				paragraph.AddChild(b.properties)
-			}
+			b.PrependChild(b.properties)
 		}
 	}
 

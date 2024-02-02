@@ -22,8 +22,8 @@ func (p *Properties) WithPreviousLineType(t PreviousLineType) *Properties {
 	return p
 }
 
-// Get a Property node by name. Will return nil if no Property with the given name exists.
-func (p *Properties) Get(key string) *Property {
+// GetAsNode gets a Property node by name. Will return nil if no Property with the given name exists.
+func (p *Properties) GetAsNode(key string) *Property {
 	for _, child := range p.Children() {
 		if property, ok := child.(*Property); ok && property.Name == key {
 			return property
@@ -33,9 +33,19 @@ func (p *Properties) Get(key string) *Property {
 	return nil
 }
 
+// Get gets the value of a Property by name. Will return an empty slice if no Property with the given name exists.
+func (p *Properties) Get(key string) NodeList {
+	property := p.GetAsNode(key)
+	if property == nil {
+		return NodeList{}
+	}
+
+	return property.Children()
+}
+
 // Set a Property node by name. If a Property with the given name already exists, it will be replaced.
 func (p *Properties) Set(key string, nodes ...Node) {
-	property := p.Get(key)
+	property := p.GetAsNode(key)
 	if property == nil {
 		property = NewProperty(key)
 		p.AddChild(property)
@@ -46,7 +56,7 @@ func (p *Properties) Set(key string, nodes ...Node) {
 
 // Remove a Property node by name. If a Property with the given name does not exist this does nothing.
 func (p *Properties) Remove(key string) {
-	property := p.Get(key)
+	property := p.GetAsNode(key)
 	if property != nil {
 		p.RemoveChild(property)
 	}
