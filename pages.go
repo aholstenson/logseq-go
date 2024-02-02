@@ -72,11 +72,16 @@ func newPage(path string, templatePath string) (*pageImpl, error) {
 		}
 	}
 
+	lastModified := time.Now()
+	if info != nil {
+		lastModified = info.ModTime()
+	}
+
 	return &pageImpl{
 		path:         path,
 		root:         root,
 		isNew:        info == nil,
-		lastModified: info.ModTime(),
+		lastModified: lastModified,
 	}, nil
 }
 

@@ -57,7 +57,10 @@ func (g *Graph) OpenJournalPage(date time.Time) (*JournalPage, error) {
 		return nil, err
 	}
 
-	templatePath := filepath.Join(g.directory, g.config.DefaultTemplates.Journals)
+	templatePath := ""
+	if g.config.DefaultTemplates.Journals != "" {
+		templatePath = filepath.Join(g.directory, g.config.DefaultTemplates.Journals)
+	}
 
 	pageImpl, err := newPage(path, templatePath)
 	if err != nil {
