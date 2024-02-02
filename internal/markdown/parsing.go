@@ -18,8 +18,6 @@ import (
 
 var markdownParser parser.Parser
 
-var propertyRegex = regexp.MustCompile(`^([a-zA-Z0-9_-]+)::\s*`)
-
 var neverMatch = regexp.MustCompile(`$.^`)
 
 func init() {
@@ -53,7 +51,12 @@ func init() {
 				extension.WithLinkifyWWWRegexp(neverMatch),
 			), 998),
 		),
-		parser.WithParagraphTransformers(parser.DefaultParagraphTransformers()...),
+		parser.WithParagraphTransformers(
+			util.Prioritized(parser.LinkReferenceParagraphTransformer, 100),
+		),
+		parser.WithASTTransformers(
+			util.Prioritized(defaultPropertiesASTTransformer, 200),
+		),
 	)
 }
 
@@ -124,6 +127,8 @@ func convert(src []byte, in ast.Node) (content.Node, error) {
 		return content.NewThematicBreak(), nil
 	case *beginEnd:
 		return convertBeginEnd(src, node)
+	case *properties:
+		return convertProperties(src, node)
 	case *logbook:
 		return convertLogbook(src, node)
 	}
@@ -257,100 +262,6 @@ func convertToBlock(src []byte, node ast.Node) (*content.Block, error) {
 				} else {
 					return nil, errors.New("Last node is not a block")
 				}
-			}
-		}
-	}
-
-	// Properties can be in any paragraph in the first level of the block.
-	// We check each paragraph for properties and add them to the block.
-	//
-	// The properties look like: `key:: value`
-	//
-	// Due to how we process this it means that we will only create a single
-	// Properties node and any properties in later paragraphs will be added
-	// to that node.
-	properties := content.NewProperties()
-	for child := block.FirstChild(); child != nil; child = child.NextSibling() {
-		if p, ok := child.(*content.Paragraph); ok {
-			// This a paragraph, let's check each text node for properties.
-			var property *content.Property
-			shouldLookForProperty := true
-
-			var previousNode content.Node
-			previousNodeBreak := true
-			for _, paragraphNode := range p.Children() {
-				if text, ok := paragraphNode.(*content.Text); ok {
-					if shouldLookForProperty && previousNodeBreak {
-						shouldLookForProperty = false
-
-						// Check if this matches the property pattern. If it does
-						// we get the key and split the text node so it can be added
-						// as a property.
-						if matches := propertyRegex.FindStringSubmatchIndex(text.Value); matches != nil {
-							// Get the first group, which is the key.
-							property = content.NewProperty(text.Value[matches[2]:matches[3]])
-							properties.AddChild(property)
-
-							if properties.Parent() == nil {
-								// The properties container has to be inserted
-								p.InsertChildBefore(properties, text)
-							}
-
-							// Remove the property key from the text node.
-							text.Value = text.Value[matches[1]:]
-
-							if previousText, ok := previousNode.(*content.Text); ok {
-								previousText.SoftLineBreak = false
-								previousText.HardLineBreak = false
-							}
-						}
-					}
-
-					// Check if there is a newline if so the property has ended.
-					if text.SoftLineBreak || text.HardLineBreak {
-						if property != nil {
-							// Reset line breaks as the don't make sense for properties.
-							text.HardLineBreak = false
-							text.SoftLineBreak = false
-
-							if text.Value == "" {
-								text.RemoveSelf()
-							} else {
-								property.AddChild(text)
-							}
-						}
-
-						// Reset to look for a new property.
-						shouldLookForProperty = true
-						property = nil
-						previousNodeBreak = true
-					} else if property != nil {
-						// No newline, add to current property.
-						if text.Value == "" {
-							text.RemoveSelf()
-						} else {
-							property.AddChild(text)
-						}
-
-						previousNodeBreak = false
-					}
-				} else {
-					if property != nil {
-						property.AddChild(paragraphNode)
-						previousNodeBreak = false
-					} else {
-						// Non-text nodes never start a search for new properties.
-						shouldLookForProperty = false
-						previousNodeBreak = false
-					}
-				}
-
-				previousNode = paragraphNode
-			}
-
-			// If we have a property we can stop looking for properties.
-			if property != nil {
-				break
 			}
 		}
 	}
@@ -577,6 +488,41 @@ func convertImage(src []byte, node *ast.Image) (*content.Image, error) {
 		return nil, err
 	}
 	return image, nil
+}
+
+func convertProperties(src []byte, node *properties) (*content.Properties, error) {
+	properties := content.NewProperties()
+	for child := node.FirstChild(); child != nil; child = child.NextSibling() {
+		p, ok := child.(*property)
+		if !ok {
+			return nil, errors.New("Invalid child in properties")
+		}
+
+		prop := content.NewProperty(p.Name)
+		err := convertChildren(src, p, prop)
+		if err != nil {
+			return nil, err
+		}
+
+		properties.AddChild(prop)
+	}
+
+	if node.HasBlankPreviousLines() {
+		// The default behavior of properties is to combine with the previous
+		// line so keep explicit blank line info
+		properties.SetPreviousLineType(content.PreviousLineTypeBlank)
+	} else {
+		// Parsing didn't indicate blank lines before the node, but we might
+		// be the first node on this level in which case we set the type to
+		// automatic
+		if node.PreviousSibling() == nil {
+			properties.SetPreviousLineType(content.PreviousLineTypeAutomatic)
+		} else {
+			properties.SetPreviousLineType(content.PreviousLineTypeNonBlank)
+		}
+	}
+
+	return properties, nil
 }
 
 func convertBeginEnd(src []byte, node *beginEnd) (content.Node, error) {

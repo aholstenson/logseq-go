@@ -178,6 +178,10 @@ func (w *Output) write(s string, escapeFunc EscapeFunc) error {
 }
 
 func (w *Output) startBlock(node content.BlockNode, marker string) error {
+	return w.startBlockWithAutomaticBehavior(node, marker, true)
+}
+
+func (w *Output) startBlockWithAutomaticBehavior(node content.BlockNode, marker string, doubleNewLineForAutomatic bool) error {
 	if w.out.HasWrittenAtCurrentIndent() {
 		var prefix string
 		if pl, ok := node.(content.PreviousLineAware); ok {
@@ -187,13 +191,20 @@ func (w *Output) startBlock(node content.BlockNode, marker string) error {
 			case content.PreviousLineTypeNonBlank:
 				prefix = "\n"
 			case content.PreviousLineTypeAutomatic:
-				// TODO: Implementation that determines if a blank line is needed
-				prefix = "\n\n"
+				if doubleNewLineForAutomatic {
+					prefix = "\n\n"
+				} else {
+					prefix = "\n"
+				}
 			default:
 				return fmt.Errorf("unknown previous line type: %d", pl.PreviousLineType())
 			}
 		} else {
-			prefix = "\n\n"
+			if doubleNewLineForAutomatic {
+				prefix = "\n\n"
+			} else {
+				prefix = "\n"
+			}
 		}
 
 		err := w.out.WriteString(prefix)
@@ -658,16 +669,17 @@ func (w *Output) writeHeading(node *content.Heading) error {
 }
 
 func (w *Output) writeParagraph(node *content.Paragraph) error {
-	if _, previousProperties := node.PreviousSibling().(*content.Properties); w.out.HasWrittenAtCurrentIndent() && !previousProperties {
-		err := w.out.WriteString("\n\n")
-		if err != nil {
-			return err
-		}
+	doubleNewLine := true
+	if _, previousProperties := node.PreviousSibling().(*content.Properties); previousProperties {
+		doubleNewLine = false
 	}
 
-	w.out.PushIndentation("")
+	err := w.startBlockWithAutomaticBehavior(node, "", doubleNewLine)
+	if err != nil {
+		return err
+	}
 
-	err := w.writeChildren(node)
+	err = w.writeChildren(node)
 	if err != nil {
 		return err
 	}
@@ -889,11 +901,9 @@ func (w *Output) writeBlock(node *content.Block) error {
 }
 
 func (w *Output) writeProperties(node *content.Properties) error {
-	if w.out.HasWrittenAtCurrentIndent() {
-		err := w.out.WriteString("\n")
-		if err != nil {
-			return err
-		}
+	err := w.startBlockWithAutomaticBehavior(node, "", false)
+	if err != nil {
+		return err
 	}
 
 	for child := node.FirstChild(); child != nil; child = child.NextSibling() {
@@ -925,13 +935,7 @@ func (w *Output) writeProperties(node *content.Properties) error {
 		}
 	}
 
-	if node.NextSibling() != nil {
-		err := w.writeRaw("\n")
-		if err != nil {
-			return err
-		}
-	}
-
+	w.endBlock()
 	return nil
 }
 

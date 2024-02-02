@@ -805,8 +805,8 @@ var _ = Describe("Output", func() {
 		})
 
 		It("can write paragraph with properties at the end", func() {
-			err := writer.Write(content.NewParagraph(
-				content.NewText("abc"),
+			err := writer.Write(content.NewBlock(
+				content.NewParagraph(content.NewText("abc")),
 				content.NewProperties(
 					content.NewProperty("key", content.NewText("value")),
 				),
@@ -817,12 +817,12 @@ var _ = Describe("Output", func() {
 		})
 
 		It("can write paragraph with properties at the beginning", func() {
-			err := writer.Write(content.NewParagraph(
+			err := writer.Write(content.NewBlock(
 				content.NewProperties(
 					content.NewProperty("key1", content.NewText("value1")),
 					content.NewProperty("key2", content.NewHashtag("value2")),
 				),
-				content.NewText("abc"),
+				content.NewParagraph(content.NewText("abc")),
 			))
 			Expect(err).ToNot(HaveOccurred())
 
@@ -830,44 +830,16 @@ var _ = Describe("Output", func() {
 		})
 
 		It("can write paragraph with properties in the middle", func() {
-			err := writer.Write(content.NewParagraph(
-				content.NewText("abc"),
+			err := writer.Write(content.NewBlock(
+				content.NewParagraph(content.NewText("abc")),
 				content.NewProperties(
 					content.NewProperty("key", content.NewText("value")),
 				),
-				content.NewText("def"),
+				content.NewParagraph(content.NewText("def")),
 			))
 			Expect(err).ToNot(HaveOccurred())
 
 			Expect(buf.String()).To(Equal("abc\nkey:: value\ndef"))
-		})
-
-		It("can write properties with paragraph as previous sibling", func() {
-			err := writer.Write(content.NewBlock(
-				content.NewParagraph(
-					content.NewText("abc"),
-				),
-				content.NewProperties(
-					content.NewProperty("key", content.NewText("value")),
-				),
-			))
-			Expect(err).ToNot(HaveOccurred())
-
-			Expect(buf.String()).To(Equal("abc\nkey:: value"))
-		})
-
-		It("can write properties with paragraph as next sibling", func() {
-			err := writer.Write(content.NewBlock(
-				content.NewProperties(
-					content.NewProperty("key", content.NewText("value")),
-				),
-				content.NewParagraph(
-					content.NewText("abc"),
-				),
-			))
-			Expect(err).ToNot(HaveOccurred())
-
-			Expect(buf.String()).To(Equal("key:: value\nabc"))
 		})
 	})
 

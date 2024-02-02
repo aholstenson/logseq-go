@@ -99,4 +99,13 @@ var _ = Describe("Parsing then outputting", func() {
 			FullyEqual("Macro without end", "{{poem red blue")
 		})
 	})
+
+	Describe("Properties", func() {
+		FullyEqual("Single property", "key:: value")
+		FullyEqual("Multiple properties", "key:: value\nkey2:: value2")
+		FullyEqual("Properties followed by trailing paragraph", "key:: value\nParagraph")
+		FullyEqual("Paragraphs interrupted by properties", "Paragraph\nkey:: value")
+		FullyEqual("Paragraphs interrupted by properties followed by more paragraph", "Paragraph\nkey:: value\nParagraph")
+		FullyEqual("Paragraph followed by properties", "Paragraph\n\nkey:: value")
+	})
 })

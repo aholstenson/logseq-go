@@ -3,6 +3,7 @@ package content
 // Properties is a collection of Property nodes.
 type Properties struct {
 	baseNodeWithChildren
+	previousLineAwareImpl
 }
 
 // NewProperties creates a new Properties node with the given Property children.
@@ -13,6 +14,11 @@ func NewProperties(children ...*Property) *Properties {
 	for _, child := range children {
 		p.AddChild(child)
 	}
+	return p
+}
+
+func (p *Properties) WithPreviousLineType(t PreviousLineType) *Properties {
+	p.previousLineType = t
 	return p
 }
 
@@ -48,6 +54,7 @@ func (p *Properties) Remove(key string) {
 
 func (p *Properties) debug(p2 *debugPrinter) {
 	p2.StartType("Properties")
+	debugPreviousLineAware(p2, p)
 	p2.Children(p)
 	p2.EndType()
 }
