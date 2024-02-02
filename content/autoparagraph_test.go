@@ -1,13 +1,10 @@
 package content_test
 
 import (
-	"strings"
-
 	"github.com/aholstenson/logseq-go/content"
+	. "github.com/aholstenson/logseq-go/internal/tests"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/onsi/gomega/format"
-	"github.com/onsi/gomega/types"
 )
 
 var _ = Describe("Autoparagaph", func() {
@@ -87,68 +84,3 @@ var _ = Describe("Autoparagaph", func() {
 		))
 	})
 })
-
-type equalsNodes struct {
-	Expected []content.Node
-}
-
-func EqualsNodes(expected ...content.Node) types.GomegaMatcher {
-	return &equalsNodes{
-		Expected: expected,
-	}
-}
-
-func (matcher *equalsNodes) Match(actual interface{}) (bool, error) {
-	var nodes []content.Node
-	if node, ok := actual.(content.Node); ok {
-		nodes = []content.Node{node}
-	} else if nodeSlice, ok := actual.([]content.Node); ok {
-		nodes = nodeSlice
-	} else {
-		return false, nil
-	}
-
-	if len(nodes) != len(matcher.Expected) {
-		return false, nil
-	}
-
-	for i, node := range nodes {
-		if content.Debug(node) != content.Debug(matcher.Expected[i]) {
-			return false, nil
-		}
-	}
-
-	return true, nil
-}
-
-func (matcher *equalsNodes) FailureMessage(actual interface{}) (message string) {
-	if node, ok := actual.([]content.Node); ok {
-		return format.Message(gomegaNodeSlice(node), "to equal", gomegaNodeSlice(matcher.Expected))
-	}
-
-	return format.Message(actual, "to equal", gomegaNodeSlice(matcher.Expected))
-}
-
-func (matcher *equalsNodes) NegatedFailureMessage(actual interface{}) (message string) {
-	if node, ok := actual.([]content.Node); ok {
-		return format.Message(gomegaNodeSlice(node), "not to equal", gomegaNodeSlice(matcher.Expected))
-	}
-
-	return format.Message(actual, "not to equal", gomegaNodeSlice(matcher.Expected))
-}
-
-var _ types.GomegaMatcher = &equalsNodes{}
-
-type gomegaNodeSlice []content.Node
-
-func (n gomegaNodeSlice) GomegaString() string {
-	var s strings.Builder
-	s.WriteString("[]content.Node{\n")
-	for _, node := range n {
-		s.WriteString(content.Debug(node))
-	}
-	s.WriteString("}")
-	return s.String()
-}
-
-var _ format.GomegaStringer = gomegaNodeSlice{}

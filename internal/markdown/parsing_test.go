@@ -3,10 +3,9 @@ package markdown_test
 import (
 	"github.com/aholstenson/logseq-go/content"
 	"github.com/aholstenson/logseq-go/internal/markdown"
+	"github.com/aholstenson/logseq-go/internal/tests"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/onsi/gomega/format"
-	"github.com/onsi/gomega/types"
 )
 
 var _ = Describe("Parsing", func() {
@@ -15,7 +14,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("This is some basic text")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewText("This is some basic text"),
 				),
@@ -26,7 +25,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("This is some basic text with \\*escaped\\* characters")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewText("This is some basic text with *escaped* characters"),
 				),
@@ -37,7 +36,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("This is some basic text\nwith a newline")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewText("This is some basic text").WithSoftLineBreak(),
 					content.NewText("with a newline"),
@@ -49,7 +48,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("This is some basic text  \nwith a newline")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewText("This is some basic text").WithHardLineBreak(),
 					content.NewText("with a newline"),
@@ -61,7 +60,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("# Headline")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewHeading(1, content.NewText("Headline")),
 			)))
 		})
@@ -70,7 +69,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("## Headline")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewHeading(2, content.NewText("Headline")),
 			)))
 		})
@@ -79,7 +78,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("# Headline\n\nThis is some basic text")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewHeading(1, content.NewText("Headline")),
 				content.NewParagraph(
 					content.NewText("This is some basic text"),
@@ -91,7 +90,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("# Headline\nThis is some basic text")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewHeading(1, content.NewText("Headline")),
 				content.NewParagraph(
 					content.NewText("This is some basic text"),
@@ -103,7 +102,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("This is some basic text\nwith a soft line break")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewText("This is some basic text").WithSoftLineBreak(),
 					content.NewText("with a soft line break"),
@@ -117,7 +116,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("This is *emphasized* text")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewText("This is "),
 					content.NewEmphasis(content.NewText("emphasized")),
@@ -130,7 +129,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("This is **strong** text")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewText("This is "),
 					content.NewStrong(content.NewText("strong")),
@@ -143,7 +142,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("This is ***strong and emphasized*** text")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewText("This is "),
 					content.NewEmphasis(
@@ -160,7 +159,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("This is ~~strikethrough~~ text")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewText("This is "),
 					content.NewStrikethrough(content.NewText("strikethrough")),
@@ -173,7 +172,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("This is ~~**strikethrough and strong**~~ text")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewText("This is "),
 					content.NewStrikethrough(
@@ -190,7 +189,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("This is ~~strike~through~~ text")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewText("This is "),
 					content.NewStrikethrough(content.NewText("strike~through")),
@@ -203,7 +202,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("This is ~~strike~~through~~ text")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewText("This is "),
 					content.NewStrikethrough(content.NewText("strike")),
@@ -216,7 +215,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("This is ~~strike\\~~through~~ text")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewText("This is "),
 					content.NewStrikethrough(content.NewText("strike~~through")),
@@ -229,7 +228,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("This is `code` text")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewText("This is "),
 					content.NewCodeSpan("code"),
@@ -242,7 +241,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("`code\\`")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewCodeSpan("code\\"),
 				),
@@ -253,7 +252,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("``code``")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewCodeSpan("code"),
 				),
@@ -264,7 +263,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("``co`de``")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewCodeSpan("co`de"),
 				),
@@ -275,7 +274,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("```code```")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewCodeSpan("code"),
 				),
@@ -288,7 +287,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("[This is a link](https://example.com)")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewLink(
 						"https://example.com",
@@ -302,7 +301,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("[This is a link](https://example.com\\)\\*\\[\\])")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewLink(
 						"https://example.com)*[]",
@@ -316,7 +315,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("[This is a link](https://example.com 'Title')")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewLink(
 						"https://example.com",
@@ -330,7 +329,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("[This is a link](https://example.com 'Title\nwith newlines')")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewLink(
 						"https://example.com",
@@ -344,7 +343,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("[This is a link](https://example.com 'Title\\'s')")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewLink(
 						"https://example.com",
@@ -358,7 +357,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("<https://example.com>")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewAutoLink("https://example.com"),
 				),
@@ -369,7 +368,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("https://example.com")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewAutoLink("https://example.com"),
 				),
@@ -380,7 +379,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("www.example.com")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewText("www.example.com"),
 				),
@@ -391,7 +390,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("test@example.com")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewText("test@example.com"),
 				),
@@ -402,7 +401,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("#tag followed by some text")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewHashtag("tag"),
 					content.NewText(" followed by some text"),
@@ -414,7 +413,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("#[[tag with spaces]] and some other content")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewHashtag("tag with spaces"),
 					content.NewText(" and some other content"),
@@ -426,7 +425,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("#tag")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewHashtag("tag"),
 				),
@@ -437,7 +436,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("#[[tag with spaces")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewText("#[[tag with spaces"),
 				),
@@ -448,7 +447,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("[[This is a link]] and this is some text")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewPageLink("This is a link"),
 					content.NewText(" and this is some text"),
@@ -460,7 +459,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("[[This is ]a link]] and this is some text")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewPageLink("This is ]a link"),
 					content.NewText(" and this is some text"),
@@ -472,7 +471,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("[[This is \\]]a link]] and this is some text")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewPageLink("This is ]]a link"),
 					content.NewText(" and this is some text"),
@@ -484,7 +483,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("[[This is a link]] and [[this is another link]]")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewPageLink("This is a link"),
 					content.NewText(" and "),
@@ -497,7 +496,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("((0b48a6c6-93ca-4d35-b945-6c59007f7962))")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewBlockRef("0b48a6c6-93ca-4d35-b945-6c59007f7962"),
 				),
@@ -510,7 +509,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("![This is an image](https://example.com/image.png)")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewImage(
 						"https://example.com/image.png",
@@ -524,7 +523,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("![This is an image](https://example.com/image.png 'Title')")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewImage(
 						"https://example.com/image.png",
@@ -540,7 +539,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("{{macro}}")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewMacro("macro"),
 				),
@@ -551,7 +550,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("{{macro arg}}")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewMacro("macro", "arg"),
 				),
@@ -562,7 +561,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("{{macro arg with spaces}}")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewMacro("macro", "arg with spaces"),
 				),
@@ -573,7 +572,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("{{macro arg1,arg2}}")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewMacro("macro", "arg1", "arg2"),
 				),
@@ -584,7 +583,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("{{macro arg1, arg2}}")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewMacro("macro", "arg1", "arg2"),
 				),
@@ -595,7 +594,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("{{macro \"arg1\", arg2}}")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewMacro("macro", "arg1", "arg2"),
 				),
@@ -606,7 +605,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("{{macro \"arg1\", \"arg2\"}}")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewMacro("macro", "arg1", "arg2"),
 				),
@@ -617,7 +616,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("{{macro \"arg1,\", arg2}}")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewMacro("macro", "arg1,", "arg2"),
 				),
@@ -628,7 +627,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("{{macro \"arg1,\" arg2}}")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewText("{{macro \"arg1,\" arg2}}"),
 				),
@@ -639,7 +638,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("{{macro arg1,}}")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewText("{{macro arg1,}}"),
 				),
@@ -650,7 +649,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("{{macro \"arg1\\\"\"}}")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewMacro("macro", "arg1\""),
 				),
@@ -661,7 +660,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("{{macro ar\"g1}}")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewMacro("macro", "ar\"g1"),
 				),
@@ -672,7 +671,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("{{macro ar\"g1, arg2}}")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewMacro("macro", "ar\"g1", "arg2"),
 				),
@@ -683,7 +682,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("{{macro-name}}")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewMacro("macro-name"),
 				),
@@ -694,7 +693,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("{{{macro}}}")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewMacro("macro"),
 				),
@@ -705,7 +704,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("{{{macro arg1, arg2}}}")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewMacro("macro", "arg1", "arg2"),
 				),
@@ -716,7 +715,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("{{}}")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewText("{{}}"),
 				),
@@ -727,7 +726,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("{{macro")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewText("{{macro"),
 				),
@@ -738,7 +737,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("{{macro}")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewText("{{macro}"),
 				),
@@ -749,7 +748,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("{{macro1}} {{macro2}}")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewMacro("macro1"),
 					content.NewText(" "),
@@ -763,7 +762,7 @@ var _ = Describe("Parsing", func() {
 				block, err := markdown.ParseString("{{query datalog query}}")
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(block).To(EqualNode(content.NewBlock(
+				Expect(block).To(tests.EqualNode(content.NewBlock(
 					content.NewParagraph(
 						content.NewQuery("datalog query"),
 					),
@@ -776,7 +775,7 @@ var _ = Describe("Parsing", func() {
 				block, err := markdown.ParseString("{{embed [[page]]}}")
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(block).To(EqualNode(content.NewBlock(
+				Expect(block).To(tests.EqualNode(content.NewBlock(
 					content.NewParagraph(
 						content.NewPageEmbed("page"),
 					),
@@ -787,7 +786,7 @@ var _ = Describe("Parsing", func() {
 				block, err := markdown.ParseString("{{embed [[page]}}")
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(block).To(EqualNode(content.NewBlock(
+				Expect(block).To(tests.EqualNode(content.NewBlock(
 					content.NewParagraph(
 						content.NewMacro("embed", "[[page]"),
 					),
@@ -800,7 +799,7 @@ var _ = Describe("Parsing", func() {
 				block, err := markdown.ParseString("{{embed ((block))}}")
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(block).To(EqualNode(content.NewBlock(
+				Expect(block).To(tests.EqualNode(content.NewBlock(
 					content.NewParagraph(
 						content.NewBlockEmbed("block"),
 					),
@@ -811,7 +810,7 @@ var _ = Describe("Parsing", func() {
 				block, err := markdown.ParseString("{{embed ((block)}}")
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(block).To(EqualNode(content.NewBlock(
+				Expect(block).To(tests.EqualNode(content.NewBlock(
 					content.NewParagraph(
 						content.NewMacro("embed", "((block)"),
 					),
@@ -824,7 +823,7 @@ var _ = Describe("Parsing", func() {
 				block, err := markdown.ParseString("{{cloze answer}}")
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(block).To(EqualNode(content.NewBlock(
+				Expect(block).To(tests.EqualNode(content.NewBlock(
 					content.NewParagraph(
 						content.NewCloze("answer"),
 					),
@@ -835,7 +834,7 @@ var _ = Describe("Parsing", func() {
 				block, err := markdown.ParseString("{{cloze answer \\ cue}}")
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(block).To(EqualNode(content.NewBlock(
+				Expect(block).To(tests.EqualNode(content.NewBlock(
 					content.NewParagraph(
 						content.NewClozeWithCue("answer", "cue"),
 					),
@@ -849,7 +848,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("```\nThis is a code block\n```")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewCodeBlock("This is a code block\n"),
 			)))
 		})
@@ -858,7 +857,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("```\nThis is\na code block\n```")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewCodeBlock("This is\na code block\n"),
 			)))
 		})
@@ -867,7 +866,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("```\nThis is\n\na code block\n```")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewCodeBlock("This is\n\na code block\n"),
 			)))
 		})
@@ -876,7 +875,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("```go\nThis is a code block\n```")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewCodeBlock("This is a code block\n").WithLanguage("go"),
 			)))
 		})
@@ -885,7 +884,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("    This is an indented code block\n")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewCodeBlock("This is an indented code block\n"),
 			)))
 		})
@@ -894,7 +893,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("- ```\n  This is\n  \n  a code block\n  ```")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewBlock(
 					content.NewCodeBlock("This is\n\na code block\n"),
 				),
@@ -907,7 +906,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("> This is a blockquote\n")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewBlockquote(
 					content.NewParagraph(
 						content.NewText("This is a blockquote"),
@@ -920,7 +919,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("> > This is a nested blockquote\n")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewBlockquote(
 					content.NewBlockquote(
 						content.NewParagraph(
@@ -935,7 +934,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("> This is a blockquote\n> with multiple lines\n")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewBlockquote(
 					content.NewParagraph(
 						content.NewText("This is a blockquote").WithSoftLineBreak(),
@@ -949,7 +948,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("> This is a blockquote\nwith multiple lines\n")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewBlockquote(
 					content.NewParagraph(
 						content.NewText("This is a blockquote").WithSoftLineBreak(),
@@ -963,7 +962,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("> # This is a header\n> And this is a paragraph\n")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewBlockquote(
 					content.NewHeading(1,
 						content.NewText("This is a header"),
@@ -979,7 +978,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("> This is a blockquote\n\nThis is a paragraph")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewBlockquote(
 					content.NewParagraph(
 						content.NewText("This is a blockquote"),
@@ -995,7 +994,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("This is a paragraph\n> This is a blockquote")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewText("This is a paragraph"),
 				),
@@ -1015,7 +1014,7 @@ var _ = Describe("Parsing", func() {
 					block, err := markdown.ParseString("* Item 1\n* Item 2\n")
 					Expect(err).ToNot(HaveOccurred())
 
-					Expect(block).To(EqualNode(content.NewBlock(
+					Expect(block).To(tests.EqualNode(content.NewBlock(
 						content.NewList(
 							content.ListTypeUnordered,
 							content.NewListItem(
@@ -1036,7 +1035,7 @@ var _ = Describe("Parsing", func() {
 					block, err := markdown.ParseString("* Item 1\n  with multiple lines\n* Item 2\n")
 					Expect(err).ToNot(HaveOccurred())
 
-					Expect(block).To(EqualNode(content.NewBlock(
+					Expect(block).To(tests.EqualNode(content.NewBlock(
 						content.NewList(
 							content.ListTypeUnordered,
 							content.NewListItem(
@@ -1058,7 +1057,7 @@ var _ = Describe("Parsing", func() {
 					block, err := markdown.ParseString("* Item 1\n\n  with multiple paragraphs\n* Item 2\n")
 					Expect(err).ToNot(HaveOccurred())
 
-					Expect(block).To(EqualNode(content.NewBlock(
+					Expect(block).To(tests.EqualNode(content.NewBlock(
 						content.NewList(
 							content.ListTypeUnordered,
 							content.NewListItem(
@@ -1084,7 +1083,7 @@ var _ = Describe("Parsing", func() {
 					block, err := markdown.ParseString("+ Item 1\n+ Item 2\n")
 					Expect(err).ToNot(HaveOccurred())
 
-					Expect(block).To(EqualNode(content.NewBlock(
+					Expect(block).To(tests.EqualNode(content.NewBlock(
 						content.NewListFromMarker('+',
 							content.NewListItem(
 								content.NewParagraph(
@@ -1106,7 +1105,7 @@ var _ = Describe("Parsing", func() {
 					block, err := markdown.ParseString("* Item 1\n+ Item 2\n")
 					Expect(err).ToNot(HaveOccurred())
 
-					Expect(block).To(EqualNode(content.NewBlock(
+					Expect(block).To(tests.EqualNode(content.NewBlock(
 						content.NewListFromMarker('*',
 							content.NewListItem(
 								content.NewParagraph(
@@ -1131,7 +1130,7 @@ var _ = Describe("Parsing", func() {
 				block, err := markdown.ParseString("1. Item 1\n2. Item 2\n")
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(block).To(EqualNode(content.NewBlock(
+				Expect(block).To(tests.EqualNode(content.NewBlock(
 					content.NewList(
 						content.ListTypeOrdered,
 						content.NewListItem(
@@ -1152,7 +1151,7 @@ var _ = Describe("Parsing", func() {
 				block, err := markdown.ParseString("1. Item 1\n   with multiple lines\n2. Item 2\n")
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(block).To(EqualNode(content.NewBlock(
+				Expect(block).To(tests.EqualNode(content.NewBlock(
 					content.NewList(
 						content.ListTypeOrdered,
 						content.NewListItem(
@@ -1174,7 +1173,7 @@ var _ = Describe("Parsing", func() {
 				block, err := markdown.ParseString("1. Item 1\n\n   with multiple paragraphs\n2. Item 2\n")
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(block).To(EqualNode(content.NewBlock(
+				Expect(block).To(tests.EqualNode(content.NewBlock(
 					content.NewList(
 						content.ListTypeOrdered,
 						content.NewListItem(
@@ -1200,7 +1199,7 @@ var _ = Describe("Parsing", func() {
 				block, err := markdown.ParseString("+ Item 1\n  * Item 2\n")
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(block).To(EqualNode(content.NewBlock(
+				Expect(block).To(tests.EqualNode(content.NewBlock(
 					content.NewListFromMarker('+',
 						content.NewListItem(
 							content.NewParagraph(
@@ -1222,7 +1221,7 @@ var _ = Describe("Parsing", func() {
 				block, err := markdown.ParseString("*\n\t* Item 1.1\n\t* Item 2\n")
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(block).To(EqualNode(content.NewBlock(
+				Expect(block).To(tests.EqualNode(content.NewBlock(
 					content.NewList(
 						content.ListTypeUnordered,
 						content.NewListItem(
@@ -1248,7 +1247,7 @@ var _ = Describe("Parsing", func() {
 				block, err := markdown.ParseString("*\n    * Item 1.1\n    * Item 2\n")
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(block).To(EqualNode(content.NewBlock(
+				Expect(block).To(tests.EqualNode(content.NewBlock(
 					content.NewList(
 						content.ListTypeUnordered,
 						content.NewListItem(
@@ -1277,7 +1276,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("Foo\n\n---\n\nBar\n")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewText("Foo"),
 				),
@@ -1294,7 +1293,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("This is a <b>bold</b> word.")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewText("This is a "),
 					content.NewRawHTML("<b>"),
@@ -1309,7 +1308,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("<p>This is a paragraph.</p>")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewRawHTMLBlock("<p>This is a paragraph.</p>"),
 			)))
 		})
@@ -1320,7 +1319,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("- Item 1\n- Item 2\n")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewBlock(
 					content.NewParagraph(
 						content.NewText("Item 1"),
@@ -1338,7 +1337,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("This is a paragraph\n\n- Item 1\n- Item 2\n")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewText("This is a paragraph"),
 				),
@@ -1359,7 +1358,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("- Item 1\n  - Item 1.1\n  - Item 1.2\n- Item 2\n")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewBlock(
 					content.NewParagraph(
 						content.NewText("Item 1"),
@@ -1387,7 +1386,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("- Item 1\n-\n")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewBlock(
 					content.NewParagraph(
 						content.NewText("Item 1"),
@@ -1401,7 +1400,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("Test\n-\n")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewText("Test"),
 				),
@@ -1413,7 +1412,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("Test  \n-\n")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewText("Test"),
 				),
@@ -1425,7 +1424,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("[[Test]]-\n")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewPageLink("Test"),
 					content.NewText("-"),
@@ -1438,7 +1437,7 @@ var _ = Describe("Parsing", func() {
 				block, err := markdown.ParseString("This is a paragraph\n\n- Item 1\n- Item 2\n\nThis is a trailing paragraph\n")
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(block).To(EqualNode(content.NewBlock(
+				Expect(block).To(tests.EqualNode(content.NewBlock(
 					content.NewParagraph(
 						content.NewText("This is a paragraph"),
 					),
@@ -1464,7 +1463,7 @@ var _ = Describe("Parsing", func() {
 				block, err := markdown.ParseString("key:: value")
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(block).To(EqualNode(content.NewBlock(
+				Expect(block).To(tests.EqualNode(content.NewBlock(
 					content.NewProperties(
 						content.NewProperty("key", content.NewText("value")),
 					),
@@ -1475,7 +1474,7 @@ var _ = Describe("Parsing", func() {
 				block, err := markdown.ParseString("key1:: value1\nkey2:: value2")
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(block).To(EqualNode(content.NewBlock(
+				Expect(block).To(tests.EqualNode(content.NewBlock(
 					content.NewProperties(
 						content.NewProperty("key1", content.NewText("value1")),
 						content.NewProperty("key2", content.NewText("value2")),
@@ -1487,7 +1486,7 @@ var _ = Describe("Parsing", func() {
 				block, err := markdown.ParseString("key:: value\nThis is a paragraph\n")
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(block).To(EqualNode(content.NewBlock(
+				Expect(block).To(tests.EqualNode(content.NewBlock(
 					content.NewProperties(
 						content.NewProperty("key", content.NewText("value")),
 					),
@@ -1501,7 +1500,7 @@ var _ = Describe("Parsing", func() {
 				block, err := markdown.ParseString("key1:: value1\nkey2:: value2\nThis is a paragraph\n")
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(block).To(EqualNode(content.NewBlock(
+				Expect(block).To(tests.EqualNode(content.NewBlock(
 					content.NewProperties(
 						content.NewProperty("key1", content.NewText("value1")),
 						content.NewProperty("key2", content.NewText("value2")),
@@ -1516,7 +1515,7 @@ var _ = Describe("Parsing", func() {
 				block, err := markdown.ParseString("This is a paragraph\nkey:: value\n")
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(block).To(EqualNode(content.NewBlock(
+				Expect(block).To(tests.EqualNode(content.NewBlock(
 					content.NewParagraph(
 						content.NewText("This is a paragraph"),
 					),
@@ -1530,7 +1529,7 @@ var _ = Describe("Parsing", func() {
 				block, err := markdown.ParseString("This is a paragraph\nkey1:: value1\nkey2:: value2\n")
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(block).To(EqualNode(content.NewBlock(
+				Expect(block).To(tests.EqualNode(content.NewBlock(
 					content.NewParagraph(
 						content.NewText("This is a paragraph"),
 					),
@@ -1545,7 +1544,7 @@ var _ = Describe("Parsing", func() {
 				block, err := markdown.ParseString("Line 1\nkey:: value\nLine 2")
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(block).To(EqualNode(content.NewBlock(
+				Expect(block).To(tests.EqualNode(content.NewBlock(
 					content.NewParagraph(
 						content.NewText("Line 1"),
 					),
@@ -1562,7 +1561,7 @@ var _ = Describe("Parsing", func() {
 				block, err := markdown.ParseString("Line 1\nkey1:: value1\nkey2:: value2\nLine 2")
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(block).To(EqualNode(content.NewBlock(
+				Expect(block).To(tests.EqualNode(content.NewBlock(
 					content.NewParagraph(
 						content.NewText("Line 1"),
 					),
@@ -1580,7 +1579,7 @@ var _ = Describe("Parsing", func() {
 				block, err := markdown.ParseString("key1:: value1\nLine 1\nkey2:: value2")
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(block).To(EqualNode(content.NewBlock(
+				Expect(block).To(tests.EqualNode(content.NewBlock(
 					content.NewProperties(
 						content.NewProperty("key1", content.NewText("value1")),
 					),
@@ -1597,7 +1596,7 @@ var _ = Describe("Parsing", func() {
 				block, err := markdown.ParseString("key1:: value1\nkey2:: value2\nLine 1\nkey3:: value3\nkey4:: value4")
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(block).To(EqualNode(content.NewBlock(
+				Expect(block).To(tests.EqualNode(content.NewBlock(
 					content.NewProperties(
 						content.NewProperty("key1", content.NewText("value1")),
 						content.NewProperty("key2", content.NewText("value2")),
@@ -1616,7 +1615,7 @@ var _ = Describe("Parsing", func() {
 				block, err := markdown.ParseString("key1:: value1\nLine 1\nkey2:: value2\nLine 2\nkey3:: value3")
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(block).To(EqualNode(content.NewBlock(
+				Expect(block).To(tests.EqualNode(content.NewBlock(
 					content.NewProperties(
 						content.NewProperty("key1", content.NewText("value1")),
 					),
@@ -1639,7 +1638,7 @@ var _ = Describe("Parsing", func() {
 				block, err := markdown.ParseString("This is a paragraph\n\nkey:: value\n")
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(block).To(EqualNode(content.NewBlock(
+				Expect(block).To(tests.EqualNode(content.NewBlock(
 					content.NewParagraph(
 						content.NewText("This is a paragraph"),
 					),
@@ -1653,7 +1652,7 @@ var _ = Describe("Parsing", func() {
 				block, err := markdown.ParseString("key::value\nThis is a paragraph\n")
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(block).To(EqualNode(content.NewBlock(
+				Expect(block).To(tests.EqualNode(content.NewBlock(
 					content.NewParagraph(
 						content.NewText("key::value").WithSoftLineBreak(),
 						content.NewText("This is a paragraph"),
@@ -1665,7 +1664,7 @@ var _ = Describe("Parsing", func() {
 				block, err := markdown.ParseString("key:: [[link]]\nThis is a paragraph\n")
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(block).To(EqualNode(content.NewBlock(
+				Expect(block).To(tests.EqualNode(content.NewBlock(
 					content.NewProperties(
 						content.NewProperty("key", content.NewPageLink("link")),
 					),
@@ -1679,7 +1678,7 @@ var _ = Describe("Parsing", func() {
 				block, err := markdown.ParseString("key:: [[link]] and #tag\nThis is a paragraph\n")
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(block).To(EqualNode(content.NewBlock(
+				Expect(block).To(tests.EqualNode(content.NewBlock(
 					content.NewProperties(
 						content.NewProperty(
 							"key",
@@ -1698,7 +1697,7 @@ var _ = Describe("Parsing", func() {
 				block, err := markdown.ParseString("key:: value\n- Item 1\n- Item 2\n")
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(block).To(EqualNode(content.NewBlock(
+				Expect(block).To(tests.EqualNode(content.NewBlock(
 					content.NewProperties(
 						content.NewProperty("key", content.NewText("value")),
 					),
@@ -1719,7 +1718,7 @@ var _ = Describe("Parsing", func() {
 				block, err := markdown.ParseString("key:: value\n* Item 1\n* Item 2\n")
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(block).To(EqualNode(content.NewBlock(
+				Expect(block).To(tests.EqualNode(content.NewBlock(
 					content.NewProperties(
 						content.NewProperty("key", content.NewText("value")),
 					),
@@ -1746,7 +1745,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("#+BEGIN_ABCDEF\nraw text\n#+END_ABCDEF\n")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewAdvancedCommand("ABCDEF", "raw text\n"),
 			)))
 		})
@@ -1755,7 +1754,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("#+BEGIN_ABCDEF\n  raw text\n#+END_ABCDEF\n")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewAdvancedCommand("ABCDEF", "  raw text\n"),
 			)))
 		})
@@ -1764,7 +1763,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("#+BEGIN_ABCDEF\nraw text\nmore raw text\n#+END_ABCDEF\n")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewAdvancedCommand("ABCDEF", "raw text\nmore raw text\n"),
 			)))
 		})
@@ -1773,7 +1772,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("#+BEGIN_ABCDEF\n  raw text\n  more raw text\n#+END_ABCDEF\n")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewAdvancedCommand("ABCDEF", "  raw text\n  more raw text\n"),
 			)))
 		})
@@ -1782,7 +1781,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("#+BEGIN_ABCDEF\n  raw text\n\n  more raw text\n#+END_ABCDEF\n")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewAdvancedCommand("ABCDEF", "  raw text\n\n  more raw text\n"),
 			)))
 		})
@@ -1791,7 +1790,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("#+BEGIN_ABCDEF\n  raw text\n  more raw text\n\n#+END_ABCDEF\n")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewAdvancedCommand("ABCDEF", "  raw text\n  more raw text\n\n"),
 			)))
 		})
@@ -1800,7 +1799,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("* Item\n  #+BEGIN_ABCDEF\n  raw text\n    raw text\n  #+END_ABCDEF\n")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewList(
 					content.ListTypeUnordered,
 					content.NewListItem(
@@ -1817,7 +1816,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("* Item\n  #+BEGIN_ABCDEF\n  raw text\n    raw text\n  #+END_ABCDEF\n* Item2")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewList(
 					content.ListTypeUnordered,
 					content.NewListItem(
@@ -1840,7 +1839,7 @@ var _ = Describe("Parsing", func() {
 				block, err := markdown.ParseString("#+BEGIN_QUERY\nraw text\n#+END_QUERY\n")
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(block).To(EqualNode(content.NewBlock(
+				Expect(block).To(tests.EqualNode(content.NewBlock(
 					content.NewQueryCommand("raw text\n"),
 				)))
 			})
@@ -1849,7 +1848,7 @@ var _ = Describe("Parsing", func() {
 				block, err := markdown.ParseString("#+BEGIN_QUERY\n  raw text\n#+END_QUERY\n")
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(block).To(EqualNode(content.NewBlock(
+				Expect(block).To(tests.EqualNode(content.NewBlock(
 					content.NewQueryCommand("  raw text\n"),
 				)))
 			})
@@ -1858,7 +1857,7 @@ var _ = Describe("Parsing", func() {
 				block, err := markdown.ParseString("#+BEGIN_QUERY\nraw text\nraw text\n#+END_QUERY\n")
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(block).To(EqualNode(content.NewBlock(
+				Expect(block).To(tests.EqualNode(content.NewBlock(
 					content.NewQueryCommand("raw text\nraw text\n"),
 				)))
 			})
@@ -1867,7 +1866,7 @@ var _ = Describe("Parsing", func() {
 				block, err := markdown.ParseString("#+BEGIN_QUERY\nraw text\n  raw text\n#+END_QUERY\n")
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(block).To(EqualNode(content.NewBlock(
+				Expect(block).To(tests.EqualNode(content.NewBlock(
 					content.NewQueryCommand("raw text\n  raw text\n"),
 				)))
 			})
@@ -1876,7 +1875,7 @@ var _ = Describe("Parsing", func() {
 				block, err := markdown.ParseString("* #+BEGIN_QUERY\n  raw text\n    raw text\n  #+END_QUERY\n")
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(block).To(EqualNode(content.NewBlock(
+				Expect(block).To(tests.EqualNode(content.NewBlock(
 					content.NewList(
 						content.ListTypeUnordered,
 						content.NewListItem(
@@ -1892,7 +1891,7 @@ var _ = Describe("Parsing", func() {
 				block, err := markdown.ParseString("#+BEGIN_QUOTE\nraw text\n#+END_QUOTE\n")
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(block).To(EqualNode(content.NewBlock(
+				Expect(block).To(tests.EqualNode(content.NewBlock(
 					content.NewAdvancedCommand("QUOTE", "raw text\n"),
 				)))
 			})
@@ -1901,7 +1900,7 @@ var _ = Describe("Parsing", func() {
 				block, err := markdown.ParseString("#+BEGIN_QUOTE\nraw text\nraw text\n#+END_QUOTE\n")
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(block).To(EqualNode(content.NewBlock(
+				Expect(block).To(tests.EqualNode(content.NewBlock(
 					content.NewAdvancedCommand("QUOTE", "raw text\nraw text\n"),
 				)))
 			})
@@ -1913,7 +1912,7 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("TODO Task\n:LOGBOOK:\nCLOCK: [2023-06-26 Mon 17:25:56]--[2023-06-26 Mon 17:25:56] =>  00:00:00\nCLOCK: [2023-06-26 Mon 17:25:57]--[2023-06-26 Mon 17:25:58] =>  00:00:01\n:END:")
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(block).To(EqualNode(content.NewBlock(
+			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewText("TODO Task"),
 				),
@@ -1925,31 +1924,3 @@ var _ = Describe("Parsing", func() {
 		})
 	})
 })
-
-type equalNode struct {
-	Expected content.Node
-}
-
-func EqualNode(expected content.Node) types.GomegaMatcher {
-	return &equalNode{
-		Expected: expected,
-	}
-}
-
-func (matcher *equalNode) Match(actual interface{}) (bool, error) {
-	if node, ok := actual.(content.Node); ok {
-		return content.Debug(node) == content.Debug(matcher.Expected), nil
-	}
-
-	return false, nil
-}
-
-func (matcher *equalNode) FailureMessage(actual interface{}) (message string) {
-	return format.Message(actual, "to equal", matcher.Expected)
-}
-
-func (matcher *equalNode) NegatedFailureMessage(actual interface{}) (message string) {
-	return format.Message(actual, "not to equal", matcher.Expected)
-}
-
-var _ types.GomegaMatcher = &equalNode{}
