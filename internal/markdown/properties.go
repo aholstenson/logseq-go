@@ -98,10 +98,9 @@ func (t *propertiesASTTransformer) transformParagraph(node *ast.Paragraph, reade
 		} else {
 			textNode, isText := child.(*ast.Text)
 			if !isText {
-				maybeSplitParagraph(node, currentProperties, child)
+				node = maybeSplitParagraph(node, currentProperties, child)
 
 				currentProperties = nil
-				currentProperty = nil
 				wasPreviousLinebreak = false
 				continue
 			}
@@ -115,7 +114,7 @@ func (t *propertiesASTTransformer) transformParagraph(node *ast.Paragraph, reade
 				matches := propertyRegex.FindStringSubmatchIndex(potentialName)
 				if matches == nil {
 					// Not a property
-					maybeSplitParagraph(node, currentProperties, child)
+					node = maybeSplitParagraph(node, currentProperties, child)
 					currentProperties = nil
 					wasPreviousLinebreak = textNode.HardLineBreak() || textNode.SoftLineBreak()
 					continue
@@ -130,7 +129,7 @@ func (t *propertiesASTTransformer) transformParagraph(node *ast.Paragraph, reade
 						nextTextNode.Segment = nextTextNode.Segment.WithStart(nextTextNode.Segment.Start + 1)
 					} else {
 						// The space is missing, not parsing as property
-						maybeSplitParagraph(node, currentProperties, child)
+						node = maybeSplitParagraph(node, currentProperties, child)
 						currentProperties = nil
 						wasPreviousLinebreak = textNode.HardLineBreak() || textNode.SoftLineBreak()
 						continue
@@ -172,7 +171,7 @@ func (t *propertiesASTTransformer) transformParagraph(node *ast.Paragraph, reade
 		}
 	}
 
-	if currentProperties != nil && node.FirstChild() == nil {
+	if node.FirstChild() == nil {
 		// The paragraph is now empty
 		node.Parent().RemoveChild(node.Parent(), node)
 	}
@@ -187,9 +186,9 @@ func startsWithSpace(node *ast.Text, reader text.Reader) bool {
 	return strings.HasPrefix(value, " ")
 }
 
-func maybeSplitParagraph(node *ast.Paragraph, divider *properties, firstChildOfNewParagraph ast.Node) {
+func maybeSplitParagraph(node *ast.Paragraph, divider *properties, firstChildOfNewParagraph ast.Node) *ast.Paragraph {
 	if divider == nil {
-		return
+		return node
 	}
 
 	newParagraph := &ast.Paragraph{}
@@ -205,4 +204,6 @@ func maybeSplitParagraph(node *ast.Paragraph, divider *properties, firstChildOfN
 		// The paragraph is now empty
 		node.Parent().RemoveChild(node.Parent(), node)
 	}
+
+	return newParagraph
 }

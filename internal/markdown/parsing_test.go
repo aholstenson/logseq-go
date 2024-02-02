@@ -1497,6 +1497,21 @@ var _ = Describe("Parsing", func() {
 				)))
 			})
 
+			It("can parse multiple properties at the top of paragraph", func() {
+				block, err := markdown.ParseString("key1:: value1\nkey2:: value2\nThis is a paragraph\n")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(EqualNode(content.NewBlock(
+					content.NewProperties(
+						content.NewProperty("key1", content.NewText("value1")),
+						content.NewProperty("key2", content.NewText("value2")),
+					),
+					content.NewParagraph(
+						content.NewText("This is a paragraph"),
+					).WithPreviousLineType(content.PreviousLineTypeNonBlank),
+				)))
+			})
+
 			It("can parse property at the bottom of paragraph", func() {
 				block, err := markdown.ParseString("This is a paragraph\nkey:: value\n")
 				Expect(err).ToNot(HaveOccurred())
@@ -1507,6 +1522,21 @@ var _ = Describe("Parsing", func() {
 					),
 					content.NewProperties(
 						content.NewProperty("key", content.NewText("value")),
+					).WithPreviousLineType(content.PreviousLineTypeNonBlank),
+				)))
+			})
+
+			It("can parse multiple properties at the bottom of paragraph", func() {
+				block, err := markdown.ParseString("This is a paragraph\nkey1:: value1\nkey2:: value2\n")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(EqualNode(content.NewBlock(
+					content.NewParagraph(
+						content.NewText("This is a paragraph"),
+					),
+					content.NewProperties(
+						content.NewProperty("key1", content.NewText("value1")),
+						content.NewProperty("key2", content.NewText("value2")),
 					).WithPreviousLineType(content.PreviousLineTypeNonBlank),
 				)))
 			})
@@ -1524,6 +1554,83 @@ var _ = Describe("Parsing", func() {
 					).WithPreviousLineType(content.PreviousLineTypeNonBlank),
 					content.NewParagraph(
 						content.NewText("Line 2"),
+					).WithPreviousLineType(content.PreviousLineTypeNonBlank),
+				)))
+			})
+
+			It("can parse multiple properties at the middle of paragraph", func() {
+				block, err := markdown.ParseString("Line 1\nkey1:: value1\nkey2:: value2\nLine 2")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(EqualNode(content.NewBlock(
+					content.NewParagraph(
+						content.NewText("Line 1"),
+					),
+					content.NewProperties(
+						content.NewProperty("key1", content.NewText("value1")),
+						content.NewProperty("key2", content.NewText("value2")),
+					).WithPreviousLineType(content.PreviousLineTypeNonBlank),
+					content.NewParagraph(
+						content.NewText("Line 2"),
+					).WithPreviousLineType(content.PreviousLineTypeNonBlank),
+				)))
+			})
+
+			It("can parse property in top and end of paragraph", func() {
+				block, err := markdown.ParseString("key1:: value1\nLine 1\nkey2:: value2")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(EqualNode(content.NewBlock(
+					content.NewProperties(
+						content.NewProperty("key1", content.NewText("value1")),
+					),
+					content.NewParagraph(
+						content.NewText("Line 1"),
+					).WithPreviousLineType(content.PreviousLineTypeNonBlank),
+					content.NewProperties(
+						content.NewProperty("key2", content.NewText("value2")),
+					).WithPreviousLineType(content.PreviousLineTypeNonBlank),
+				)))
+			})
+
+			It("can parse multiple properties in top and end of paragraph", func() {
+				block, err := markdown.ParseString("key1:: value1\nkey2:: value2\nLine 1\nkey3:: value3\nkey4:: value4")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(EqualNode(content.NewBlock(
+					content.NewProperties(
+						content.NewProperty("key1", content.NewText("value1")),
+						content.NewProperty("key2", content.NewText("value2")),
+					),
+					content.NewParagraph(
+						content.NewText("Line 1"),
+					).WithPreviousLineType(content.PreviousLineTypeNonBlank),
+					content.NewProperties(
+						content.NewProperty("key3", content.NewText("value3")),
+						content.NewProperty("key4", content.NewText("value4")),
+					).WithPreviousLineType(content.PreviousLineTypeNonBlank),
+				)))
+			})
+
+			It("can parse property in top, middle and end of paragraph", func() {
+				block, err := markdown.ParseString("key1:: value1\nLine 1\nkey2:: value2\nLine 2\nkey3:: value3")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(EqualNode(content.NewBlock(
+					content.NewProperties(
+						content.NewProperty("key1", content.NewText("value1")),
+					),
+					content.NewParagraph(
+						content.NewText("Line 1"),
+					).WithPreviousLineType(content.PreviousLineTypeNonBlank),
+					content.NewProperties(
+						content.NewProperty("key2", content.NewText("value2")),
+					).WithPreviousLineType(content.PreviousLineTypeNonBlank),
+					content.NewParagraph(
+						content.NewText("Line 2"),
+					).WithPreviousLineType(content.PreviousLineTypeNonBlank),
+					content.NewProperties(
+						content.NewProperty("key3", content.NewText("value3")),
 					).WithPreviousLineType(content.PreviousLineTypeNonBlank),
 				)))
 			})
@@ -1561,6 +1668,25 @@ var _ = Describe("Parsing", func() {
 				Expect(block).To(EqualNode(content.NewBlock(
 					content.NewProperties(
 						content.NewProperty("key", content.NewPageLink("link")),
+					),
+					content.NewParagraph(
+						content.NewText("This is a paragraph"),
+					).WithPreviousLineType(content.PreviousLineTypeNonBlank),
+				)))
+			})
+
+			It("can parse property with mixed nodes", func() {
+				block, err := markdown.ParseString("key:: [[link]] and #tag\nThis is a paragraph\n")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(EqualNode(content.NewBlock(
+					content.NewProperties(
+						content.NewProperty(
+							"key",
+							content.NewPageLink("link"),
+							content.NewText(" and "),
+							content.NewHashtag("tag"),
+						),
 					),
 					content.NewParagraph(
 						content.NewText("This is a paragraph"),
