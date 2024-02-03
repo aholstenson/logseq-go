@@ -151,6 +151,8 @@ func (w *Output) Write(n content.Node) error {
 		return w.writeAdvancedCommand(node)
 	case *content.QueryCommand:
 		return w.writeBeginEnd(node, "QUERY", node.Query)
+	case *content.TaskMarker:
+		return w.writeTaskMarker(node)
 	case *content.Logbook:
 		return w.writeLogbook(node)
 	default:
@@ -972,6 +974,49 @@ func (w *Output) writeBeginEnd(node content.BlockNode, variant string, value str
 	}
 
 	w.endBlock()
+	return nil
+}
+
+func (w *Output) writeTaskMarker(node *content.TaskMarker) error {
+	var err error
+	switch node.Status {
+	case content.TaskStatusNone:
+		return nil
+	case content.TaskStatusTodo:
+		err = w.writeRaw("TODO")
+	case content.TaskStatusDoing:
+		err = w.writeRaw("DOING")
+	case content.TaskStatusDone:
+		err = w.writeRaw("DONE")
+	case content.TaskStatusLater:
+		err = w.writeRaw("LATER")
+	case content.TaskStatusNow:
+		err = w.writeRaw("NOW")
+	case content.TaskStatusCancelled:
+		err = w.writeRaw("CANCELLED")
+	case content.TaskStatusCanceled:
+		err = w.writeRaw("CANCELED")
+	case content.TaskStatusInProgress:
+		err = w.writeRaw("IN-PROGRESS")
+	case content.TaskStatusWait:
+		err = w.writeRaw("WAIT")
+	case content.TaskStatusWaiting:
+		err = w.writeRaw("WAITING")
+	default:
+		return fmt.Errorf("unsupported task status: %d", node.Status)
+	}
+
+	if err != nil {
+		return err
+	}
+
+	if node.NextSibling() != nil {
+		err = w.writeRaw(" ")
+		if err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 

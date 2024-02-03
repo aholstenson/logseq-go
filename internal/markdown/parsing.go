@@ -207,6 +207,11 @@ func convertToBlock(src []byte, node ast.Node) (*content.Block, error) {
 				return nil, err
 			}
 
+			// When converting a block the first paragraph might contain a task marker
+			if p, ok := node.(*content.Paragraph); ok && block.FirstChild() == nil {
+				convertTaskMarker(p)
+			}
+
 			if !hasParsedBlock {
 				// No list of blocks encountered yet, treat nodes as content
 				// to main block.
@@ -267,6 +272,54 @@ func convertToBlock(src []byte, node ast.Node) (*content.Block, error) {
 	}
 
 	return block, nil
+}
+
+func convertTaskMarker(node *content.Paragraph) {
+	textNode, ok := node.FirstChild().(*content.Text)
+	if !ok {
+		return
+	}
+
+	potentialMarkerIdx := strings.Index(textNode.Value, " ")
+	var potentialMarker string
+	if potentialMarkerIdx < 0 {
+		potentialMarker = textNode.Value
+	} else {
+		potentialMarker = textNode.Value[:potentialMarkerIdx]
+	}
+
+	var taskStatus content.TaskStatus
+	switch potentialMarker {
+	case "TODO":
+		taskStatus = content.TaskStatusTodo
+	case "DONE":
+		taskStatus = content.TaskStatusDone
+	case "DOING":
+		taskStatus = content.TaskStatusDoing
+	case "LATER":
+		taskStatus = content.TaskStatusLater
+	case "NOW":
+		taskStatus = content.TaskStatusNow
+	case "CANCELLED":
+		taskStatus = content.TaskStatusCancelled
+	case "CANCELED":
+		taskStatus = content.TaskStatusCanceled
+	case "IN-PROGRESS":
+		taskStatus = content.TaskStatusInProgress
+	case "WAIT":
+		taskStatus = content.TaskStatusWait
+	case "WAITING":
+		taskStatus = content.TaskStatusWaiting
+	default:
+		return
+	}
+
+	textNode.Value = textNode.Value[potentialMarkerIdx+1:]
+	if textNode.Value == "" {
+		textNode.RemoveSelf()
+	}
+
+	node.PrependChild(content.NewTaskMarker(taskStatus))
 }
 
 func convertParagraph(src []byte, node *ast.Paragraph) (*content.Paragraph, error) {

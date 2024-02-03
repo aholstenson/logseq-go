@@ -1908,13 +1908,184 @@ var _ = Describe("Parsing", func() {
 	})
 
 	Describe("Tasks", func() {
+		Describe("Markers", func() {
+			It("can parse TODO", func() {
+				block, err := markdown.ParseString("TODO Task")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewParagraph(
+						content.NewTaskMarker(content.TaskStatusTodo),
+						content.NewText("Task"),
+					),
+				)))
+			})
+
+			It("can parse TODO with prefixed spaces", func() {
+				block, err := markdown.ParseString("   TODO Task")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewParagraph(
+						content.NewTaskMarker(content.TaskStatusTodo),
+						content.NewText("Task"),
+					),
+				)))
+			})
+
+			It("skips TODO without space after", func() {
+				block, err := markdown.ParseString("TODOTask")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewParagraph(
+						content.NewText("TODOTask"),
+					),
+				)))
+			})
+
+			It("skips TODO that is not first in paragraph", func() {
+				block, err := markdown.ParseString("This is a TODO")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewParagraph(
+						content.NewText("This is a TODO"),
+					),
+				)))
+			})
+
+			It("skips TODO in second paragraph", func() {
+				block, err := markdown.ParseString("Paragraph 1\n\nTODO Paragraph 2")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewParagraph(
+						content.NewText("Paragraph 1"),
+					),
+					content.NewParagraph(
+						content.NewText("TODO Paragraph 2"),
+					),
+				)))
+			})
+
+			It("can parse DONE", func() {
+				block, err := markdown.ParseString("DONE Task")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewParagraph(
+						content.NewTaskMarker(content.TaskStatusDone),
+						content.NewText("Task"),
+					),
+				)))
+			})
+
+			It("can parse DOING", func() {
+				block, err := markdown.ParseString("DOING Task")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewParagraph(
+						content.NewTaskMarker(content.TaskStatusDoing),
+						content.NewText("Task"),
+					),
+				)))
+			})
+
+			It("can parse LATER", func() {
+				block, err := markdown.ParseString("LATER Task")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewParagraph(
+						content.NewTaskMarker(content.TaskStatusLater),
+						content.NewText("Task"),
+					),
+				)))
+			})
+
+			It("can parse NOW", func() {
+				block, err := markdown.ParseString("NOW Task")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewParagraph(
+						content.NewTaskMarker(content.TaskStatusNow),
+						content.NewText("Task"),
+					),
+				)))
+			})
+
+			It("can parse CANCELLED", func() {
+				block, err := markdown.ParseString("CANCELLED Task")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewParagraph(
+						content.NewTaskMarker(content.TaskStatusCancelled),
+						content.NewText("Task"),
+					),
+				)))
+			})
+
+			It("can parse CANCELED", func() {
+				block, err := markdown.ParseString("CANCELED Task")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewParagraph(
+						content.NewTaskMarker(content.TaskStatusCanceled),
+						content.NewText("Task"),
+					),
+				)))
+			})
+
+			It("can parse IN-PROGRESS", func() {
+				block, err := markdown.ParseString("IN-PROGRESS Task")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewParagraph(
+						content.NewTaskMarker(content.TaskStatusInProgress),
+						content.NewText("Task"),
+					),
+				)))
+			})
+
+			It("can parse WAIT", func() {
+				block, err := markdown.ParseString("WAIT Task")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewParagraph(
+						content.NewTaskMarker(content.TaskStatusWait),
+						content.NewText("Task"),
+					),
+				)))
+			})
+
+			It("can parse WAITING", func() {
+				block, err := markdown.ParseString("WAITING Task")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewParagraph(
+						content.NewTaskMarker(content.TaskStatusWaiting),
+						content.NewText("Task"),
+					),
+				)))
+			})
+		})
+
 		It("Can parse LOGBOOK", func() {
 			block, err := markdown.ParseString("TODO Task\n:LOGBOOK:\nCLOCK: [2023-06-26 Mon 17:25:56]--[2023-06-26 Mon 17:25:56] =>  00:00:00\nCLOCK: [2023-06-26 Mon 17:25:57]--[2023-06-26 Mon 17:25:58] =>  00:00:01\n:END:")
 			Expect(err).ToNot(HaveOccurred())
 
 			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
-					content.NewText("TODO Task"),
+					content.NewTaskMarker(content.TaskStatusTodo),
+					content.NewText("Task"),
 				),
 				content.NewLogbook(
 					content.NewLogbookEntryRaw("CLOCK: [2023-06-26 Mon 17:25:56]--[2023-06-26 Mon 17:25:56] =>  00:00:00"),

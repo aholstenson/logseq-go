@@ -108,4 +108,21 @@ var _ = Describe("Parsing then outputting", func() {
 		FullyEqual("Paragraphs interrupted by properties followed by more paragraph", "Paragraph\nkey:: value\nParagraph")
 		FullyEqual("Paragraph followed by properties", "Paragraph\n\nkey:: value")
 	})
+
+	Describe("Tasks", func() {
+		Describe("Markers", func() {
+			FullyEqual("TODO Task", "TODO Task")
+			FullyEqual("DOING Task", "DOING Task")
+			FullyEqual("DONE Task", "DONE Task")
+			FullyEqual("LATER Task", "LATER Task")
+			FullyEqual("NOW Task", "NOW Task")
+			FullyEqual("CANCELLED Task", "CANCELLED Task")
+			FullyEqual("CANCELED Task", "CANCELED Task")
+			FullyEqual("IN-PROGRESS Task", "IN-PROGRESS Task")
+			FullyEqual("WAIT Task", "WAIT Task")
+			FullyEqual("WAITING Task", "WAITING Task")
+
+			Varies("Task with leading space", " TODO Task", "TODO Task")
+		})
+	})
 })

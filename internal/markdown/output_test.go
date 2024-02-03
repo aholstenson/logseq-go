@@ -899,6 +899,108 @@ var _ = Describe("Output", func() {
 	})
 
 	Describe("Tasks", func() {
+		Describe("Markers", func() {
+			It("can write a TODO", func() {
+				err := writer.Write(content.NewParagraph(
+					content.NewTaskMarker(content.TaskStatusTodo),
+					content.NewText("Task"),
+				))
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(buf.String()).To(Equal("TODO Task"))
+			})
+
+			It("can write DOING", func() {
+				err := writer.Write(content.NewParagraph(
+					content.NewTaskMarker(content.TaskStatusDoing),
+					content.NewText("Task"),
+				))
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(buf.String()).To(Equal("DOING Task"))
+			})
+
+			It("can write DONE", func() {
+				err := writer.Write(content.NewParagraph(
+					content.NewTaskMarker(content.TaskStatusDone),
+					content.NewText("Task"),
+				))
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(buf.String()).To(Equal("DONE Task"))
+			})
+
+			It("can write LATER", func() {
+				err := writer.Write(content.NewParagraph(
+					content.NewTaskMarker(content.TaskStatusLater),
+					content.NewText("Task"),
+				))
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(buf.String()).To(Equal("LATER Task"))
+			})
+
+			It("can write NOW", func() {
+				err := writer.Write(content.NewParagraph(
+					content.NewTaskMarker(content.TaskStatusNow),
+					content.NewText("Task"),
+				))
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(buf.String()).To(Equal("NOW Task"))
+			})
+
+			It("can write CANCELLED", func() {
+				err := writer.Write(content.NewParagraph(
+					content.NewTaskMarker(content.TaskStatusCancelled),
+					content.NewText("Task"),
+				))
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(buf.String()).To(Equal("CANCELLED Task"))
+			})
+
+			It("can write CANCELED", func() {
+				err := writer.Write(content.NewParagraph(
+					content.NewTaskMarker(content.TaskStatusCanceled),
+					content.NewText("Task"),
+				))
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(buf.String()).To(Equal("CANCELED Task"))
+			})
+
+			It("can write IN-PROGRESS", func() {
+				err := writer.Write(content.NewParagraph(
+					content.NewTaskMarker(content.TaskStatusInProgress),
+					content.NewText("Task"),
+				))
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(buf.String()).To(Equal("IN-PROGRESS Task"))
+			})
+
+			It("can write WAIT", func() {
+				err := writer.Write(content.NewParagraph(
+					content.NewTaskMarker(content.TaskStatusWait),
+					content.NewText("Task"),
+				))
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(buf.String()).To(Equal("WAIT Task"))
+			})
+
+			It("can write WAITING", func() {
+				err := writer.Write(content.NewParagraph(
+					content.NewTaskMarker(content.TaskStatusWaiting),
+					content.NewText("Task"),
+				))
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(buf.String()).To(Equal("WAITING Task"))
+			})
+		})
+
 		Describe("Logbooks", func() {
 			It("can write empty logbook", func() {
 				err := writer.Write(content.NewLogbook())
