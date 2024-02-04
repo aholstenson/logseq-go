@@ -4,6 +4,7 @@ go 1.20
 
 require (
 	github.com/blugelabs/bluge v0.2.2
+	github.com/fsnotify/fsnotify v1.7.0
 	github.com/google/uuid v1.5.0
 	github.com/onsi/ginkgo/v2 v2.10.0
 	github.com/onsi/gomega v1.27.8

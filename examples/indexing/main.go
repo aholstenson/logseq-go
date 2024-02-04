@@ -33,7 +33,7 @@ func main() {
 		println("Synced:", subPath)
 	}))
 	if err != nil {
-		println("Failed to open graph:", err)
+		println("Failed to open graph:", err.Error())
 		return
 	}
 	defer graph.Close()
@@ -48,7 +48,7 @@ func main() {
 		print("> ")
 		_, err := fmt.Scanln(&query)
 		if err != nil {
-			println("Failed to read query:", err)
+			println("Failed to read query:", err.Error())
 			return
 		}
 
@@ -59,7 +59,7 @@ func main() {
 		// Perform the query
 		pages, err := graph.List(ctx, logseq.TitleMatches(query))
 		if err != nil {
-			println("Failed to list pages:", err)
+			println("Failed to list pages:", err.Error())
 			return
 		}
 

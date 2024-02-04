@@ -4,11 +4,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/aholstenson/logseq-go/content"
 	"github.com/aholstenson/logseq-go/internal/indexing"
 	"github.com/aholstenson/logseq-go/internal/utils"
+	"github.com/fsnotify/fsnotify"
 	"golang.org/x/net/context"
 )
 
@@ -24,7 +26,8 @@ type Graph struct {
 	journalNameFormat  string
 	journalTitleFormat string
 
-	index indexing.Index
+	index         indexing.Index
+	changeWatcher *fsnotify.Watcher
 }
 
 func Open(directory string, opts ...Option) (*Graph, error) {
@@ -56,10 +59,16 @@ func Open(directory string, opts ...Option) (*Graph, error) {
 	journalTitleFormat := utils.ConvertDateFormat(config.Journal.PageTitleFormat)
 
 	var index indexing.Index
+	var changeWatcher *fsnotify.Watcher
 	if options.index {
 		index, err = indexing.NewBlugeIndex(config, options.indexDirectory)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open index: %w", err)
+		}
+
+		changeWatcher, err = fsnotify.NewWatcher()
+		if err != nil {
+			return nil, fmt.Errorf("failed to create fsnotify watcher: %w", err)
 		}
 	}
 
@@ -71,13 +80,18 @@ func Open(directory string, opts ...Option) (*Graph, error) {
 		journalNameFormat:  journalNameFormat,
 		journalTitleFormat: journalTitleFormat,
 
-		index: index,
+		index:         index,
+		changeWatcher: changeWatcher,
 	}
 
 	// Sync the graph with the index
-	err = g.sync(options.syncListener)
+	err = g.sync()
 	if err != nil {
 		return nil, fmt.Errorf("failed to sync graph: %w", err)
+	}
+
+	if changeWatcher != nil {
+		g.watchForChanges()
 	}
 
 	return g, nil
@@ -150,66 +164,43 @@ func (g *Graph) pagePath(title string) (string, error) {
 }
 
 func (g *Graph) Close() error {
+	if g.changeWatcher != nil {
+		g.changeWatcher.Close()
+	}
+
 	if g.index != nil {
 		return g.index.Close()
 	}
-
-	// TODO: Close fsnotify watcher
 
 	return nil
 }
 
 // sync performs a sync of the graph with the index.
-func (g *Graph) sync(syncListener func(subPath string)) error {
+func (g *Graph) sync() error {
 	if g.index == nil {
 		return nil
 	}
 
-	ctx := context.Background()
+	walker := g.createWalker(context.Background())
 
 	// Sync the journal pages
 	journalsDir := filepath.Join(g.directory, g.config.JournalsDir)
-	err := filepath.Walk(journalsDir, g.createWalker(ctx, func(name string, doc *documentImpl) *indexing.Document {
-		date, err := time.Parse(g.journalNameFormat, name)
-		if err != nil {
-			return nil
-		}
-
-		return &indexing.Document{
-			Type:         indexing.DocumentTypeJournal,
-			LastModified: doc.LastModified(),
-			Date:         date,
-			Blocks:       doc.Blocks(),
-		}
-	}))
+	err := filepath.Walk(journalsDir, walker)
 	if err != nil {
 		return fmt.Errorf("failed to sync journals: %w", err)
 	}
 
 	// Sync the note pages
 	notesDir := filepath.Join(g.directory, g.config.PagesDir)
-	err = filepath.Walk(notesDir, g.createWalker(ctx, func(name string, doc *documentImpl) *indexing.Document {
-		title, err := utils.FilenameToTitle(g.config.File.NameFormat, name)
-		if err != nil {
-			return nil
-		}
-
-		return &indexing.Document{
-			Type:         indexing.DocumentTypePage,
-			LastModified: doc.LastModified(),
-			Title:        title,
-			Blocks:       doc.Blocks(),
-		}
-	}))
+	err = filepath.Walk(notesDir, walker)
 	if err != nil {
 		return fmt.Errorf("failed to sync pages: %w", err)
 	}
 
-	g.index.Sync()
-	return nil
+	return g.index.Sync()
 }
 
-func (g *Graph) createWalker(ctx context.Context, mapper func(name string, doc *documentImpl) *indexing.Document) filepath.WalkFunc {
+func (g *Graph) createWalker(ctx context.Context) filepath.WalkFunc {
 	return func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return fmt.Errorf("failed to walk journals directory: %w", err)
@@ -236,22 +227,9 @@ func (g *Graph) createWalker(ctx context.Context, mapper func(name string, doc *
 			return nil
 		}
 
-		pageImpl, err := openOrCreateDocument(path, "")
+		err = g.indexDocument(ctx, path)
 		if err != nil {
-			return fmt.Errorf("failed to open page: %w", err)
-		}
-
-		name := filepath.Base(path)
-		name = name[:len(name)-3]
-
-		doc := mapper(name, pageImpl)
-		if doc == nil {
-			return nil
-		}
-
-		err = g.index.IndexDocument(ctx, doc)
-		if err != nil {
-			return err
+			return fmt.Errorf("failed to index document: %w", err)
 		}
 
 		if g.options.syncListener != nil {
@@ -259,6 +237,134 @@ func (g *Graph) createWalker(ctx context.Context, mapper func(name string, doc *
 		}
 		return nil
 	}
+}
+
+func (g *Graph) indexDocument(ctx context.Context, docPath string) error {
+	name := filepath.Base(docPath)
+	name = name[:len(name)-3]
+
+	pageImpl, err := openOrCreateDocument(docPath, "")
+	if err != nil {
+		return fmt.Errorf("failed to open journal: %w", err)
+	}
+	var doc *indexing.Document
+
+	dir := filepath.Dir(docPath)
+
+	if dir == filepath.Join(g.directory, g.config.JournalsDir) {
+		date, err := time.Parse(g.journalNameFormat, name)
+		if err != nil {
+			// Ignore files that don't match the journal name format
+			return nil
+		}
+
+		doc = &indexing.Document{
+			Type:         indexing.DocumentTypeJournal,
+			LastModified: pageImpl.LastModified(),
+			Date:         date,
+			Blocks:       pageImpl.Blocks(),
+		}
+	} else if dir == filepath.Join(g.directory, g.config.PagesDir) {
+		title, err := utils.FilenameToTitle(g.config.File.NameFormat, name)
+		if err != nil {
+			return fmt.Errorf("failed to get title from filename: %w", err)
+		}
+
+		doc = &indexing.Document{
+			Type:         indexing.DocumentTypePage,
+			LastModified: pageImpl.LastModified(),
+			Title:        title,
+			Blocks:       pageImpl.Blocks(),
+		}
+	}
+
+	return g.index.IndexDocument(ctx, doc)
+}
+
+func (g *Graph) watchForChanges() {
+	err := g.changeWatcher.Add(filepath.Join(g.directory, g.config.JournalsDir))
+	if err != nil {
+		return
+	}
+
+	err = g.changeWatcher.Add(filepath.Join(g.directory, g.config.PagesDir))
+	if err != nil {
+		return
+	}
+
+	changes := make(chan string)
+	changeTimers := make(map[string]*time.Timer)
+	var mu sync.Mutex
+
+	go func() {
+	_outer:
+		for {
+			select {
+			case event, ok := <-g.changeWatcher.Events:
+				if !ok {
+					break _outer
+				}
+
+				if !event.Has(fsnotify.Write) {
+					continue
+				}
+
+				if filepath.Ext(event.Name) != ".md" {
+					// Only handle Markdown files
+					continue
+				}
+
+				subPath, err := filepath.Rel(g.directory, event.Name)
+				if err != nil {
+					continue
+				}
+
+				// Logseq will save as you write, so debounce changes to files
+				// so we don't index too often
+				mu.Lock()
+				if timer, found := changeTimers[subPath]; found {
+					timer.Stop()
+				}
+
+				changeTimers[subPath] = time.AfterFunc(1*time.Second, func() {
+					mu.Lock()
+					delete(changeTimers, subPath)
+					mu.Unlock()
+
+					changes <- subPath
+				})
+				mu.Unlock()
+			case _, ok := <-g.changeWatcher.Errors:
+				if !ok {
+					break _outer
+				}
+
+				// TODO: Log error
+			}
+		}
+
+		// When the watcher is closed remove all of the current timers
+		mu.Lock()
+		defer mu.Unlock()
+		for _, timer := range changeTimers {
+			timer.Stop()
+		}
+		close(changes)
+	}()
+
+	go func() {
+		ctx := context.Background()
+		for path := range changes {
+			err := g.indexDocument(ctx, filepath.Join(g.directory, path))
+			if err != nil {
+				// TODO: Log error
+			} else {
+				if g.options.syncListener != nil {
+					g.options.syncListener(path)
+				}
+			}
+		}
+	}()
 }
 
 func (g *Graph) List(ctx context.Context, query Query) (DocumentIterator[Document], error) {
