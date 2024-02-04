@@ -12,13 +12,25 @@ import (
 // Graph represents a Logseq graph. In Logseq a graph is a directory that
 // contains Markdown files for pages and journals.
 type Graph struct {
+	options *options
+
 	directory string
 
 	config            *utils.GraphConfig
 	journalNameFormat string
 }
 
-func Open(directory string) (*Graph, error) {
+func Open(directory string, opts ...Option) (*Graph, error) {
+	// Apply the options
+	options := &options{
+		blockTimeFormatToNode: func(s string) content.InlineNode {
+			return content.NewStrong(content.NewText(s))
+		},
+	}
+	for _, option := range opts {
+		option(options)
+	}
+
 	// Load the logseq/config.edn file.
 	configFile := filepath.Join(directory, "logseq", "config.edn")
 	configData, err := os.ReadFile(configFile)
@@ -36,6 +48,7 @@ func Open(directory string) (*Graph, error) {
 	journalNameFormat := utils.ConvertDateFormat(config.Journal.FileNameFormat)
 
 	return &Graph{
+		options:           options,
 		directory:         directory,
 		config:            config,
 		journalNameFormat: journalNameFormat,

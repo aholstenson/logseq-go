@@ -22,12 +22,6 @@ func newTransaction(graph *Graph) *Transaction {
 	}
 }
 
-// Journal creates a new journal helper to simplify adding blocks to one or
-// more journal pages.
-func (t *Transaction) Journal(opts ...JournalOption) *Journal {
-	return newJournal(t, opts...)
-}
-
 func (t *Transaction) OpenJournalPage(date time.Time) (*JournalPage, error) {
 	path, err := t.graph.journalPath(date)
 	if err != nil {
@@ -66,6 +60,77 @@ func (t *Transaction) OpenPage(title string) (*NotePage, error) {
 
 	t.openedPages[path] = page
 	return page, nil
+}
+
+// AddJournalBlock adds a block to the journal page for the given date.
+func (t *Transaction) AddJournalBlock(time time.Time, block *content.Block) error {
+	// Change the timezone to the local one
+	time = time.Local()
+
+	page, err := t.OpenJournalPage(time)
+	if err != nil {
+		return err
+	}
+
+	timeFormat := t.graph.options.blockTimeFormat
+
+	// Go through all the blocks on the page and figure out where we fit in
+	var insertAfter *content.Block
+	for _, b := range page.Blocks() {
+		t := parseBlockTime(timeFormat, time, b)
+		if t != nil && t.After(time) {
+			break
+		}
+
+		if b.FirstChild() != nil {
+			insertAfter = b
+		}
+	}
+
+	if timeFormat != "" {
+		// Add the timestamp to the block
+		timeNode := t.graph.options.blockTimeFormatToNode(time.Format(timeFormat))
+		firstChild := block.FirstChild()
+		if p := firstChild.(*content.Paragraph); p != nil {
+			p.PrependChild(timeNode)
+			p.InsertChildAfter(content.NewText(" "), timeNode)
+		} else {
+			block.PrependChild(content.NewParagraph(timeNode, content.NewText(" ")))
+		}
+	}
+
+	if insertAfter == nil {
+		// All blocks have timestamps after the new block, prepend it
+		page.PrependBlock(block)
+	} else {
+		// Insert the block after the block with the timestamp before the new
+		// block, or at the end of the page if there are no timestamps
+		page.InsertBlockAfter(block, insertAfter)
+	}
+
+	return nil
+}
+
+func parseBlockTime(format string, reference time.Time, block *content.Block) *time.Time {
+	firstText := block.Children().FindDeep(content.IsOfType[*content.Text]())
+	if firstText == nil {
+		return nil
+	}
+
+	// The first text node should be the timestamp
+	text := firstText.(*content.Text)
+	if text == nil {
+		return nil
+	}
+
+	t, err := time.Parse(format, text.Value)
+	if err != nil {
+		return nil
+	}
+
+	// Combine the date and time
+	t = time.Date(reference.Year(), reference.Month(), reference.Day(), t.Hour(), t.Minute(), 0, 0, reference.Location())
+	return &t
 }
 
 func (t *Transaction) Save() error {
