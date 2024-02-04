@@ -108,7 +108,6 @@ func FilenameToTitle(format FilenameFormat, filename string) (string, error) {
 		title := filename
 		title = unescapeNamespaceSlashesAndMultilowbars(title)
 		title = unescapeWindowsReservedFileBodies(title)
-		title = reservedCharsPattern.ReplaceAllStringFunc(title, decodeURLPercent)
 		title = urlEncodedPattern.ReplaceAllStringFunc(title, decodeURLPercent)
 		title = pathNormalize(title)
 		return title, nil
@@ -133,5 +132,9 @@ func unescapeWindowsReservedFileBodies(fileBody string) string {
 }
 
 func decodeURLPercent(input string) string {
-	return strings.ReplaceAll(input, "%25", "%")
+	decoded, err := url.QueryUnescape(input)
+	if err != nil {
+		return input
+	}
+	return decoded
 }

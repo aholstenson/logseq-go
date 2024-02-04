@@ -32,6 +32,10 @@ var _ = Describe("Filenames", func() {
 			Expect(utils.TitleToFilename(utils.FilenameFormatTripleLowbar, "Hello%25World")).To(Equal("Hello%2525World"))
 		})
 
+		It("encodes ?", func() {
+			Expect(utils.TitleToFilename(utils.FilenameFormatTripleLowbar, "Hello?World")).To(Equal("Hello%3FWorld"))
+		})
+
 		It("windows protected names appends triple underscores", func() {
 			Expect(utils.TitleToFilename(utils.FilenameFormatTripleLowbar, "CON")).To(Equal("CON___"))
 			Expect(utils.TitleToFilename(utils.FilenameFormatTripleLowbar, "PRN")).To(Equal("PRN___"))
@@ -81,6 +85,10 @@ var _ = Describe("Filenames", func() {
 
 		It("percent encoding in title decoded", func() {
 			Expect(utils.FilenameToTitle(utils.FilenameFormatTripleLowbar, "Hello%2525World")).To(Equal("Hello%25World"))
+		})
+
+		It("decodes ?", func() {
+			Expect(utils.FilenameToTitle(utils.FilenameFormatTripleLowbar, "Hello%3FWorld")).To(Equal("Hello?World"))
 		})
 
 		It("windows protected names appends triple underscores", func() {
