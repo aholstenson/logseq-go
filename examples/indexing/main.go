@@ -38,7 +38,7 @@ func main() {
 	}
 	defer graph.Close()
 
-	println("Ready to use query graph titles. Type 'exit' or 'quit' to exit.")
+	println("Ready to search for notes. Type 'exit' or 'quit' to exit.")
 
 	ctx := context.Background()
 
@@ -57,7 +57,7 @@ func main() {
 		}
 
 		// Perform the query
-		pages, err := graph.List(ctx, logseq.TitleMatches(query))
+		pages, err := graph.List(ctx, logseq.Or(logseq.TitleMatches(query), logseq.ContentMatches(query)))
 		if err != nil {
 			println("Failed to list pages:", err.Error())
 			return

@@ -230,6 +230,13 @@ func (i *BlugeIndex) pageToDocument(doc *Document) (*bluge.Document, error) {
 		i.transferRefs(blugeDoc, "pages", doc.Blocks[0])
 	}
 
+	var fullText strings.Builder
+	for _, block := range doc.Blocks {
+		plainText0(block.Children(), &fullText)
+		fullText.WriteString("\n\n")
+	}
+
+	blugeDoc.AddField(bluge.NewTextField("content", fullText.String()))
 	return blugeDoc, nil
 }
 
