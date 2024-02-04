@@ -72,12 +72,18 @@ func IsOfType[T Node]() NodePredicate {
 	}
 }
 
-func IsLink(node Node) bool {
-	_, ok := node.(*Link)
-	return ok
+func IsEither(a NodePredicate, b NodePredicate) NodePredicate {
+	return func(node Node) bool {
+		return a(node) || b(node)
+	}
 }
 
-func IsImage(node Node) bool {
-	_, ok := node.(*Image)
-	return ok
+func IsBoth(a NodePredicate, b NodePredicate) NodePredicate {
+	return func(node Node) bool {
+		return a(node) && b(node)
+	}
+}
+
+func IsPageReference() NodePredicate {
+	return IsEither(IsOfType[*PageLink](), IsOfType[*Hashtag]())
 }

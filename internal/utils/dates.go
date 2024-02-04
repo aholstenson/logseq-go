@@ -7,6 +7,7 @@ var jsDateKeys = []string{
 	"yy",
 	"MM",
 	"M",
+	"do",
 	"dd",
 	"d",
 	"HH",
@@ -23,6 +24,7 @@ var goDateKeys = []string{
 	"06",
 	"01",
 	"1",
+	"2", // do isn't directly supported by Go - so default to 2
 	"02",
 	"2",
 	"15",

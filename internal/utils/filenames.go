@@ -100,3 +100,38 @@ func contains(arr []string, value string) bool {
 	}
 	return false
 }
+
+func FilenameToTitle(format FilenameFormat, filename string) (string, error) {
+	switch format {
+	case FilenameFormatTripleLowbar, "":
+		// Reverse the transformations done in triLbFileNameSanity
+		title := filename
+		title = unescapeNamespaceSlashesAndMultilowbars(title)
+		title = unescapeWindowsReservedFileBodies(title)
+		title = reservedCharsPattern.ReplaceAllStringFunc(title, decodeURLPercent)
+		title = urlEncodedPattern.ReplaceAllStringFunc(title, decodeURLPercent)
+		title = pathNormalize(title)
+		return title, nil
+	}
+
+	return "", fmt.Errorf("unknown file name format: %s", format)
+}
+
+func unescapeNamespaceSlashesAndMultilowbars(s string) string {
+	s = strings.ReplaceAll(s, "___", "/")
+	s = strings.ReplaceAll(s, "%5F%5F%5F", "___")
+	s = strings.ReplaceAll(s, "%5F/", "_/")
+	s = strings.ReplaceAll(s, "/%5F", "/_")
+	return s
+}
+
+func unescapeWindowsReservedFileBodies(fileBody string) string {
+	if strings.HasSuffix(fileBody, "/") {
+		fileBody = fileBody[:len(fileBody)-1]
+	}
+	return fileBody
+}
+
+func decodeURLPercent(input string) string {
+	return strings.ReplaceAll(input, "%25", "%")
+}

@@ -14,8 +14,10 @@ var _ = Describe("Config", func() {
 		Expect(c).To(Equal(&utils.GraphConfig{
 			JournalsDir: "journals",
 			Journal: utils.JournalConfig{
-				FileNameFormat: "yyyy_MM_dd",
+				PageTitleFormat: "EEE do, MMM yyyy",
+				FileNameFormat:  "yyyy_MM_dd",
 			},
+			PagesDir: "pages",
 			File: utils.FileConfig{
 				NameFormat: utils.FilenameFormatTripleLowbar,
 			},

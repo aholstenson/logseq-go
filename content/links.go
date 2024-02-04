@@ -60,16 +60,25 @@ func (l *AutoLink) debug(p *debugPrinter) {
 
 var _ InlineNode = (*AutoLink)(nil)
 
+// PageRef is a reference to a page, such as a `PageLink` or `Hashtag`.
+type PageRef interface {
+	Node
+
+	isPageRef()
+
+	To() string
+}
+
 type PageLink struct {
 	baseNode
 
 	// To is the target of the link.
-	To string
+	to string
 }
 
 func NewPageLink(target string) *PageLink {
 	return &PageLink{
-		To: target,
+		to: target,
 	}
 }
 
@@ -77,8 +86,14 @@ func (l *PageLink) isInline() {}
 
 func (l *PageLink) debug(p *debugPrinter) {
 	p.StartType("PageLink")
-	p.Field("to", l.To)
+	p.Field("to", l.to)
 	p.EndType()
+}
+
+func (l *PageLink) isPageRef() {}
+
+func (l *PageLink) To() string {
+	return l.to
 }
 
 var _ InlineNode = (*PageLink)(nil)
@@ -87,12 +102,12 @@ type Hashtag struct {
 	baseNode
 
 	// Page is the target of the link.
-	To string
+	to string
 }
 
 func NewHashtag(target string) *Hashtag {
 	return &Hashtag{
-		To: target,
+		to: target,
 	}
 }
 
@@ -100,8 +115,14 @@ func (l *Hashtag) isInline() {}
 
 func (l *Hashtag) debug(p *debugPrinter) {
 	p.StartType("TagLink")
-	p.Field("to", l.To)
+	p.Field("to", l.to)
 	p.EndType()
+}
+
+func (l *Hashtag) isPageRef() {}
+
+func (l *Hashtag) To() string {
+	return l.to
 }
 
 var _ InlineNode = (*Hashtag)(nil)

@@ -5,8 +5,39 @@ import "github.com/aholstenson/logseq-go/content"
 type Option func(*options)
 
 type options struct {
+	index          bool
+	indexDirectory string
+
+	syncListener func(subPath string)
+
 	blockTimeFormat       string
 	blockTimeFormatToNode func(string) content.InlineNode
+}
+
+// WithIndex enables indexing of the graph in the given directory. The index
+// will only be partially rebuilt when the graph is opened.
+func WithIndex(directory string) Option {
+	return func(o *options) {
+		o.index = true
+		o.indexDirectory = directory
+	}
+}
+
+// WithInMemoryIndex enables indexing of the graph in memory. This will rebuild
+// the index when the graph is opened.
+func WithInMemoryIndex() Option {
+	return func(o *options) {
+		o.index = true
+		o.indexDirectory = ""
+	}
+}
+
+// WithSyncListener sets a listener that will be called when a page is synced
+// when opening the graph.
+func WithSyncListener(listener func(subPath string)) Option {
+	return func(o *options) {
+		o.syncListener = listener
+	}
 }
 
 // WithBlockTime sets the time format to use for timestamps on blocks added to

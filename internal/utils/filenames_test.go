@@ -57,4 +57,55 @@ var _ = Describe("Filenames", func() {
 			Expect(utils.TitleToFilename(utils.FilenameFormatTripleLowbar, "LPT9")).To(Equal("LPT9___"))
 		})
 	})
+
+	Describe("Filename to title", func() {
+		It("keeps capitalization", func() {
+			Expect(utils.FilenameToTitle(utils.FilenameFormatTripleLowbar, "Hello World")).To(Equal("Hello World"))
+		})
+
+		It("triple lowbar to namespace with slash", func() {
+			Expect(utils.FilenameToTitle(utils.FilenameFormatTripleLowbar, "Hello___World")).To(Equal("Hello/World"))
+		})
+
+		It("percent encoding before triple lowbar", func() {
+			Expect(utils.FilenameToTitle(utils.FilenameFormatTripleLowbar, "Hello%5F___World")).To(Equal("Hello_/World"))
+		})
+
+		It("percent encoding after triple lowbar", func() {
+			Expect(utils.FilenameToTitle(utils.FilenameFormatTripleLowbar, "Hello___%5FWorld")).To(Equal("Hello/_World"))
+		})
+
+		It("percent in title left as is", func() {
+			Expect(utils.FilenameToTitle(utils.FilenameFormatTripleLowbar, "Hello%World")).To(Equal("Hello%World"))
+		})
+
+		It("percent encoding in title decoded", func() {
+			Expect(utils.FilenameToTitle(utils.FilenameFormatTripleLowbar, "Hello%2525World")).To(Equal("Hello%25World"))
+		})
+
+		It("windows protected names appends triple underscores", func() {
+			Expect(utils.FilenameToTitle(utils.FilenameFormatTripleLowbar, "CON___")).To(Equal("CON"))
+			Expect(utils.FilenameToTitle(utils.FilenameFormatTripleLowbar, "PRN___")).To(Equal("PRN"))
+			Expect(utils.FilenameToTitle(utils.FilenameFormatTripleLowbar, "AUX___")).To(Equal("AUX"))
+			Expect(utils.FilenameToTitle(utils.FilenameFormatTripleLowbar, "NUL___")).To(Equal("NUL"))
+			Expect(utils.FilenameToTitle(utils.FilenameFormatTripleLowbar, "COM1___")).To(Equal("COM1"))
+			Expect(utils.FilenameToTitle(utils.FilenameFormatTripleLowbar, "COM2___")).To(Equal("COM2"))
+			Expect(utils.FilenameToTitle(utils.FilenameFormatTripleLowbar, "COM3___")).To(Equal("COM3"))
+			Expect(utils.FilenameToTitle(utils.FilenameFormatTripleLowbar, "COM4___")).To(Equal("COM4"))
+			Expect(utils.FilenameToTitle(utils.FilenameFormatTripleLowbar, "COM5___")).To(Equal("COM5"))
+			Expect(utils.FilenameToTitle(utils.FilenameFormatTripleLowbar, "COM6___")).To(Equal("COM6"))
+			Expect(utils.FilenameToTitle(utils.FilenameFormatTripleLowbar, "COM7___")).To(Equal("COM7"))
+			Expect(utils.FilenameToTitle(utils.FilenameFormatTripleLowbar, "COM8___")).To(Equal("COM8"))
+			Expect(utils.FilenameToTitle(utils.FilenameFormatTripleLowbar, "COM9___")).To(Equal("COM9"))
+			Expect(utils.FilenameToTitle(utils.FilenameFormatTripleLowbar, "LPT1___")).To(Equal("LPT1"))
+			Expect(utils.FilenameToTitle(utils.FilenameFormatTripleLowbar, "LPT2___")).To(Equal("LPT2"))
+			Expect(utils.FilenameToTitle(utils.FilenameFormatTripleLowbar, "LPT3___")).To(Equal("LPT3"))
+			Expect(utils.FilenameToTitle(utils.FilenameFormatTripleLowbar, "LPT4___")).To(Equal("LPT4"))
+			Expect(utils.FilenameToTitle(utils.FilenameFormatTripleLowbar, "LPT5___")).To(Equal("LPT5"))
+			Expect(utils.FilenameToTitle(utils.FilenameFormatTripleLowbar, "LPT6___")).To(Equal("LPT6"))
+			Expect(utils.FilenameToTitle(utils.FilenameFormatTripleLowbar, "LPT7___")).To(Equal("LPT7"))
+			Expect(utils.FilenameToTitle(utils.FilenameFormatTripleLowbar, "LPT8___")).To(Equal("LPT8"))
+			Expect(utils.FilenameToTitle(utils.FilenameFormatTripleLowbar, "LPT9___")).To(Equal("LPT9"))
+		})
+	})
 })

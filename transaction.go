@@ -12,28 +12,28 @@ import (
 type Transaction struct {
 	graph *Graph
 
-	openedPages map[string]Page
+	openedPages map[string]Document
 }
 
 func newTransaction(graph *Graph) *Transaction {
 	return &Transaction{
 		graph:       graph,
-		openedPages: make(map[string]Page),
+		openedPages: make(map[string]Document),
 	}
 }
 
-func (t *Transaction) OpenJournalPage(date time.Time) (*JournalPage, error) {
+func (t *Transaction) OpenJournal(date time.Time) (*Journal, error) {
 	path, err := t.graph.journalPath(date)
 	if err != nil {
 		return nil, err
 	}
 
-	page, ok := t.openedPages[path].(*JournalPage)
+	page, ok := t.openedPages[path].(*Journal)
 	if ok {
 		return page, nil
 	}
 
-	page, err = t.graph.OpenJournalPage(date)
+	page, err = t.graph.OpenJournal(date)
 	if err != nil {
 		return nil, err
 	}
@@ -42,13 +42,13 @@ func (t *Transaction) OpenJournalPage(date time.Time) (*JournalPage, error) {
 	return page, nil
 }
 
-func (t *Transaction) OpenPage(title string) (*NotePage, error) {
+func (t *Transaction) OpenPage(title string) (*Page, error) {
 	path, err := t.graph.pagePath(title)
 	if err != nil {
 		return nil, err
 	}
 
-	page, ok := t.openedPages[path].(*NotePage)
+	page, ok := t.openedPages[path].(*Page)
 	if ok {
 		return page, nil
 	}
@@ -67,7 +67,7 @@ func (t *Transaction) AddJournalBlock(time time.Time, block *content.Block) erro
 	// Change the timezone to the local one
 	time = time.Local()
 
-	page, err := t.OpenJournalPage(time)
+	page, err := t.OpenJournal(time)
 	if err != nil {
 		return err
 	}
@@ -158,9 +158,9 @@ func (t *Transaction) Save() error {
 
 	for path, page := range t.openedPages {
 		var root *content.Block
-		if j, ok := page.(*JournalPage); ok {
+		if j, ok := page.(*Journal); ok {
 			root = j.root
-		} else if n, ok := page.(*NotePage); ok {
+		} else if n, ok := page.(*Page); ok {
 			root = n.root
 		} else {
 			return fmt.Errorf("unknown page type: %T", page)
@@ -168,9 +168,9 @@ func (t *Transaction) Save() error {
 
 		data, err := markdown.AsString(root)
 		if err != nil {
-			if j, ok := page.(*JournalPage); ok {
+			if j, ok := page.(*Journal); ok {
 				return fmt.Errorf("failed to convert journal %s: %w", j.date.Format("2006-01-02"), err)
-			} else if n, ok := page.(*NotePage); ok {
+			} else if n, ok := page.(*Page); ok {
 				return fmt.Errorf("failed to convert page %s: %w", n.title, err)
 			}
 		}

@@ -440,7 +440,7 @@ func (w *Output) writePageLink(node *content.PageLink) error {
 		return err
 	}
 
-	err = w.write(node.To, EscapeWikiLink)
+	err = w.write(node.To(), EscapeWikiLink)
 	if err != nil {
 		return err
 	}
@@ -462,7 +462,7 @@ func (w *Output) writeHashtag(node *content.Hashtag) error {
 	}
 
 	writeExtended := false
-	for _, r := range node.To {
+	for _, r := range node.To() {
 		if unicode.IsSpace(r) {
 			writeExtended = true
 			break
@@ -476,7 +476,7 @@ func (w *Output) writeHashtag(node *content.Hashtag) error {
 		}
 	}
 
-	err = w.write(node.To, EscapeWikiLink)
+	err = w.write(node.To(), EscapeWikiLink)
 	if err != nil {
 		return err
 	}
