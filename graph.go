@@ -367,62 +367,63 @@ func (g *Graph) watchForChanges() {
 	}()
 }
 
-func (g *Graph) List(ctx context.Context, query Query) (DocumentIterator[Document], error) {
+// SearchNotes for notes in the graph.
+func (g *Graph) SearchNotes(ctx context.Context, opts ...SearchOption) (SearchResults[DocumentMetadata[Document]], error) {
 	if g.index == nil {
 		return nil, fmt.Errorf("indexing is not enabled")
 	}
 
-	iter, err := g.index.ListDocuments(ctx, query)
+	options := &searchOptions{
+		size:   10,
+		sortBy: []indexing.SortField{},
+	}
+
+	for _, opt := range opts {
+		opt(options)
+	}
+
+	if options.query == nil {
+		options.query = indexing.All()
+	}
+
+	if options.size <= 0 {
+		options.size = 10
+	}
+
+	results, err := g.index.SearchDocuments(ctx, options.query, indexing.SearchOptions{
+		Size:   options.size,
+		From:   options.from,
+		SortBy: options.sortBy,
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	return &documentIterator[Document]{
-		iterator: iter,
-		mapper: func(doc *indexing.Document) DocumentMetadata[Document] {
-			if doc.Type == indexing.DocumentTypeJournal {
-				return &documentMetadataImpl[Document]{
-					graph: g,
+	return newSearchResults(results, func(doc *indexing.Document) DocumentMetadata[Document] {
+		if doc.Type == indexing.DocumentTypeJournal {
+			return &documentMetadataImpl[Document]{
+				graph: g,
 
-					docType: DocumentTypeJournal,
-					title:   doc.Date.Format(g.journalTitleFormat),
-					date:    doc.Date,
+				docType: DocumentTypeJournal,
+				title:   doc.Date.Format(g.journalTitleFormat),
+				date:    doc.Date,
 
-					opener: func() (Document, error) {
-						return g.OpenJournal(doc.Date)
-					},
-				}
-			} else {
-				return &documentMetadataImpl[Document]{
-					graph: g,
-
-					docType: DocumentTypePage,
-					title:   doc.Title,
-					date:    time.Time{},
-
-					opener: func() (Document, error) {
-						return g.OpenPage(doc.Title)
-					},
-				}
+				opener: func() (Document, error) {
+					return g.OpenJournal(doc.Date)
+				},
 			}
-		},
-	}, nil
-}
+		} else {
+			return &documentMetadataImpl[Document]{
+				graph: g,
 
-type documentIterator[D Document] struct {
-	iterator indexing.Iterator[*indexing.Document]
-	mapper   func(*indexing.Document) DocumentMetadata[D]
-}
+				docType: DocumentTypePage,
+				title:   doc.Title,
+				date:    time.Time{},
 
-func (i *documentIterator[D]) Next() (DocumentMetadata[D], error) {
-	doc, err := i.iterator.Next()
-	if err != nil {
-		return nil, err
-	}
-
-	if doc == nil {
-		return nil, nil
-	}
-
-	return i.mapper(doc), nil
+				opener: func() (Document, error) {
+					return g.OpenPage(doc.Title)
+				},
+			}
+		}
+	}), nil
 }

@@ -270,7 +270,11 @@ func (i *BlugeIndex) transferRefs(doc *bluge.Document, field string, root conten
 	}
 }
 
-func (i *BlugeIndex) ListDocuments(ctx context.Context, q Query) (Iterator[*Document], error) {
+func (i *BlugeIndex) SearchDocuments(ctx context.Context, q Query, opts SearchOptions) (SearchResults[*Document], error) {
+	if opts.Size <= 0 {
+		opts.Size = 10
+	}
+
 	mappedQuery := mapQuery(q)
 
 	reader, err := i.reader()
@@ -285,10 +289,31 @@ func (i *BlugeIndex) ListDocuments(ctx context.Context, q Query) (Iterator[*Docu
 		).
 		AddMust(mappedQuery)
 
-	it, err := reader.Search(ctx, bluge.NewAllMatches(queryWithOnlyDocs))
-	return &blugeIterator{
-		it: it,
-	}, err
+	req := bluge.NewTopNSearch(opts.Size, queryWithOnlyDocs).
+		WithStandardAggregations().
+		SetFrom(opts.From)
+
+	if len(opts.SortBy) > 0 {
+		var sortOrder search.SortOrder
+
+		for _, sortField := range opts.SortBy {
+			sortBy := search.SortBy(search.Field(sortField.Field))
+			if !sortField.Asc {
+				sortBy.Desc()
+			}
+
+			sortOrder = append(sortOrder, sortBy)
+		}
+
+		req.SortByCustom(sortOrder)
+	}
+
+	it, err := reader.Search(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("error searching index: %w", err)
+	}
+
+	return newBlugeSearchResults(ctx, it, mapMatchToDocument)
 }
 
 func plainText(nodes content.NodeList) string {
@@ -362,21 +387,52 @@ func mapQuery(q Query) bluge.Query {
 	}
 }
 
-type blugeIterator struct {
-	it search.DocumentMatchIterator
+type blugeSearchResults[D any] struct {
+	mu sync.Mutex
+
+	count   int
+	results []D
 }
 
-func (i *blugeIterator) Next() (*Document, error) {
-	match, err := i.it.Next()
-	if err != nil {
-		return nil, err
+func newBlugeSearchResults[V any](ctx context.Context, it search.DocumentMatchIterator, mapper func(*search.DocumentMatch) V) (*blugeSearchResults[V], error) {
+	results := make([]V, 0)
+	for {
+		match, err := it.Next()
+		if err != nil {
+			return nil, fmt.Errorf("error getting next match: %w", err)
+		}
+
+		if match == nil {
+			break
+		}
+
+		doc := mapper(match)
+		results = append(results, doc)
 	}
 
-	if match == nil {
-		return nil, nil
-	}
+	return &blugeSearchResults[V]{
+		count:   int(it.Aggregations().Count()),
+		results: results,
+	}, nil
+}
 
-	var doc Document
+func (r *blugeSearchResults[V]) Size() int {
+	return len(r.results)
+}
+
+func (r *blugeSearchResults[V]) Count() int {
+	return r.count
+}
+
+func (r *blugeSearchResults[V]) Results() []V {
+	return r.results
+}
+
+var _ SearchResults[*Document] = &blugeSearchResults[*Document]{}
+
+func mapMatchToDocument(match *search.DocumentMatch) *Document {
+	doc := &Document{}
+
 	match.VisitStoredFields(func(field string, value []byte) bool {
 		switch field {
 		case "_id":
@@ -409,5 +465,5 @@ func (i *blugeIterator) Next() (*Document, error) {
 		return true
 	})
 
-	return &doc, nil
+	return doc
 }

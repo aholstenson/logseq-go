@@ -25,11 +25,36 @@ type Index interface {
 	// a zero time if the page does not exist in the index.
 	GetLastModified(ctx context.Context, subPath string) (time.Time, error)
 
-	ListDocuments(ctx context.Context, query Query) (Iterator[*Document], error)
+	// SearchDocuments searches for documents in the index.
+	SearchDocuments(ctx context.Context, query Query, opts SearchOptions) (SearchResults[*Document], error)
 }
 
-type Iterator[V any] interface {
-	Next() (V, error)
+type SearchOptions struct {
+	// Size is the number of results to return.
+	Size int
+
+	// From is the offset to start returning results from.
+	From int
+
+	// SortBy is the sort order for the results.
+	SortBy []SortField
+}
+
+type SortField struct {
+	Field string
+	Asc   bool
+}
+
+type SearchResults[V any] interface {
+	// Size is the number of results available in this result set.
+	Size() int
+
+	// Count is the number of results that are available in total. For the
+	// number of results available via Results, use Size.
+	Count() int
+
+	// Results is a slice of all the results in this result set.
+	Results() []V
 }
 
 type DocumentType int

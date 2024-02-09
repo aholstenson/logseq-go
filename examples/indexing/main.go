@@ -57,23 +57,13 @@ func main() {
 		}
 
 		// Perform the query
-		pages, err := graph.List(ctx, logseq.Or(logseq.TitleMatches(query), logseq.ContentMatches(query)))
+		pages, err := graph.SearchNotes(ctx, logseq.WithQuery(logseq.Or(logseq.TitleMatches(query), logseq.ContentMatches(query))))
 		if err != nil {
 			println("Failed to list pages:", err.Error())
 			return
 		}
 
-		for {
-			page, err := pages.Next()
-			if err != nil {
-				println("Failed to get next page:", err)
-				return
-			}
-
-			if page == nil {
-				break
-			}
-
+		for _, page := range pages.Results() {
 			println(page.Title())
 		}
 	}
