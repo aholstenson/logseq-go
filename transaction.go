@@ -7,6 +7,7 @@ import (
 
 	"github.com/aholstenson/logseq-go/content"
 	"github.com/aholstenson/logseq-go/internal/markdown"
+	"golang.org/x/net/context"
 )
 
 type Transaction struct {
@@ -60,6 +61,14 @@ func (t *Transaction) OpenPage(title string) (Page, error) {
 
 	t.openedPages[path] = page
 	return page, nil
+}
+
+func (t *Transaction) SearchPages(ctx context.Context, options ...SearchOption) (SearchResults[PageResult], error) {
+	return t.graph.searchPages(ctx, options, t)
+}
+
+func (t *Transaction) SearchBlocks(ctx context.Context, options ...SearchOption) (SearchResults[BlockResult], error) {
+	return t.graph.searchBlocks(ctx, options, t)
 }
 
 // AddJournalBlock adds a block to the journal page for the given date.

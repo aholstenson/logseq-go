@@ -14,6 +14,15 @@ import (
 	"golang.org/x/net/context"
 )
 
+// pageSource is an interface that is used to open pages and journals. Used
+// to delegate operations to the graph but allow for transactions to be used
+// for opening pages.
+type pageSource interface {
+	OpenJournal(date time.Time) (Page, error)
+
+	OpenPage(title string) (Page, error)
+}
+
 // Graph represents a Logseq graph. In Logseq a graph is a directory that
 // contains Markdown files for pages and journals.
 type Graph struct {
@@ -361,6 +370,10 @@ func (g *Graph) watchForChanges() {
 
 // SearchPages searches for pages in the graph.
 func (g *Graph) SearchPages(ctx context.Context, opts ...SearchOption) (SearchResults[PageResult], error) {
+	return g.searchPages(ctx, opts, g)
+}
+
+func (g *Graph) searchPages(ctx context.Context, opts []SearchOption, source pageSource) (SearchResults[PageResult], error) {
 	if g.index == nil {
 		return nil, fmt.Errorf("indexing is not enabled")
 	}
@@ -399,7 +412,7 @@ func (g *Graph) SearchPages(ctx context.Context, opts ...SearchOption) (SearchRe
 				date:    page.Date,
 
 				opener: func() (Page, error) {
-					return g.OpenJournal(page.Date)
+					return source.OpenJournal(page.Date)
 				},
 			}
 		} else {
@@ -409,7 +422,7 @@ func (g *Graph) SearchPages(ctx context.Context, opts ...SearchOption) (SearchRe
 				date:    time.Time{},
 
 				opener: func() (Page, error) {
-					return g.OpenPage(page.Title)
+					return source.OpenPage(page.Title)
 				},
 			}
 		}
@@ -418,6 +431,10 @@ func (g *Graph) SearchPages(ctx context.Context, opts ...SearchOption) (SearchRe
 
 // SearchBlocks searches for blocks in the graph.
 func (g *Graph) SearchBlocks(ctx context.Context, opts ...SearchOption) (SearchResults[BlockResult], error) {
+	return g.searchBlocks(ctx, opts, g)
+}
+
+func (g *Graph) searchBlocks(ctx context.Context, opts []SearchOption, source pageSource) (SearchResults[BlockResult], error) {
 	if g.index == nil {
 		return nil, fmt.Errorf("indexing is not enabled")
 	}
@@ -484,9 +501,9 @@ func (g *Graph) SearchBlocks(ctx context.Context, opts ...SearchOption) (SearchR
 
 			opener: func() (Page, error) {
 				if pageType == PageTypeJournal {
-					return g.OpenJournal(pageDate)
+					return source.OpenJournal(pageDate)
 				} else {
-					return g.OpenPage(pageTitle)
+					return source.OpenPage(pageTitle)
 				}
 			},
 		}
