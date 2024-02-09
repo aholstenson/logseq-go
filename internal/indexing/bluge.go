@@ -150,7 +150,7 @@ func (i *BlugeIndex) indexDelete(id string) error {
 	return nil
 }
 
-func (i *BlugeIndex) DeleteDocument(ctx context.Context, subPath string) error {
+func (i *BlugeIndex) DeletePage(ctx context.Context, subPath string) error {
 	err := i.indexDelete(subPath)
 	if err != nil {
 		return fmt.Errorf("error updating index: %w", err)
@@ -159,7 +159,7 @@ func (i *BlugeIndex) DeleteDocument(ctx context.Context, subPath string) error {
 	return nil
 }
 
-func (i *BlugeIndex) IndexDocument(ctx context.Context, doc *Document) error {
+func (i *BlugeIndex) IndexPage(ctx context.Context, doc *Page) error {
 	blugeDoc, err := i.pageToDocument(doc)
 	if err != nil {
 		return err
@@ -211,15 +211,15 @@ func (i *BlugeIndex) GetLastModified(ctx context.Context, subPath string) (time.
 	return lastModified, nil
 }
 
-func (i *BlugeIndex) pageToDocument(doc *Document) (*bluge.Document, error) {
+func (i *BlugeIndex) pageToDocument(doc *Page) (*bluge.Document, error) {
 	blugeDoc := bluge.NewDocument(doc.SubPath).
 		AddField(bluge.NewDateTimeField("lastModified", doc.LastModified).StoreValue())
 
 	switch doc.Type {
-	case DocumentTypePage:
+	case PageTypeDedicated:
 		blugeDoc.AddField(bluge.NewKeywordField("type", "page").StoreValue())
 		blugeDoc.AddField(bluge.NewTextField("title", doc.Title).StoreValue())
-	case DocumentTypeJournal:
+	case PageTypeJournal:
 		blugeDoc.AddField(bluge.NewKeywordField("type", "journal").StoreValue())
 		blugeDoc.AddField(bluge.NewDateTimeField("date", doc.Date).StoreValue())
 	}
@@ -270,7 +270,7 @@ func (i *BlugeIndex) transferRefs(doc *bluge.Document, field string, root conten
 	}
 }
 
-func (i *BlugeIndex) SearchDocuments(ctx context.Context, q Query, opts SearchOptions) (SearchResults[*Document], error) {
+func (i *BlugeIndex) SearchPages(ctx context.Context, q Query, opts SearchOptions) (SearchResults[*Page], error) {
 	if opts.Size <= 0 {
 		opts.Size = 10
 	}
@@ -428,10 +428,10 @@ func (r *blugeSearchResults[V]) Results() []V {
 	return r.results
 }
 
-var _ SearchResults[*Document] = &blugeSearchResults[*Document]{}
+var _ SearchResults[*Page] = &blugeSearchResults[*Page]{}
 
-func mapMatchToDocument(match *search.DocumentMatch) *Document {
-	doc := &Document{}
+func mapMatchToDocument(match *search.DocumentMatch) *Page {
+	doc := &Page{}
 
 	match.VisitStoredFields(func(field string, value []byte) bool {
 		switch field {
@@ -447,9 +447,9 @@ func mapMatchToDocument(match *search.DocumentMatch) *Document {
 		case "type":
 			switch string(value) {
 			case "page":
-				doc.Type = DocumentTypePage
+				doc.Type = PageTypeDedicated
 			case "journal":
-				doc.Type = DocumentTypeJournal
+				doc.Type = PageTypeJournal
 			}
 		case "title":
 			doc.Title = string(value)

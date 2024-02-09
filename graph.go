@@ -106,7 +106,9 @@ func (g *Graph) NewTransaction() *Transaction {
 }
 
 // Journal returns a read-only version of the journal page for the given date.
-func (g *Graph) OpenJournal(date time.Time) (*Journal, error) {
+func (g *Graph) OpenJournal(date time.Time) (Page, error) {
+	date = date.Local().Truncate(24 * time.Hour)
+
 	path, err := g.journalPath(date)
 	if err != nil {
 		return nil, err
@@ -117,18 +119,9 @@ func (g *Graph) OpenJournal(date time.Time) (*Journal, error) {
 		templatePath = filepath.Join(g.directory, g.config.DefaultTemplates.Journals)
 	}
 
-	pageImpl, err := openOrCreateDocument(path, templatePath)
-	if err != nil {
-		return nil, err
-	}
-
 	title := date.Format(g.journalTitleFormat)
 
-	return &Journal{
-		documentImpl: *pageImpl,
-		title:        title,
-		date:         date,
-	}, nil
+	return openOrCreatePage(path, PageTypeJournal, title, date, templatePath)
 }
 
 func (g *Graph) journalPath(date time.Time) (string, error) {
@@ -137,21 +130,13 @@ func (g *Graph) journalPath(date time.Time) (string, error) {
 }
 
 // Page returns a read-only version of a page for the given path.
-func (g *Graph) OpenPage(title string) (*Page, error) {
+func (g *Graph) OpenPage(title string) (Page, error) {
 	path, err := g.pagePath(title)
 	if err != nil {
 		return nil, err
 	}
 
-	pageImpl, err := openOrCreateDocument(path, "")
-	if err != nil {
-		return nil, err
-	}
-
-	return &Page{
-		documentImpl: *pageImpl,
-		title:        title,
-	}, nil
+	return openOrCreatePage(path, PageTypeDedicated, title, time.Time{}, "")
 }
 
 func (g *Graph) pagePath(title string) (string, error) {
@@ -243,11 +228,7 @@ func (g *Graph) indexDocument(ctx context.Context, docPath string) error {
 	name := filepath.Base(docPath)
 	name = name[:len(name)-3]
 
-	pageImpl, err := openOrCreateDocument(docPath, "")
-	if err != nil {
-		return fmt.Errorf("failed to open journal: %w", err)
-	}
-	var doc *indexing.Document
+	var doc *indexing.Page
 
 	dir := filepath.Dir(docPath)
 
@@ -258,8 +239,13 @@ func (g *Graph) indexDocument(ctx context.Context, docPath string) error {
 			return nil
 		}
 
-		doc = &indexing.Document{
-			Type:         indexing.DocumentTypeJournal,
+		pageImpl, err := openOrCreatePage(docPath, PageTypeJournal, "", date, "")
+		if err != nil {
+			return fmt.Errorf("failed to open page: %w", err)
+		}
+
+		doc = &indexing.Page{
+			Type:         indexing.PageTypeJournal,
 			LastModified: pageImpl.LastModified(),
 			Date:         date,
 			Blocks:       pageImpl.Blocks(),
@@ -270,15 +256,20 @@ func (g *Graph) indexDocument(ctx context.Context, docPath string) error {
 			return fmt.Errorf("failed to get title from filename: %w", err)
 		}
 
-		doc = &indexing.Document{
-			Type:         indexing.DocumentTypePage,
+		pageImpl, err := openOrCreatePage(docPath, PageTypeDedicated, title, time.Time{}, "")
+		if err != nil {
+			return fmt.Errorf("failed to open page: %w", err)
+		}
+
+		doc = &indexing.Page{
+			Type:         indexing.PageTypeDedicated,
 			LastModified: pageImpl.LastModified(),
 			Title:        title,
 			Blocks:       pageImpl.Blocks(),
 		}
 	}
 
-	return g.index.IndexDocument(ctx, doc)
+	return g.index.IndexPage(ctx, doc)
 }
 
 func (g *Graph) watchForChanges() {
@@ -367,8 +358,8 @@ func (g *Graph) watchForChanges() {
 	}()
 }
 
-// SearchNotes for notes in the graph.
-func (g *Graph) SearchNotes(ctx context.Context, opts ...SearchOption) (SearchResults[DocumentMetadata[Document]], error) {
+// SearchPages searches for pages in the graph.
+func (g *Graph) SearchPages(ctx context.Context, opts ...SearchOption) (SearchResults[PageResult], error) {
 	if g.index == nil {
 		return nil, fmt.Errorf("indexing is not enabled")
 	}
@@ -390,7 +381,7 @@ func (g *Graph) SearchNotes(ctx context.Context, opts ...SearchOption) (SearchRe
 		options.size = 10
 	}
 
-	results, err := g.index.SearchDocuments(ctx, options.query, indexing.SearchOptions{
+	results, err := g.index.SearchPages(ctx, options.query, indexing.SearchOptions{
 		Size:   options.size,
 		From:   options.from,
 		SortBy: options.sortBy,
@@ -399,28 +390,28 @@ func (g *Graph) SearchNotes(ctx context.Context, opts ...SearchOption) (SearchRe
 		return nil, err
 	}
 
-	return newSearchResults(results, func(doc *indexing.Document) DocumentMetadata[Document] {
-		if doc.Type == indexing.DocumentTypeJournal {
-			return &documentMetadataImpl[Document]{
+	return newSearchResults(results, func(doc *indexing.Page) PageResult {
+		if doc.Type == indexing.PageTypeJournal {
+			return &pageResultImpl{
 				graph: g,
 
-				docType: DocumentTypeJournal,
+				docType: PageTypeJournal,
 				title:   doc.Date.Format(g.journalTitleFormat),
 				date:    doc.Date,
 
-				opener: func() (Document, error) {
+				opener: func() (Page, error) {
 					return g.OpenJournal(doc.Date)
 				},
 			}
 		} else {
-			return &documentMetadataImpl[Document]{
+			return &pageResultImpl{
 				graph: g,
 
-				docType: DocumentTypePage,
+				docType: PageTypeDedicated,
 				title:   doc.Title,
 				date:    time.Time{},
 
-				opener: func() (Document, error) {
+				opener: func() (Page, error) {
 					return g.OpenPage(doc.Title)
 				},
 			}

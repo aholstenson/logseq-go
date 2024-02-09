@@ -9,22 +9,26 @@ import (
 	"github.com/aholstenson/logseq-go/internal/markdown"
 )
 
-type DocumentType int
+type PageType int
 
 const (
-	DocumentTypePage DocumentType = iota
-	DocumentTypeJournal
+	PageTypeDedicated PageType = iota
+	PageTypeJournal
 )
 
-type Document interface {
-	// Type returns the type of the document.
-	Type() DocumentType
+type Page interface {
+	// Type returns the type of the page.
+	Type() PageType
 
 	// IsNew returns true if the page is new and wasn't loaded from disk.
 	IsNew() bool
 
-	// Title returns the title for the document.
+	// Title returns the title for the page.
 	Title() string
+
+	// Date gets the date if this page is a journal. Will return the zero time if
+	// the page is not a journal.
+	Date() time.Time
 
 	// LastChanged returns the last time the page was changed. Use `IsNew` to
 	// check if the page was loaded from disk or not.
@@ -52,14 +56,19 @@ type Document interface {
 	InsertBlockBefore(block *content.Block, before *content.Block)
 }
 
-type documentImpl struct {
+type pageImpl struct {
 	path         string
-	root         *content.Block
 	isNew        bool
 	lastModified time.Time
+
+	pageType PageType
+	title    string
+	date     time.Time
+
+	root *content.Block
 }
 
-func openOrCreateDocument(path string, templatePath string) (*documentImpl, error) {
+func openOrCreatePage(path string, pageType PageType, title string, date time.Time, templatePath string) (*pageImpl, error) {
 	// Get the last modified time for the file
 	info, err := os.Stat(path)
 	var root *content.Block
@@ -90,23 +99,40 @@ func openOrCreateDocument(path string, templatePath string) (*documentImpl, erro
 		lastModified = info.ModTime()
 	}
 
-	return &documentImpl{
+	return &pageImpl{
 		path:         path,
-		root:         root,
 		isNew:        info == nil,
 		lastModified: lastModified,
+
+		pageType: pageType,
+		title:    title,
+		date:     date,
+
+		root: root,
 	}, nil
 }
 
-func (p *documentImpl) IsNew() bool {
+func (p *pageImpl) IsNew() bool {
 	return p.isNew
 }
 
-func (p *documentImpl) LastModified() time.Time {
+func (p *pageImpl) LastModified() time.Time {
 	return p.lastModified
 }
 
-func (p *documentImpl) Properties() *content.Properties {
+func (p *pageImpl) Type() PageType {
+	return p.pageType
+}
+
+func (p *pageImpl) Title() string {
+	return p.title
+}
+
+func (p *pageImpl) Date() time.Time {
+	return p.date
+}
+
+func (p *pageImpl) Properties() *content.Properties {
 	blocks := p.root.Blocks()
 	if len(blocks) == 0 {
 		block := content.NewBlock()
@@ -117,27 +143,27 @@ func (p *documentImpl) Properties() *content.Properties {
 	return blocks[0].Properties()
 }
 
-func (p *documentImpl) Blocks() content.BlockList {
+func (p *pageImpl) Blocks() content.BlockList {
 	return p.root.Blocks()
 }
 
-func (p *documentImpl) AddBlock(block *content.Block) {
+func (p *pageImpl) AddBlock(block *content.Block) {
 	p.root.AddChild(block)
 }
 
-func (p *documentImpl) RemoveBlock(block *content.Block) {
+func (p *pageImpl) RemoveBlock(block *content.Block) {
 	p.root.RemoveChild(block)
 }
 
-func (p *documentImpl) PrependBlock(block *content.Block) {
+func (p *pageImpl) PrependBlock(block *content.Block) {
 	p.root.PrependChild(block)
 }
 
-func (p *documentImpl) InsertBlockAfter(block *content.Block, after *content.Block) {
+func (p *pageImpl) InsertBlockAfter(block *content.Block, after *content.Block) {
 	p.root.InsertChildAfter(block, after)
 }
 
-func (p *documentImpl) InsertBlockBefore(block *content.Block, before *content.Block) {
+func (p *pageImpl) InsertBlockBefore(block *content.Block, before *content.Block) {
 	p.root.InsertChildBefore(block, before)
 }
 
@@ -159,41 +185,3 @@ func loadRootBlock(path string) (*content.Block, error) {
 
 	return block, nil
 }
-
-type Journal struct {
-	documentImpl
-
-	title string
-	date  time.Time
-}
-
-func (p *Journal) Type() DocumentType {
-	return DocumentTypeJournal
-}
-
-func (p *Journal) Title() string {
-	return p.title
-}
-
-// Date gets the date for the journal page.
-func (p *Journal) Date() time.Time {
-	return p.date
-}
-
-var _ Document = &Journal{}
-
-type Page struct {
-	documentImpl
-
-	title string
-}
-
-func (p *Page) Type() DocumentType {
-	return DocumentTypePage
-}
-
-func (p *Page) Title() string {
-	return p.title
-}
-
-var _ Document = &Page{}

@@ -89,44 +89,41 @@ func newSearchResults[I any, O any](r indexing.SearchResults[I], mapper func(I) 
 	}
 }
 
-type DocumentMetadata[D Document] interface {
-	// Type returns the type of the document.
-	Type() DocumentType
+type PageResult interface {
+	// Type returns the type of the page.
+	Type() PageType
 
-	// Title returns the title for the document.
+	// Title returns the title of the page.
 	Title() string
 
-	// Date returns the date if this document is a journal.
+	// Date returns the date if this page is a journal.
 	Date() time.Time
 
-	// Open the document.
-	Open() (D, error)
+	// Open the page.
+	Open() (Page, error)
 }
 
-type BlockMetadata[S any] interface {
-}
-
-type documentMetadataImpl[D Document] struct {
+type pageResultImpl struct {
 	graph *Graph
 
-	docType DocumentType
+	docType PageType
 	title   string
 	date    time.Time
-	opener  func() (D, error)
+	opener  func() (Page, error)
 }
 
-func (d *documentMetadataImpl[D]) Type() DocumentType {
+func (d *pageResultImpl) Type() PageType {
 	return d.docType
 }
 
-func (d *documentMetadataImpl[D]) Title() string {
+func (d *pageResultImpl) Title() string {
 	return d.title
 }
 
-func (d *documentMetadataImpl[D]) Date() time.Time {
+func (d *pageResultImpl) Date() time.Time {
 	return d.date
 }
 
-func (d *documentMetadataImpl[D]) Open() (Document, error) {
+func (d *pageResultImpl) Open() (Page, error) {
 	return d.opener()
 }

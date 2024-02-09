@@ -12,23 +12,23 @@ import (
 type Transaction struct {
 	graph *Graph
 
-	openedPages map[string]Document
+	openedPages map[string]Page
 }
 
 func newTransaction(graph *Graph) *Transaction {
 	return &Transaction{
 		graph:       graph,
-		openedPages: make(map[string]Document),
+		openedPages: make(map[string]Page),
 	}
 }
 
-func (t *Transaction) OpenJournal(date time.Time) (*Journal, error) {
+func (t *Transaction) OpenJournal(date time.Time) (Page, error) {
 	path, err := t.graph.journalPath(date)
 	if err != nil {
 		return nil, err
 	}
 
-	page, ok := t.openedPages[path].(*Journal)
+	page, ok := t.openedPages[path].(Page)
 	if ok {
 		return page, nil
 	}
@@ -42,13 +42,13 @@ func (t *Transaction) OpenJournal(date time.Time) (*Journal, error) {
 	return page, nil
 }
 
-func (t *Transaction) OpenPage(title string) (*Page, error) {
+func (t *Transaction) OpenPage(title string) (Page, error) {
 	path, err := t.graph.pagePath(title)
 	if err != nil {
 		return nil, err
 	}
 
-	page, ok := t.openedPages[path].(*Page)
+	page, ok := t.openedPages[path].(Page)
 	if ok {
 		return page, nil
 	}
@@ -158,20 +158,18 @@ func (t *Transaction) Save() error {
 
 	for path, page := range t.openedPages {
 		var root *content.Block
-		if j, ok := page.(*Journal); ok {
+		if j, ok := page.(*pageImpl); ok {
 			root = j.root
-		} else if n, ok := page.(*Page); ok {
-			root = n.root
 		} else {
 			return fmt.Errorf("unknown page type: %T", page)
 		}
 
 		data, err := markdown.AsString(root)
 		if err != nil {
-			if j, ok := page.(*Journal); ok {
-				return fmt.Errorf("failed to convert journal %s: %w", j.date.Format("2006-01-02"), err)
-			} else if n, ok := page.(*Page); ok {
-				return fmt.Errorf("failed to convert page %s: %w", n.title, err)
+			if page.Type() == PageTypeJournal {
+				return fmt.Errorf("failed to convert journal %s: %w", page.Date().Format("2006-01-02"), err)
+			} else {
+				return fmt.Errorf("failed to convert page %s: %w", page.Title(), err)
 			}
 		}
 

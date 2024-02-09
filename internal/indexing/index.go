@@ -15,18 +15,18 @@ type Index interface {
 	// Syncing may involve writing to disk.
 	Sync() error
 
-	// DeleteDocument removes a document from the index.
-	DeleteDocument(ctx context.Context, subPath string) error
+	// DeletePage removes a page from the index.
+	DeletePage(ctx context.Context, subPath string) error
 
-	// IndexDocument indexes a page or journal in the search index.
-	IndexDocument(ctx context.Context, doc *Document) error
+	// IndexPage indexes a page in the search index.
+	IndexPage(ctx context.Context, doc *Page) error
 
 	// GetLastModified returns the last modified time for a page. Should return
 	// a zero time if the page does not exist in the index.
 	GetLastModified(ctx context.Context, subPath string) (time.Time, error)
 
-	// SearchDocuments searches for documents in the index.
-	SearchDocuments(ctx context.Context, query Query, opts SearchOptions) (SearchResults[*Document], error)
+	// SearchPages searches for pages in the index.
+	SearchPages(ctx context.Context, query Query, opts SearchOptions) (SearchResults[*Page], error)
 }
 
 type SearchOptions struct {
@@ -57,28 +57,28 @@ type SearchResults[V any] interface {
 	Results() []V
 }
 
-type DocumentType int
+type PageType int
 
 const (
-	DocumentTypePage DocumentType = iota
-	DocumentTypeJournal
+	PageTypeDedicated PageType = iota
+	PageTypeJournal
 )
 
-type Document struct {
-	// SubPath is the sub path of the document in the graph.
+type Page struct {
+	// SubPath is the sub path of the page in the graph.
 	SubPath string
 
-	// Type is the type of the document.
-	Type DocumentType
+	// Type is the type of the page.
+	Type PageType
 
-	// LastModified is the last time the document was modified on disk.
+	// LastModified is the last time the page was modified on disk.
 	LastModified time.Time
 
-	// Title is the title of the page. Only used for pages.
+	// Title is the title of the page. Only used for dedicated pages.
 	Title string
 	// Date is the date of the journal. Only used for journals.
 	Date time.Time
 
-	// Blocks is the blocks of the document, only used while indexing.
+	// Blocks is the blocks of the page, only used while indexing.
 	Blocks content.BlockList
 }

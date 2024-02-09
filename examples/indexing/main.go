@@ -57,7 +57,7 @@ func main() {
 		}
 
 		// Perform the query
-		pages, err := graph.SearchNotes(ctx, logseq.WithQuery(logseq.Or(logseq.TitleMatches(query), logseq.ContentMatches(query))))
+		pages, err := graph.SearchPages(ctx, logseq.WithQuery(logseq.Or(logseq.TitleMatches(query), logseq.ContentMatches(query))))
 		if err != nil {
 			println("Failed to list pages:", err.Error())
 			return
