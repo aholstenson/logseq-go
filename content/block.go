@@ -40,7 +40,22 @@ func (b *Block) Blocks() BlockList {
 	return blocks
 }
 
-func (b *Block) ID() (string, bool) {
+// ID gets the identifier of the block. If the block does not have an ID this
+// will return an empty string.
+func (b *Block) ID() string {
+	p := b.Properties()
+	id := p.GetAsNode("id")
+	if id != nil {
+		return id.FirstChild().(*Text).Value
+	}
+
+	return ""
+}
+
+// WithID gets or sets the identifier of the block. If the block does not have
+// an ID, one is generated and set on the block, and the second return value is
+// true.
+func (b *Block) WithID() (string, bool) {
 	p := b.Properties()
 	id := p.GetAsNode("id")
 	if id != nil {

@@ -269,6 +269,7 @@ func (g *Graph) indexDocument(ctx context.Context, docPath string) error {
 		}
 	}
 
+	doc.SubPath, _ = filepath.Rel(g.directory, docPath)
 	return g.index.IndexPage(ctx, doc)
 }
 
@@ -390,31 +391,104 @@ func (g *Graph) SearchPages(ctx context.Context, opts ...SearchOption) (SearchRe
 		return nil, err
 	}
 
-	return newSearchResults(results, func(doc *indexing.Page) PageResult {
-		if doc.Type == indexing.PageTypeJournal {
+	return newSearchResults(results, func(page *indexing.Page) PageResult {
+		if page.Type == indexing.PageTypeJournal {
 			return &pageResultImpl{
-				graph: g,
-
 				docType: PageTypeJournal,
-				title:   doc.Date.Format(g.journalTitleFormat),
-				date:    doc.Date,
+				title:   page.Date.Format(g.journalTitleFormat),
+				date:    page.Date,
 
 				opener: func() (Page, error) {
-					return g.OpenJournal(doc.Date)
+					return g.OpenJournal(page.Date)
 				},
 			}
 		} else {
 			return &pageResultImpl{
-				graph: g,
-
 				docType: PageTypeDedicated,
-				title:   doc.Title,
+				title:   page.Title,
 				date:    time.Time{},
 
 				opener: func() (Page, error) {
-					return g.OpenPage(doc.Title)
+					return g.OpenPage(page.Title)
 				},
 			}
+		}
+	}), nil
+}
+
+// SearchBlocks searches for blocks in the graph.
+func (g *Graph) SearchBlocks(ctx context.Context, opts ...SearchOption) (SearchResults[BlockResult], error) {
+	if g.index == nil {
+		return nil, fmt.Errorf("indexing is not enabled")
+	}
+
+	options := &searchOptions{
+		size:   10,
+		sortBy: []indexing.SortField{},
+	}
+
+	for _, opt := range opts {
+		opt(options)
+	}
+
+	if options.query == nil {
+		options.query = indexing.All()
+	}
+
+	if options.size <= 0 {
+		options.size = 10
+	}
+
+	results, err := g.index.SearchBlocks(ctx, options.query, indexing.SearchOptions{
+		Size:   options.size,
+		From:   options.from,
+		SortBy: options.sortBy,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return newSearchResults(results, func(block *indexing.Block) BlockResult {
+		dir := filepath.Dir(block.PageSubPath)
+		name := filepath.Base(block.PageSubPath)
+		name = name[:len(name)-3]
+
+		var err error
+		pageType := PageTypeDedicated
+		pageDate := time.Time{}
+		var pageTitle string
+		if dir == g.config.JournalsDir {
+			pageType = PageTypeJournal
+
+			pageDate, err = time.Parse(g.journalNameFormat, name)
+			if err != nil {
+				// TODO: This is an edge case where the format of journals has changed since indexing
+			}
+
+			pageTitle = pageDate.Format(g.journalTitleFormat)
+		} else {
+			pageTitle, err = utils.FilenameToTitle(g.config.File.NameFormat, name)
+			if err != nil {
+				// TODO: This page is not in the expected format
+			}
+		}
+
+		return &blockResultImpl{
+			pageType:  pageType,
+			pageTitle: pageTitle,
+			pageDate:  pageDate,
+
+			id:       block.ID,
+			preview:  block.Preview,
+			location: block.Location,
+
+			opener: func() (Page, error) {
+				if pageType == PageTypeJournal {
+					return g.OpenJournal(pageDate)
+				} else {
+					return g.OpenPage(pageTitle)
+				}
+			},
 		}
 	}), nil
 }

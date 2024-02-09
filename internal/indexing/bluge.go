@@ -3,6 +3,7 @@ package indexing
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -159,8 +160,8 @@ func (i *BlugeIndex) DeletePage(ctx context.Context, subPath string) error {
 	return nil
 }
 
-func (i *BlugeIndex) IndexPage(ctx context.Context, doc *Page) error {
-	blugeDoc, err := i.pageToDocument(doc)
+func (i *BlugeIndex) IndexPage(ctx context.Context, page *Page) error {
+	blugeDoc, err := i.pageToDocument(page)
 	if err != nil {
 		return err
 	}
@@ -168,6 +169,11 @@ func (i *BlugeIndex) IndexPage(ctx context.Context, doc *Page) error {
 	err = i.indexUpdate(blugeDoc)
 	if err != nil {
 		return fmt.Errorf("error updating index: %w", err)
+	}
+
+	err = i.indexBlocks(ctx, page)
+	if err != nil {
+		return fmt.Errorf("error indexing blocks: %w", err)
 	}
 
 	return nil
@@ -228,16 +234,137 @@ func (i *BlugeIndex) pageToDocument(doc *Page) (*bluge.Document, error) {
 		props := doc.Blocks[0].Properties()
 		i.transferProperties(blugeDoc, props)
 		i.transferRefs(blugeDoc, "pages", doc.Blocks[0])
+
+		preview := generatePreview(doc.Blocks[0].Children())
+		blugeDoc.AddField(bluge.NewKeywordField("preview", preview).StoreValue())
 	}
 
 	var fullText strings.Builder
-	for _, block := range doc.Blocks {
+	for i, block := range doc.Blocks {
+		if i > 0 {
+			fullText.WriteString("\n\n")
+		}
+
 		plainText0(block.Children(), &fullText)
-		fullText.WriteString("\n\n")
+	}
+	blugeDoc.AddField(bluge.NewTextField("content", fullText.String()))
+
+	return blugeDoc, nil
+}
+
+func (i *BlugeIndex) indexBlocks(ctx context.Context, page *Page) error {
+	// Delete all of the old blocks
+	reader, err := i.reader()
+	if err != nil {
+		return err
 	}
 
+	// To enable us to remove any indexed blocks that are no longer present
+	// on the page we search for blocks and keep track of their IDs.
+	it, err := reader.Search(ctx, bluge.NewAllMatches(
+		bluge.NewTermQuery(page.SubPath).SetField("page"),
+	))
+	if err != nil {
+		return fmt.Errorf("error searching index: %w", err)
+	}
+
+	idSet := make(map[string]struct{})
+	for {
+		match, err := it.Next()
+		if err != nil {
+			return fmt.Errorf("error getting next match: %w", err)
+		}
+
+		if match == nil {
+			break
+		}
+
+		match.VisitStoredFields(func(field string, value []byte) bool {
+			if field == "_id" {
+				idSet[string(value)] = struct{}{}
+				return false
+			}
+
+			return true
+		})
+	}
+
+	// Index the new blocks
+	for _, block := range page.Blocks {
+		id := blockID(page, block)
+
+		blugeDoc, err := i.blockToDocument(page, id, block)
+		if err != nil {
+			return err
+		}
+
+		err = i.indexUpdate(blugeDoc)
+		if err != nil {
+			return fmt.Errorf("error updating index: %w", err)
+		}
+
+		delete(idSet, id)
+	}
+
+	// Remove any blocks that are no longer present
+	for id := range idSet {
+		err = i.indexDelete(id)
+		if err != nil {
+			return fmt.Errorf("error updating index: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (i *BlugeIndex) blockToDocument(page *Page, id string, block *content.Block) (*bluge.Document, error) {
+	blugeDoc := bluge.NewDocument(id).
+		AddField(bluge.NewKeywordField("type", "block").StoreValue()).
+		AddField(bluge.NewKeywordField("page", page.SubPath).StoreValue())
+
+	if id := block.ID(); id != "" {
+		blugeDoc.AddField(bluge.NewKeywordField("id", id).StoreValue())
+	}
+
+	props := block.Properties()
+	i.transferProperties(blugeDoc, props)
+	i.transferRefs(blugeDoc, "pages", block)
+
+	var fullText strings.Builder
+	plainText0(block.Content(), &fullText)
 	blugeDoc.AddField(bluge.NewTextField("content", fullText.String()))
+
+	preview := generatePreview(block.Content())
+	blugeDoc.AddField(bluge.NewTextField("preview", preview).StoreValue())
+
 	return blugeDoc, nil
+}
+
+// blockID returns a semi-stable ID based on the location of the block on the
+// page.
+func blockID(page *Page, block *content.Block) string {
+	var path strings.Builder
+	path.WriteString(page.SubPath)
+
+	current := block
+	for current != nil {
+		idx := 0
+		for sibling := current.PreviousSibling(); sibling != nil; sibling = sibling.PreviousSibling() {
+			idx++
+		}
+
+		path.WriteRune(':')
+		path.WriteString(strconv.Itoa(idx))
+
+		// Move up the hierarchy
+		parent := current.Parent()
+		if parent == nil {
+			break
+		}
+		current = parent.(*content.Block)
+	}
+
+	return path.String()
 }
 
 func (i *BlugeIndex) transferProperties(doc *bluge.Document, properties *content.Properties) {
@@ -293,6 +420,47 @@ func (i *BlugeIndex) SearchPages(ctx context.Context, q Query, opts SearchOption
 		WithStandardAggregations().
 		SetFrom(opts.From)
 
+	i.transferSortBy(opts, req)
+
+	it, err := reader.Search(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("error searching index: %w", err)
+	}
+
+	return newBlugeSearchResults(ctx, it, mapMatchToPage)
+}
+
+func (i *BlugeIndex) SearchBlocks(ctx context.Context, q Query, opts SearchOptions) (SearchResults[*Block], error) {
+	if opts.Size <= 0 {
+		opts.Size = 10
+	}
+
+	mappedQuery := mapQuery(q)
+
+	reader, err := i.reader()
+	if err != nil {
+		return nil, err
+	}
+
+	queryWithOnlyBlocks := bluge.NewBooleanQuery().
+		AddMust(bluge.NewTermQuery("block").SetField("type")).
+		AddMust(mappedQuery)
+
+	req := bluge.NewTopNSearch(opts.Size, queryWithOnlyBlocks).
+		WithStandardAggregations().
+		SetFrom(opts.From)
+
+	i.transferSortBy(opts, req)
+
+	it, err := reader.Search(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("error searching index: %w", err)
+	}
+
+	return newBlugeSearchResults(ctx, it, mapMatchToBlock)
+}
+
+func (*BlugeIndex) transferSortBy(opts SearchOptions, req *bluge.TopNSearch) {
 	if len(opts.SortBy) > 0 {
 		var sortOrder search.SortOrder
 
@@ -307,13 +475,26 @@ func (i *BlugeIndex) SearchPages(ctx context.Context, q Query, opts SearchOption
 
 		req.SortByCustom(sortOrder)
 	}
+}
 
-	it, err := reader.Search(ctx, req)
-	if err != nil {
-		return nil, fmt.Errorf("error searching index: %w", err)
+// generatePreview takes a list of nodes and generates a preview of the content.
+// Previews are intended for the user in search results, so we look for the first
+// paragraph, list, blockquote or code block and use that as the preview.
+func generatePreview(nodes content.NodeList) string {
+	for _, node := range nodes {
+		switch n := node.(type) {
+		case *content.Paragraph:
+			return plainText(n.Children())
+		case *content.List:
+			return plainText(n.Children())
+		case *content.Blockquote:
+			return plainText(n.Children())
+		case *content.CodeBlock:
+			return n.Code
+		}
 	}
 
-	return newBlugeSearchResults(ctx, it, mapMatchToDocument)
+	return ""
 }
 
 func plainText(nodes content.NodeList) string {
@@ -331,9 +512,20 @@ func plainText0(nodes content.NodeList, builder *strings.Builder) {
 				builder.WriteRune('\n')
 			}
 		case *content.Hashtag:
+			builder.WriteString("#")
 			builder.WriteString(n.To())
 		case *content.PageLink:
 			builder.WriteString(n.To())
+		case *content.CodeSpan:
+			builder.WriteString(n.Value)
+		case *content.CodeBlock:
+			if builder.Len() > 0 {
+				builder.WriteString("\n\n")
+			}
+
+			builder.WriteString(n.Code)
+		case *content.Properties:
+			// Skip properties
 		case content.HasChildren:
 			if _, blockNode := n.(content.BlockNode); blockNode && builder.Len() > 0 {
 				builder.WriteString("\n\n")
@@ -430,40 +622,78 @@ func (r *blugeSearchResults[V]) Results() []V {
 
 var _ SearchResults[*Page] = &blugeSearchResults[*Page]{}
 
-func mapMatchToDocument(match *search.DocumentMatch) *Page {
-	doc := &Page{}
+func mapMatchToPage(match *search.DocumentMatch) *Page {
+	page := &Page{}
 
 	match.VisitStoredFields(func(field string, value []byte) bool {
 		switch field {
 		case "_id":
-			doc.SubPath = string(value)
+			page.SubPath = string(value)
 		case "lastModified":
 			t, err := bluge.DecodeDateTime(value)
 			if err != nil {
 				return false
 			}
 
-			doc.LastModified = t
+			page.LastModified = t
 		case "type":
 			switch string(value) {
 			case "page":
-				doc.Type = PageTypeDedicated
+				page.Type = PageTypeDedicated
 			case "journal":
-				doc.Type = PageTypeJournal
+				page.Type = PageTypeJournal
 			}
 		case "title":
-			doc.Title = string(value)
+			page.Title = string(value)
 		case "date":
 			t, err := bluge.DecodeDateTime(value)
 			if err != nil {
 				return false
 			}
 
-			doc.Date = t
+			page.Date = t
 		}
 
 		return true
 	})
 
-	return doc
+	return page
+}
+
+func mapMatchToBlock(match *search.DocumentMatch) *Block {
+	block := &Block{}
+
+	match.VisitStoredFields(func(field string, value []byte) bool {
+		switch field {
+		case "_id":
+			// The ID of the block is the sub path of the page with the location in reverse
+			// order appended to it.
+			location := make([]int, 0)
+			for _, part := range strings.Split(string(value), ":") {
+				idx, err := strconv.Atoi(part)
+				if err != nil {
+					break
+				}
+
+				location = append(location, idx)
+			}
+
+			// Reverse the location
+			for i, j := 0, len(location)-1; i < j; i, j = i+1, j-1 {
+				location[i], location[j] = location[j], location[i]
+			}
+
+			block.Location = location
+		case "page":
+			block.PageSubPath = string(value)
+		case "id":
+			block.ID = string(value)
+		case "preview":
+			block.Preview = string(value)
+		}
+
+		return true
+	})
+
+	return block
 }

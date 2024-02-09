@@ -27,6 +27,9 @@ type Index interface {
 
 	// SearchPages searches for pages in the index.
 	SearchPages(ctx context.Context, query Query, opts SearchOptions) (SearchResults[*Page], error)
+
+	// SearchBlocks searches for blocks in the index.
+	SearchBlocks(ctx context.Context, query Query, opts SearchOptions) (SearchResults[*Block], error)
 }
 
 type SearchOptions struct {
@@ -79,6 +82,23 @@ type Page struct {
 	// Date is the date of the journal. Only used for journals.
 	Date time.Time
 
+	// Preview string of the page, only used when searching.
+	Preview string
+
 	// Blocks is the blocks of the page, only used while indexing.
 	Blocks content.BlockList
+}
+
+type Block struct {
+	// PageSubPath is the sub path of the page this block belongs to.
+	PageSubPath string
+
+	// ID is the stable id of the block if it has one.
+	ID string
+
+	// Location is the location of the block in the page.
+	Location []int
+
+	// Preview is a preview of the block.
+	Preview string
 }

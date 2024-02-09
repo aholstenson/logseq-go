@@ -38,7 +38,7 @@ func main() {
 	}
 	defer graph.Close()
 
-	println("Ready to search for notes. Type 'exit' or 'quit' to exit.")
+	println("Ready to search for blocks. Type 'exit' or 'quit' to exit.")
 
 	ctx := context.Background()
 
@@ -57,14 +57,28 @@ func main() {
 		}
 
 		// Perform the query
-		pages, err := graph.SearchPages(ctx, logseq.WithQuery(logseq.Or(logseq.TitleMatches(query), logseq.ContentMatches(query))))
+		blocks, err := graph.SearchBlocks(ctx, logseq.WithQuery(logseq.ContentMatches(query)))
 		if err != nil {
-			println("Failed to list pages:", err.Error())
+			println("Failed to search blocks:", err.Error())
 			return
 		}
 
-		for _, page := range pages.Results() {
-			println(page.Title())
+		if blocks.Size() < blocks.Count() {
+			println("Showing", blocks.Size(), "of", blocks.Count(), "results")
+		} else {
+			println("Showing", blocks.Size(), "results")
+		}
+		println("")
+
+		for _, page := range blocks.Results() {
+			switch page.PageType() {
+			case logseq.PageTypeDedicated:
+				println("📝 " + page.PageTitle())
+			case logseq.PageTypeJournal:
+				println("📅 " + page.PageTitle())
+			}
+			println(page.Preview())
+			println("------")
 		}
 	}
 }

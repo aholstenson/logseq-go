@@ -1,8 +1,10 @@
 package logseq
 
 import (
+	"errors"
 	"time"
 
+	"github.com/aholstenson/logseq-go/content"
 	"github.com/aholstenson/logseq-go/internal/indexing"
 )
 
@@ -104,8 +106,6 @@ type PageResult interface {
 }
 
 type pageResultImpl struct {
-	graph *Graph
-
 	docType PageType
 	title   string
 	date    time.Time
@@ -126,4 +126,102 @@ func (d *pageResultImpl) Date() time.Time {
 
 func (d *pageResultImpl) Open() (Page, error) {
 	return d.opener()
+}
+
+var ErrBlockNotFound = errors.New("block not found")
+
+// BlockResult represents a block in a page.
+type BlockResult interface {
+	// PageType gets the type of the page that this block belongs to.
+	PageType() PageType
+
+	// PageTitle gets the title of the page that this block belongs to.
+	PageTitle() string
+
+	// PageDate gets the date of the journal that this block belongs to. If
+	// the page is not a journal, this will return the zero time.
+	PageDate() time.Time
+
+	// ID returns the stable identifier of the block, for use with block
+	// references. If no ID is available, this will return an empty string.
+	ID() string
+
+	// Preview gets a preview of the block.
+	Preview() string
+
+	// OpenPage opens the page that this block belongs to.
+	OpenPage() (Page, error)
+
+	// Open the page of the block and return the block and page.
+	Open() (*content.Block, Page, error)
+}
+
+type blockResultImpl struct {
+	pageType  PageType
+	pageTitle string
+	pageDate  time.Time
+
+	id       string
+	preview  string
+	location []int
+
+	opener func() (Page, error)
+}
+
+func (b *blockResultImpl) PageType() PageType {
+	return b.pageType
+}
+
+func (b *blockResultImpl) PageTitle() string {
+	return b.pageTitle
+}
+
+func (b *blockResultImpl) PageDate() time.Time {
+	return b.pageDate
+}
+
+func (b *blockResultImpl) ID() string {
+	return b.id
+}
+
+func (b *blockResultImpl) Preview() string {
+	return b.preview
+}
+
+func (b *blockResultImpl) OpenPage() (Page, error) {
+	return b.opener()
+}
+
+func (b *blockResultImpl) Open() (*content.Block, Page, error) {
+	page, err := b.opener()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if b.id != "" {
+		// We have a stable identifier, use that to find the block
+		block := page.Blocks().FindDeep(func(block *content.Block) bool {
+			return b.id == block.ID()
+		})
+
+		if block != nil {
+			return block, page, nil
+		}
+
+		return nil, nil, ErrBlockNotFound
+	}
+
+	// No stable id, walk the location and return the block
+	blocks := page.Blocks()
+	var block *content.Block
+	for _, i := range b.location {
+		if i > len(blocks) {
+			return nil, nil, ErrBlockNotFound
+		}
+
+		block = blocks[i]
+		blocks = block.Blocks()
+	}
+
+	return block, page, nil
 }
