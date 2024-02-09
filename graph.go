@@ -1,6 +1,7 @@
 package logseq
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,7 +12,6 @@ import (
 	"github.com/aholstenson/logseq-go/internal/indexing"
 	"github.com/aholstenson/logseq-go/internal/utils"
 	"github.com/fsnotify/fsnotify"
-	"golang.org/x/net/context"
 )
 
 // pageSource is an interface that is used to open pages and journals. Used

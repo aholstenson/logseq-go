@@ -1,13 +1,13 @@
 package logseq
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"time"
 
 	"github.com/aholstenson/logseq-go/content"
 	"github.com/aholstenson/logseq-go/internal/markdown"
-	"golang.org/x/net/context"
 )
 
 type Transaction struct {
