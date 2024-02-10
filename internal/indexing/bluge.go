@@ -157,6 +157,19 @@ func (i *BlugeIndex) DeletePage(ctx context.Context, subPath string) error {
 		return fmt.Errorf("error updating index: %w", err)
 	}
 
+	// Delete all of the blocks associated with the page
+	idSet, err := i.getBlocks(ctx, subPath)
+	if err != nil {
+		return fmt.Errorf("error getting blocks: %w", err)
+	}
+
+	for id := range idSet {
+		err = i.indexDelete(id)
+		if err != nil {
+			return fmt.Errorf("error updating index: %w", err)
+		}
+	}
+
 	return nil
 }
 
@@ -255,40 +268,9 @@ func (i *BlugeIndex) pageToDocument(doc *Page) (*bluge.Document, error) {
 }
 
 func (i *BlugeIndex) indexBlocks(ctx context.Context, page *Page) error {
-	// Delete all of the old blocks
-	reader, err := i.reader()
+	idSet, err := i.getBlocks(ctx, page.SubPath)
 	if err != nil {
-		return err
-	}
-
-	// To enable us to remove any indexed blocks that are no longer present
-	// on the page we search for blocks and keep track of their IDs.
-	it, err := reader.Search(ctx, bluge.NewAllMatches(
-		bluge.NewTermQuery(page.SubPath).SetField("page"),
-	))
-	if err != nil {
-		return fmt.Errorf("error searching index: %w", err)
-	}
-
-	idSet := make(map[string]struct{})
-	for {
-		match, err := it.Next()
-		if err != nil {
-			return fmt.Errorf("error getting next match: %w", err)
-		}
-
-		if match == nil {
-			break
-		}
-
-		match.VisitStoredFields(func(field string, value []byte) bool {
-			if field == "_id" {
-				idSet[string(value)] = struct{}{}
-				return false
-			}
-
-			return true
-		})
+		return fmt.Errorf("error getting blocks: %w", err)
 	}
 
 	// Index the new blocks
@@ -317,6 +299,45 @@ func (i *BlugeIndex) indexBlocks(ctx context.Context, page *Page) error {
 	}
 
 	return nil
+}
+
+func (i *BlugeIndex) getBlocks(ctx context.Context, pagePath string) (map[string]struct{}, error) {
+	reader, err := i.reader()
+	if err != nil {
+		return nil, err
+	}
+
+	// To enable us to remove any indexed blocks that are no longer present
+	// on the page we search for blocks and keep track of their IDs.
+	it, err := reader.Search(ctx, bluge.NewAllMatches(
+		bluge.NewTermQuery(pagePath).SetField("page"),
+	))
+	if err != nil {
+		return nil, fmt.Errorf("error searching index: %w", err)
+	}
+
+	idSet := make(map[string]struct{})
+	for {
+		match, err := it.Next()
+		if err != nil {
+			return nil, fmt.Errorf("error getting next match: %w", err)
+		}
+
+		if match == nil {
+			break
+		}
+
+		match.VisitStoredFields(func(field string, value []byte) bool {
+			if field == "_id" {
+				idSet[string(value)] = struct{}{}
+				return false
+			}
+
+			return true
+		})
+	}
+
+	return idSet, nil
 }
 
 func (i *BlugeIndex) blockToDocument(page *Page, id string, block *content.Block) (*bluge.Document, error) {
