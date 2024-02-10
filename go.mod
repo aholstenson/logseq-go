@@ -9,7 +9,6 @@ require (
 	github.com/onsi/ginkgo/v2 v2.10.0
 	github.com/onsi/gomega v1.27.8
 	github.com/yuin/goldmark v1.6.0
-	golang.org/x/net v0.10.0
 	golang.org/x/text v0.9.0
 	olympos.io/encoding/edn v0.0.0-20201019073823-d3554ca0b0a3
 )
@@ -36,6 +35,7 @@ require (
 	github.com/klauspost/compress v1.15.2 // indirect
 	github.com/mschoch/smat v0.2.0 // indirect
 	github.com/stretchr/testify v1.8.1 // indirect
+	golang.org/x/net v0.10.0 // indirect
 	golang.org/x/sys v0.8.0 // indirect
 	golang.org/x/tools v0.9.3 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
