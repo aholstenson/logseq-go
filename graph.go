@@ -364,6 +364,9 @@ func (g *Graph) watchForChanges() {
 					g.options.syncListener(path)
 				}
 			}
+
+			// Sync after indexing so changes are visible
+			g.index.Sync()
 		}
 	}()
 }
