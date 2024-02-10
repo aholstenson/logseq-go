@@ -100,7 +100,13 @@ func (t *Transaction) AddJournalBlock(time time.Time, block *content.Block) erro
 		// Add the timestamp to the block
 		timeNode := t.graph.options.blockTimeFormatToNode(time.Format(timeFormat))
 		firstChild := block.FirstChild()
-		if p := firstChild.(*content.Paragraph); p != nil {
+
+		if _, ok := firstChild.(*content.Properties); ok {
+			// Skip properties block
+			firstChild = firstChild.NextSibling()
+		}
+
+		if p, ok := firstChild.(*content.Paragraph); ok {
 			p.PrependChild(timeNode)
 			p.InsertChildAfter(content.NewText(" "), timeNode)
 		} else {
@@ -121,7 +127,12 @@ func (t *Transaction) AddJournalBlock(time time.Time, block *content.Block) erro
 }
 
 func parseBlockTime(format string, reference time.Time, block *content.Block) *time.Time {
-	firstText := block.Children().FindDeep(content.IsOfType[*content.Text]())
+	firstParagraph := block.Children().FindDeep(content.IsOfType[*content.Paragraph]())
+	if firstParagraph == nil {
+		return nil
+	}
+
+	firstText := firstParagraph.(*content.Paragraph).Children().FindDeep(content.IsOfType[*content.Text]())
 	if firstText == nil {
 		return nil
 	}
