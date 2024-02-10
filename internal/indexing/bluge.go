@@ -561,7 +561,7 @@ func mapQuery(q Query) bluge.Query {
 			return bluge.NewMatchQuery(query.text).SetField(query.field + ":text")
 		}
 
-		return bluge.NewMatchQuery(query.text).SetField(query.field)
+		return bluge.NewMatchQuery(query.text).SetOperator(bluge.MatchQueryOperatorAnd).SetField(query.field)
 	case *fieldEquals:
 		if strings.HasPrefix(query.field, "prop:") {
 			return bluge.NewTermQuery(query.value).SetField(query.field + ":value")
