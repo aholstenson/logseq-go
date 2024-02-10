@@ -135,3 +135,10 @@ func ReferencesTag(tag string) Query {
 		tag:    true,
 	}
 }
+
+func LinksToURL(url string) Query {
+	return &fieldEquals{
+		field: "link",
+		value: url,
+	}
+}

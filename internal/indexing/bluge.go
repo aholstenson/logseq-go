@@ -240,8 +240,10 @@ func (i *BlugeIndex) pageToDocument(doc *Page) (*bluge.Document, error) {
 	}
 
 	var fullText strings.Builder
-	for i, block := range doc.Blocks {
-		if i > 0 {
+	for idx, block := range doc.Blocks {
+		i.transferLinks(blugeDoc, block)
+
+		if idx > 0 {
 			fullText.WriteString("\n\n")
 		}
 
@@ -329,6 +331,7 @@ func (i *BlugeIndex) blockToDocument(page *Page, id string, block *content.Block
 	props := block.Properties()
 	i.transferProperties(blugeDoc, props)
 	i.transferRefs(blugeDoc, "pages", block)
+	i.transferLinks(blugeDoc, block)
 
 	var fullText strings.Builder
 	plainText0(block.Content(), &fullText)
@@ -394,6 +397,13 @@ func (i *BlugeIndex) transferRefs(doc *bluge.Document, field string, root conten
 		if hashtag, ok := ref.(*content.Hashtag); ok {
 			doc.AddField(bluge.NewKeywordField(field+":tag", hashtag.GetTo()))
 		}
+	}
+}
+
+func (i *BlugeIndex) transferLinks(doc *bluge.Document, root content.HasChildren) {
+	links := root.Children().FilterDeep(content.IsOfType[content.HasLinkURL]())
+	for _, link := range links {
+		doc.AddField(bluge.NewKeywordField("link", link.(content.HasLinkURL).GetURL()))
 	}
 }
 

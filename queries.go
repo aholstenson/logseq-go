@@ -55,3 +55,7 @@ func References(page string) Query {
 func ReferencesTag(page string) Query {
 	return indexing.ReferencesTag(page)
 }
+
+func LinksToURL(url string) Query {
+	return indexing.LinksToURL(url)
+}
