@@ -91,6 +91,12 @@ func NewProperty(name string, children ...Node) *Property {
 	return property
 }
 
+// WithName sets the name of the property.
+func (p *Property) WithName(name string) *Property {
+	p.Name = name
+	return p
+}
+
 func (p *Property) debug(p2 *debugPrinter) {
 	p2.StartType("Property")
 	p2.Field("Name", p.Name)

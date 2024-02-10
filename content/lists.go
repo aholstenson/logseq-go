@@ -11,7 +11,10 @@ type List struct {
 	baseNodeWithChildren
 	previousLineAwareImpl
 
-	Type   ListType
+	// Type is the type of the list.
+	Type ListType
+
+	// Marker is the marker of the list.
 	Marker byte
 }
 
@@ -55,6 +58,46 @@ func NewUnorderedList(items ...*ListItem) *List {
 
 func NewOrderedList(items ...*ListItem) *List {
 	return NewList(ListTypeOrdered, items...)
+}
+
+// WithType sets the type of the list.
+func (l *List) WithType(typ ListType) *List {
+	l.Type = typ
+
+	// If the marker is not valid for the type, change it to the default.
+	switch typ {
+	case ListTypeOrdered:
+		if l.Marker != '.' && l.Marker != ')' {
+			l.Marker = '.'
+		}
+	case ListTypeUnordered:
+		if l.Marker != '*' && l.Marker != '+' {
+			l.Marker = '*'
+		}
+	}
+
+	return l
+}
+
+// WithMarker sets the marker of the list.
+func (l *List) WithMarker(marker byte) *List {
+	// Update the type to make sure it's valid for the marker.
+	switch marker {
+	case '*', '+':
+		l.Type = ListTypeUnordered
+		l.Marker = marker
+	case '-':
+		l.Type = ListTypeUnordered
+		l.Marker = '*'
+	case '.', ')':
+		l.Type = ListTypeOrdered
+		l.Marker = marker
+	default:
+		// Unknown type of marker, default to unordered.
+		l.Type = ListTypeUnordered
+		l.Marker = '*'
+	}
+	return l
 }
 
 func (l *List) debug(p *debugPrinter) {

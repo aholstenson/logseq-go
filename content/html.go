@@ -13,6 +13,12 @@ func NewRawHTML(html string) *RawHTML {
 	}
 }
 
+// WithHTML sets the HTML.
+func (h *RawHTML) WithHTML(html string) *RawHTML {
+	h.HTML = html
+	return h
+}
+
 func (h *RawHTML) isInline() {}
 
 func (n *RawHTML) debug(p *debugPrinter) {
@@ -34,6 +40,12 @@ func NewRawHTMLBlock(html string) *RawHTMLBlock {
 	return &RawHTMLBlock{
 		HTML: html,
 	}
+}
+
+// WithHTML sets the HTML.
+func (h *RawHTMLBlock) WithHTML(html string) *RawHTMLBlock {
+	h.HTML = html
+	return h
 }
 
 func (h *RawHTMLBlock) debug(p *debugPrinter) {

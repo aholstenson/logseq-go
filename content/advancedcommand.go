@@ -7,7 +7,11 @@ package content
 type AdvancedCommand struct {
 	baseNode
 
-	Type  string
+	// Type is the type of the advanced command.
+	Type string
+
+	// Value is the value of the advanced command. Specific to the type of
+	// command.
 	Value string
 }
 
@@ -16,6 +20,18 @@ func NewAdvancedCommand(variant string, value string) *AdvancedCommand {
 		Type:  variant,
 		Value: value,
 	}
+}
+
+// WithType sets the type of the advanced command.
+func (h *AdvancedCommand) WithType(variant string) *AdvancedCommand {
+	h.Type = variant
+	return h
+}
+
+// WithValue sets the value of the advanced command.
+func (h *AdvancedCommand) WithValue(value string) *AdvancedCommand {
+	h.Value = value
+	return h
 }
 
 func (h *AdvancedCommand) debug(p *debugPrinter) {
@@ -41,6 +57,12 @@ func NewQueryCommand(query string) *QueryCommand {
 	return &QueryCommand{
 		Query: query,
 	}
+}
+
+// WithQuery sets the query for the command.
+func (h *QueryCommand) WithQuery(query string) *QueryCommand {
+	h.Query = query
+	return h
 }
 
 func (h *QueryCommand) debug(p *debugPrinter) {

@@ -4,10 +4,10 @@ type CodeBlock struct {
 	baseNode
 	previousLineAwareImpl
 
-	// Language gets the language of this code block.
+	// Language is the programming language of this code block.
 	Language string
 
-	// Code gets the code of this code block.
+	// Code is the raw value of the code block.
 	Code string
 }
 
@@ -17,8 +17,15 @@ func NewCodeBlock(code string) *CodeBlock {
 	}
 }
 
+// WithLanguage sets the language of the code block.
 func (c *CodeBlock) WithLanguage(language string) *CodeBlock {
 	c.Language = language
+	return c
+}
+
+// WithCode sets the code of the code block.
+func (c *CodeBlock) WithCode(code string) *CodeBlock {
+	c.Code = code
 	return c
 }
 

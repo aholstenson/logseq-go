@@ -1,5 +1,7 @@
 package content
 
+// Node is the basic building block of a document. Nodes represent a single
+// element in the document, such as a paragraph, heading, list or text.
 type Node interface {
 	// Parent gets the parent of this node.
 	Parent() HasChildren
@@ -93,41 +95,60 @@ type HasChildren interface {
 	// Children gets all the direct children of this node.
 	Children() NodeList
 
-	// FirstChild gets the first child of this node.
+	// FirstChild gets the first child of this node. Can be nil if there are
+	// no children. Can be the same as LastChild if there is only one child.
 	FirstChild() Node
 
-	// LastChild gets the last child of this node.
+	// LastChild gets the last child of this node. Can be nil if there are no
+	// children. Can be the same as FirstChild if there is only one child.
 	LastChild() Node
 
 	// SetChildren sets the children of this node, this will remove any
 	// existing children.
 	SetChildren(node ...Node)
 
-	// AddChild adds a child to this node.
+	// AddChild adds a child to this node. The child will be added to the end
+	// of the list of children. Nodes can only have one parent, if the node
+	// already has a parent it will be removed from that parent.
 	AddChild(node Node)
 
-	// AddChildren adds multiple children to this node.
+	// AddChildren adds multiple children to this node. The children will be
+	// added to the end of the list of children. Nodes can only have one
+	// parent, if any of the nodes already have a parent they will be removed
 	AddChildren(nodes ...Node)
 
-	// PrependChild adds a child to the start of this node.
+	// PrependChild adds a child to the start of this node. Nodes can only
+	// have one parent, if the node already has a parent it will be removed
+	// from that parent.
 	PrependChild(node Node)
 
-	// PrependChildren adds multiple children to the start of this node.
+	// PrependChildren adds multiple children to the start of this node. Nodes
+	// can only have one parent, if any of the nodes already have a parent
+	// they will be removed from that parent.
 	PrependChildren(nodes ...Node)
 
-	// RemoveChild removes a child from this node.
+	// RemoveChild removes a child from this node. Returns true if the child
+	// was removed, false if the child was not a child of this node.
 	RemoveChild(node Node) bool
 
-	// RemoveChildren removes multiple children from this node.
+	// RemoveChildren removes multiple children from this node. Returns true
+	// if all of the children were removed, false if any of the children were
+	// not a child of this node.
 	RemoveChildren(nodes ...Node)
 
-	// ReplaceChild replaces a child of this node with another node.
+	// ReplaceChild replaces a child of this node with another node. Returns
+	// true if the child was replaced, false if the old node was not a child
+	// of this node.
 	ReplaceChild(oldNode Node, newNode Node) bool
 
-	// InsertChildBefore inserts a node before another node.
+	// InsertChildBefore inserts a node before another node. Returns true if
+	// the node was inserted, false if the before node was not a child of
+	// this node.
 	InsertChildBefore(node Node, before Node) bool
 
-	// InsertChildBefore inserts a node before another node.
+	// InsertChildBefore inserts a node before another node. Returns true if
+	// the node was inserted, false if the before node was not a child of
+	// this node.
 	InsertChildAfter(node Node, after Node) bool
 }
 

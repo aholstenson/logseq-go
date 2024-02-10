@@ -21,13 +21,27 @@ func NewText(text string) *Text {
 	}
 }
 
+// WithValue sets the value of the text.
+func (t *Text) WithValue(value string) *Text {
+	t.Value = value
+	return t
+}
+
 func (t *Text) WithHardLineBreak() *Text {
 	t.HardLineBreak = true
+	t.SoftLineBreak = false
 	return t
 }
 
 func (t *Text) WithSoftLineBreak() *Text {
 	t.SoftLineBreak = true
+	t.HardLineBreak = false
+	return t
+}
+
+func (t *Text) WithNoLineBreak() *Text {
+	t.SoftLineBreak = false
+	t.HardLineBreak = false
 	return t
 }
 

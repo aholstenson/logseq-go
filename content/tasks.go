@@ -39,6 +39,12 @@ func NewTaskMarker(t TaskStatus) *TaskMarker {
 	}
 }
 
+// WithStatus sets the status of the task marker.
+func (t *TaskMarker) WithStatus(status TaskStatus) *TaskMarker {
+	t.Status = status
+	return t
+}
+
 func (t *TaskMarker) debug(p *debugPrinter) {
 	p.StartType("TaskMarker")
 	switch t.Status {
@@ -124,6 +130,12 @@ func NewLogbookEntryRaw(value string) *LogbookEntryRaw {
 	return &LogbookEntryRaw{
 		Value: value,
 	}
+}
+
+// WithValue sets the value of the logbook entry.
+func (t *LogbookEntryRaw) WithValue(value string) *LogbookEntryRaw {
+	t.Value = value
+	return t
 }
 
 func (t *LogbookEntryRaw) debug(p *debugPrinter) {

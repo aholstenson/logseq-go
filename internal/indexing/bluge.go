@@ -513,9 +513,9 @@ func plainText0(nodes content.NodeList, builder *strings.Builder) {
 			}
 		case *content.Hashtag:
 			builder.WriteString("#")
-			builder.WriteString(n.To())
+			builder.WriteString(n.To)
 		case *content.PageLink:
-			builder.WriteString(n.To())
+			builder.WriteString(n.To)
 		case *content.CodeSpan:
 			builder.WriteString(n.Value)
 		case *content.CodeBlock:

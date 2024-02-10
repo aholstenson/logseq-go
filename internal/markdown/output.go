@@ -380,7 +380,7 @@ func (w *Output) writeLink(node *content.Link) error {
 		return err
 	}
 
-	err = w.write(node.Target, EscapeLinkURL)
+	err = w.write(node.URL, EscapeLinkURL)
 	if err != nil {
 		return err
 	}
@@ -411,9 +411,9 @@ func (w *Output) writeLink(node *content.Link) error {
 }
 
 func (w *Output) writeAutoLink(node *content.AutoLink) error {
-	if urlRegexp.Match([]byte(node.Target)) {
+	if urlRegexp.Match([]byte(node.URL)) {
 		// No need for brackets, Logseq will automatically linkify the URL.
-		return w.writeRaw(node.Target)
+		return w.writeRaw(node.URL)
 	}
 
 	err := w.writeRaw("<")
@@ -421,7 +421,7 @@ func (w *Output) writeAutoLink(node *content.AutoLink) error {
 		return err
 	}
 
-	err = w.writeRaw(node.Target)
+	err = w.writeRaw(node.URL)
 	if err != nil {
 		return err
 	}
@@ -440,7 +440,7 @@ func (w *Output) writePageLink(node *content.PageLink) error {
 		return err
 	}
 
-	err = w.write(node.To(), EscapeWikiLink)
+	err = w.write(node.To, EscapeWikiLink)
 	if err != nil {
 		return err
 	}
@@ -462,7 +462,7 @@ func (w *Output) writeHashtag(node *content.Hashtag) error {
 	}
 
 	writeExtended := false
-	for _, r := range node.To() {
+	for _, r := range node.To {
 		if unicode.IsSpace(r) {
 			writeExtended = true
 			break
@@ -476,7 +476,7 @@ func (w *Output) writeHashtag(node *content.Hashtag) error {
 		}
 	}
 
-	err = w.write(node.To(), EscapeWikiLink)
+	err = w.write(node.To, EscapeWikiLink)
 	if err != nil {
 		return err
 	}
@@ -526,7 +526,7 @@ func (w *Output) writeImage(node *content.Image) error {
 		return err
 	}
 
-	err = w.write(node.Src, EscapeLinkURL)
+	err = w.write(node.URL, EscapeLinkURL)
 	if err != nil {
 		return err
 	}

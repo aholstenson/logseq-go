@@ -29,6 +29,18 @@ func NewMacro(name string, args ...string) *Macro {
 	}
 }
 
+// WithName sets the name of the macro.
+func (m *Macro) WithName(name string) *Macro {
+	m.Name = name
+	return m
+}
+
+// WithArguments sets the arguments of the macro.
+func (m *Macro) WithArguments(args ...string) *Macro {
+	m.Arguments = args
+	return m
+}
+
 func (m *Macro) debug(p *debugPrinter) {
 	p.StartType("Macro")
 	p.Field("name", m.Name)
