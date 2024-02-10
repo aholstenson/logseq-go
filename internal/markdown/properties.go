@@ -56,15 +56,15 @@ var defaultPropertiesASTTransformer = &propertiesASTTransformer{}
 // part of the same properties block.
 func (t *propertiesASTTransformer) Transform(node *ast.Document, reader text.Reader, pc parser.Context) {
 	ast.Walk(node, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
-		if entering && node.Kind() == ast.KindParagraph {
-			t.transformParagraph(node.(*ast.Paragraph), reader)
+		if entering && (node.Kind() == ast.KindParagraph || node.Kind() == ast.KindTextBlock) {
+			t.transformTextBlockOrParagraph(node, reader)
 		}
 
 		return ast.WalkContinue, nil
 	})
 }
 
-func (t *propertiesASTTransformer) transformParagraph(node *ast.Paragraph, reader text.Reader) {
+func (t *propertiesASTTransformer) transformTextBlockOrParagraph(node ast.Node, reader text.Reader) {
 	wasPreviousLinebreak := true
 	var currentProperties *properties
 	var currentProperty *property
@@ -186,7 +186,7 @@ func startsWithSpace(node *ast.Text, reader text.Reader) bool {
 	return strings.HasPrefix(value, " ")
 }
 
-func maybeSplitParagraph(node *ast.Paragraph, divider *properties, firstChildOfNewParagraph ast.Node) *ast.Paragraph {
+func maybeSplitParagraph(node ast.Node, divider *properties, firstChildOfNewParagraph ast.Node) ast.Node {
 	if divider == nil {
 		return node
 	}

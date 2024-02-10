@@ -1737,6 +1737,27 @@ var _ = Describe("Parsing", func() {
 					).WithPreviousLineType(content.PreviousLineTypeNonBlank),
 				)))
 			})
+
+			It("can parse property in block", func() {
+				block, err := markdown.ParseString("- key:: value\nItem 1\n- Item 2\n")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewBlock(
+						content.NewProperties(
+							content.NewProperty("key", content.NewText("value")),
+						),
+						content.NewParagraph(
+							content.NewText("Item 1"),
+						).WithPreviousLineType(content.PreviousLineTypeNonBlank),
+					),
+					content.NewBlock(
+						content.NewParagraph(
+							content.NewText("Item 2"),
+						),
+					),
+				)))
+			})
 		})
 	})
 
