@@ -52,18 +52,17 @@ func (b *Block) ID() string {
 	return ""
 }
 
-// WithID gets or sets the identifier of the block. If the block does not have
-// an ID, one is generated and set on the block, and the second return value is
-// true.
-func (b *Block) WithID() (string, bool) {
+// WithID ensures that the block has an ID. If the block already has an ID this
+// will do nothing.
+func (b *Block) WithID() *Block {
 	p := b.Properties()
 	id := p.GetAsNode("id")
 	if id != nil {
-		return id.FirstChild().(*Text).Value, false
+		return b
 	}
 
 	p.Set("id", NewText(uuid.NewString()))
-	return uuid.NewString(), true
+	return b
 }
 
 // Properties gets the properties node for this block. This follows the Logseq
