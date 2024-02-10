@@ -389,10 +389,10 @@ func (i *BlugeIndex) transferProperties(doc *bluge.Document, properties *content
 func (i *BlugeIndex) transferRefs(doc *bluge.Document, field string, root content.HasChildren) {
 	refs := root.Children().FilterDeep(content.IsOfType[content.PageRef]())
 	for _, ref := range refs {
-		doc.AddField(bluge.NewTextField(field+":ref", ref.(content.PageRef).To()))
+		doc.AddField(bluge.NewKeywordField(field+":ref", ref.(content.PageRef).GetTo()))
 
 		if hashtag, ok := ref.(*content.Hashtag); ok {
-			doc.AddField(bluge.NewTextField(field+":tag", hashtag.To()))
+			doc.AddField(bluge.NewKeywordField(field+":tag", hashtag.GetTo()))
 		}
 	}
 }
