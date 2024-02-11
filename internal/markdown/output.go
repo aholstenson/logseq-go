@@ -842,7 +842,7 @@ func (w *Output) writeBlock(node *content.Block) error {
 	}
 
 	previousIndent := ""
-	if hasParentBlock {
+	if hasParentBlock && w.out.IndentationLevel() > 0 {
 		// As Logseq uses tabs for indentation of blocks we pop the current
 		// indentation which is the two spaces to align content with "- " of
 		// the list item. This allows the indentation to be only tabs for
