@@ -37,9 +37,12 @@ type Graph struct {
 
 	index         indexing.Index
 	changeWatcher *fsnotify.Watcher
+
+	mu       sync.Mutex
+	watchers []*Watcher
 }
 
-func Open(directory string, opts ...Option) (*Graph, error) {
+func Open(ctx context.Context, directory string, opts ...Option) (*Graph, error) {
 	// Apply the options
 	options := &options{
 		blockTimeFormatToNode: func(s string) content.InlineNode {
@@ -68,16 +71,10 @@ func Open(directory string, opts ...Option) (*Graph, error) {
 	journalTitleFormat := utils.ConvertDateFormat(config.Journal.PageTitleFormat)
 
 	var index indexing.Index
-	var changeWatcher *fsnotify.Watcher
 	if options.index {
 		index, err = indexing.NewBlugeIndex(config, options.indexDirectory)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open index: %w", err)
-		}
-
-		changeWatcher, err = fsnotify.NewWatcher()
-		if err != nil {
-			return nil, fmt.Errorf("failed to create fsnotify watcher: %w", err)
 		}
 	}
 
@@ -89,20 +86,20 @@ func Open(directory string, opts ...Option) (*Graph, error) {
 		journalNameFormat:  journalNameFormat,
 		journalTitleFormat: journalTitleFormat,
 
-		index:         index,
-		changeWatcher: changeWatcher,
+		index: index,
+
+		watchers: make([]*Watcher, 0),
 	}
 
 	// Sync the graph with the index
-	err = g.sync()
+	err = g.sync(ctx, options.listener)
 	if err != nil {
 		return nil, fmt.Errorf("failed to sync graph: %w", err)
 	}
 
-	if changeWatcher != nil {
+	if g.index != nil {
 		g.watchForChanges()
 	}
-
 	return g, nil
 }
 
@@ -157,6 +154,37 @@ func (g *Graph) pagePath(title string) (string, error) {
 	return filepath.Join(g.directory, g.config.PagesDir, path+".md"), nil
 }
 
+func (g *Graph) openViaPath(path string) (Page, error) {
+	name := filepath.Base(path)
+	if filepath.Ext(name) != ".md" {
+		return nil, fmt.Errorf("not a Markdown file")
+	}
+
+	name = name[:len(name)-3]
+	dir := filepath.Dir(path)
+
+	if dir == filepath.Join(g.directory, g.config.JournalsDir) {
+		date, err := time.Parse(g.journalNameFormat, name)
+		if err != nil {
+			// Ignore files that don't match the journal name format
+			return nil, nil
+		}
+
+		title := date.Format(g.journalTitleFormat)
+
+		return openOrCreatePage(path, PageTypeJournal, title, date, "")
+	} else if dir == filepath.Join(g.directory, g.config.PagesDir) {
+		title, err := utils.FilenameToTitle(g.config.File.NameFormat, name)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get title from filename: %w", err)
+		}
+
+		return openOrCreatePage(path, PageTypeDedicated, title, time.Time{}, "")
+	}
+
+	return nil, fmt.Errorf("not a page or journal")
+}
+
 func (g *Graph) Close() error {
 	if g.changeWatcher != nil {
 		g.changeWatcher.Close()
@@ -170,12 +198,12 @@ func (g *Graph) Close() error {
 }
 
 // sync performs a sync of the graph with the index.
-func (g *Graph) sync() error {
+func (g *Graph) sync(ctx context.Context, listener func(event OpenEvent)) error {
 	if g.index == nil {
 		return nil
 	}
 
-	walker := g.createWalker(context.Background())
+	walker := g.createWalker(ctx, listener)
 
 	// Sync the journal pages
 	journalsDir := filepath.Join(g.directory, g.config.JournalsDir)
@@ -194,7 +222,7 @@ func (g *Graph) sync() error {
 	return g.index.Sync()
 }
 
-func (g *Graph) createWalker(ctx context.Context) filepath.WalkFunc {
+func (g *Graph) createWalker(ctx context.Context, listener func(event OpenEvent)) filepath.WalkFunc {
 	return func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return fmt.Errorf("failed to walk journals directory: %w", err)
@@ -221,69 +249,46 @@ func (g *Graph) createWalker(ctx context.Context) filepath.WalkFunc {
 			return nil
 		}
 
-		err = g.indexDocument(ctx, path)
+		_, err = g.indexDocument(ctx, path)
 		if err != nil {
 			return fmt.Errorf("failed to index document: %w", err)
 		}
 
-		if g.options.syncListener != nil {
-			g.options.syncListener(subPath)
+		if listener != nil {
+			listener(&PageIndexed{
+				SubPath: subPath,
+			})
 		}
 		return nil
 	}
 }
 
-func (g *Graph) indexDocument(ctx context.Context, docPath string) error {
-	name := filepath.Base(docPath)
-	name = name[:len(name)-3]
-
-	var doc *indexing.Page
-
-	dir := filepath.Dir(docPath)
-
-	if dir == filepath.Join(g.directory, g.config.JournalsDir) {
-		date, err := time.Parse(g.journalNameFormat, name)
-		if err != nil {
-			// Ignore files that don't match the journal name format
-			return nil
-		}
-
-		pageImpl, err := openOrCreatePage(docPath, PageTypeJournal, "", date, "")
-		if err != nil {
-			return fmt.Errorf("failed to open page: %w", err)
-		}
-
-		doc = &indexing.Page{
-			Type:         indexing.PageTypeJournal,
-			LastModified: pageImpl.LastModified(),
-			Date:         date,
-			Blocks:       pageImpl.Blocks(),
-		}
-	} else if dir == filepath.Join(g.directory, g.config.PagesDir) {
-		title, err := utils.FilenameToTitle(g.config.File.NameFormat, name)
-		if err != nil {
-			return fmt.Errorf("failed to get title from filename: %w", err)
-		}
-
-		pageImpl, err := openOrCreatePage(docPath, PageTypeDedicated, title, time.Time{}, "")
-		if err != nil {
-			return fmt.Errorf("failed to open page: %w", err)
-		}
-
-		doc = &indexing.Page{
-			Type:         indexing.PageTypeDedicated,
-			LastModified: pageImpl.LastModified(),
-			Title:        title,
-			Blocks:       pageImpl.Blocks(),
-		}
+func (g *Graph) indexDocument(ctx context.Context, docPath string) (Page, error) {
+	page, err := g.openViaPath(docPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open page: %w", err)
 	}
 
+	doc := &indexing.Page{
+		Type:         indexing.PageType(page.Type()),
+		LastModified: page.LastModified(),
+		Date:         page.Date(),
+		Blocks:       page.Blocks(),
+	}
 	doc.SubPath, _ = filepath.Rel(g.directory, docPath)
-	return g.index.IndexPage(ctx, doc)
+	return page, g.index.IndexPage(ctx, doc)
 }
 
 func (g *Graph) watchForChanges() {
-	err := g.changeWatcher.Add(filepath.Join(g.directory, g.config.JournalsDir))
+	changeWatcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		// TODO: Error reporting
+		return
+	}
+
+	g.changeWatcher = changeWatcher
+
+	err = g.changeWatcher.Add(filepath.Join(g.directory, g.config.JournalsDir))
 	if err != nil {
 		return
 	}
@@ -306,7 +311,7 @@ func (g *Graph) watchForChanges() {
 					break _outer
 				}
 
-				if !event.Has(fsnotify.Write) {
+				if !event.Has(fsnotify.Write) && !event.Has(fsnotify.Create) && !event.Has(fsnotify.Remove) {
 					continue
 				}
 
@@ -315,24 +320,21 @@ func (g *Graph) watchForChanges() {
 					continue
 				}
 
-				subPath, err := filepath.Rel(g.directory, event.Name)
-				if err != nil {
-					continue
-				}
+				path := event.Name
 
 				// Logseq will save as you write, so debounce changes to files
 				// so we don't index too often
 				mu.Lock()
-				if timer, found := changeTimers[subPath]; found {
+				if timer, found := changeTimers[path]; found {
 					timer.Stop()
 				}
 
-				changeTimers[subPath] = time.AfterFunc(1*time.Second, func() {
+				changeTimers[path] = time.AfterFunc(1*time.Second, func() {
 					mu.Lock()
-					delete(changeTimers, subPath)
+					delete(changeTimers, path)
 					mu.Unlock()
 
-					changes <- subPath
+					changes <- path
 				})
 				mu.Unlock()
 			case _, ok := <-g.changeWatcher.Errors:
@@ -356,19 +358,98 @@ func (g *Graph) watchForChanges() {
 	go func() {
 		ctx := context.Background()
 		for path := range changes {
-			err := g.indexDocument(ctx, filepath.Join(g.directory, path))
+			// Figure out if the page still exists
+			exists := true
+			_, err := os.Stat(path)
 			if err != nil {
-				// TODO: Log error
-			} else {
-				if g.options.syncListener != nil {
-					g.options.syncListener(path)
+				if os.IsNotExist(err) {
+					exists = false
+				} else {
+					// TODO: Log error
 				}
 			}
 
-			// Sync after indexing so changes are visible
-			g.index.Sync()
+			var page Page
+
+			if g.index != nil {
+				// Indexing is enabled, update the index and retrieve the page
+				var err error
+				if exists {
+					err = g.index.DeletePage(ctx, path)
+				} else {
+					page, err = g.indexDocument(ctx, path)
+				}
+
+				if err != nil {
+					// TODO: Log error
+				}
+
+				// Sync after indexing so changes are visible
+				g.index.Sync()
+			} else if exists {
+				// No indexing, open the page directly
+				page, err = g.openViaPath(path)
+				if err != nil {
+					// TODO: Log error
+				}
+			}
+
+			var event ChangeEvent
+			if exists {
+				if page != nil {
+					event = &PageUpdated{
+						Page: page,
+					}
+				}
+			} else {
+				event = g.createPageDeletedEvent(path)
+			}
+
+			// Notify watchers of the change
+			if event != nil {
+				var watchers []*Watcher
+				g.mu.Lock()
+				watchers = append(watchers, g.watchers...)
+				g.mu.Unlock()
+
+				for _, watcher := range watchers {
+					watcher.changes <- event
+				}
+			}
 		}
 	}()
+}
+
+func (g *Graph) createPageDeletedEvent(path string) ChangeEvent {
+	name := filepath.Base(path)
+	name = name[:len(name)-3]
+
+	dir := filepath.Dir(path)
+	if dir == filepath.Join(g.directory, g.config.JournalsDir) {
+		date, err := time.Parse(g.journalNameFormat, name)
+		if err != nil {
+			// Ignore files that don't match the journal name format
+			return nil
+		}
+
+		return &PageDeleted{
+			Type:  PageTypeJournal,
+			Date:  date,
+			Title: date.Format(g.journalTitleFormat),
+		}
+	} else if dir == filepath.Join(g.directory, g.config.PagesDir) {
+		title, err := utils.FilenameToTitle(g.config.File.NameFormat, name)
+		if err != nil {
+			return nil
+		}
+
+		return &PageDeleted{
+			Type:  PageTypeDedicated,
+			Title: title,
+		}
+	}
+
+	return nil
 }
 
 // SearchPages searches for pages in the graph.
@@ -511,4 +592,41 @@ func (g *Graph) searchBlocks(ctx context.Context, opts []SearchOption, source pa
 			},
 		}
 	}), nil
+}
+
+func (g *Graph) Watch() *Watcher {
+	watcher := &Watcher{
+		changes: make(chan ChangeEvent),
+	}
+
+	watcher.closer = func() {
+		g.mu.Lock()
+		defer g.mu.Unlock()
+
+		// Remove from the list of watchers
+		for i, w := range g.watchers {
+			if w == watcher {
+				g.watchers = append(g.watchers[:i], g.watchers[i+1:]...)
+				break
+			}
+		}
+
+		if len(g.watchers) == 0 && g.changeWatcher != nil && g.index != nil {
+			// Close the change watcher if there are no more watchers
+			g.changeWatcher.Close()
+			g.changeWatcher = nil
+		}
+	}
+
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	g.watchers = append(g.watchers, watcher)
+
+	if g.changeWatcher == nil {
+		// Start watching for changes if we're not already
+		g.watchForChanges()
+	}
+
+	return watcher
 }

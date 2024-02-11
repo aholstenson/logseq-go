@@ -24,13 +24,18 @@ func main() {
 		return
 	}
 
+	ctx := context.Background()
+
 	indexOpt := logseq.WithInMemoryIndex()
 	if indexDirectory != "" {
 		indexOpt = logseq.WithIndex(indexDirectory)
 	}
 
-	graph, err := logseq.Open(directory, indexOpt, logseq.WithSyncListener(func(subPath string) {
-		println("Synced:", subPath)
+	graph, err := logseq.Open(ctx, directory, indexOpt, logseq.WithListener(func(event logseq.OpenEvent) {
+		switch e := event.(type) {
+		case *logseq.PageIndexed:
+			println("Indexed:", e.SubPath)
+		}
 	}))
 	if err != nil {
 		println("Failed to open graph:", err.Error())
@@ -39,8 +44,6 @@ func main() {
 	defer graph.Close()
 
 	println("Ready to search for blocks. Type 'exit' or 'quit' to exit.")
-
-	ctx := context.Background()
 
 	for {
 		// Read the query

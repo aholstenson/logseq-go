@@ -8,7 +8,7 @@ type options struct {
 	index          bool
 	indexDirectory string
 
-	syncListener func(subPath string)
+	listener func(event OpenEvent)
 
 	blockTimeFormat       string
 	blockTimeFormatToNode func(string) content.InlineNode
@@ -32,11 +32,11 @@ func WithInMemoryIndex() Option {
 	}
 }
 
-// WithSyncListener sets a listener that will be called when a page is synced
-// when opening the graph.
-func WithSyncListener(listener func(subPath string)) Option {
+// WithListener sets a listener that will be invoked for events that occur
+// while the graph is being opened.
+func WithListener(listener func(event OpenEvent)) Option {
 	return func(o *options) {
-		o.syncListener = listener
+		o.listener = listener
 	}
 }
 
