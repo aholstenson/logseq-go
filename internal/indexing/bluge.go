@@ -275,19 +275,10 @@ func (i *BlugeIndex) indexBlocks(ctx context.Context, page *Page) error {
 
 	// Index the new blocks
 	for _, block := range page.Blocks {
-		id := blockID(page, block)
-
-		blugeDoc, err := i.blockToDocument(page, id, block)
+		err = i.indexBlock(idSet, page, block)
 		if err != nil {
 			return err
 		}
-
-		err = i.indexUpdate(blugeDoc)
-		if err != nil {
-			return fmt.Errorf("error updating index: %w", err)
-		}
-
-		delete(idSet, id)
 	}
 
 	// Remove any blocks that are no longer present
@@ -338,6 +329,31 @@ func (i *BlugeIndex) getBlocks(ctx context.Context, pagePath string) (map[string
 	}
 
 	return idSet, nil
+}
+
+func (i *BlugeIndex) indexBlock(idSet map[string]struct{}, page *Page, block *content.Block) error {
+	id := blockID(page, block)
+
+	blugeDoc, err := i.blockToDocument(page, id, block)
+	if err != nil {
+		return err
+	}
+
+	err = i.indexUpdate(blugeDoc)
+	if err != nil {
+		return fmt.Errorf("error updating index: %w", err)
+	}
+
+	delete(idSet, id)
+
+	for _, child := range block.Blocks() {
+		err = i.indexBlock(idSet, page, child)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (i *BlugeIndex) blockToDocument(page *Page, id string, block *content.Block) (*bluge.Document, error) {
