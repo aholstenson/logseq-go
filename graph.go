@@ -269,11 +269,17 @@ func (g *Graph) indexDocument(ctx context.Context, docPath string) (Page, error)
 		return nil, fmt.Errorf("failed to open page: %w", err)
 	}
 
+	if page == nil {
+		// If the page didn't pass validation skip it
+		return nil, nil
+	}
+
 	doc := &indexing.Page{
 		Type:         indexing.PageType(page.Type()),
 		LastModified: page.LastModified(),
 		Date:         page.Date(),
 		Blocks:       page.Blocks(),
+		Title:        page.Title(),
 	}
 	doc.SubPath, _ = filepath.Rel(g.directory, docPath)
 	return page, g.index.IndexPage(ctx, doc)
