@@ -1,5 +1,7 @@
 package content
 
+import "strings"
+
 // TaskStatus is the type of a task.
 type TaskStatus int
 
@@ -36,6 +38,42 @@ type TaskMarker struct {
 func NewTaskMarker(t TaskStatus) *TaskMarker {
 	return &TaskMarker{
 		Status: t,
+	}
+}
+
+// ParseTaskStatus parses a task status from a TO DO/DOING/DONE/etc. string.
+func ParseTaskStatus(status string) TaskStatus {
+	caseInsensitiveStatus := strings.ToUpper(status)
+	switch caseInsensitiveStatus {
+	case "TODO":
+		return TaskStatusTodo
+	case "DONE":
+		return TaskStatusDone
+	case "DOING":
+		return TaskStatusDoing
+	case "LATER":
+		return TaskStatusLater
+	case "NOW":
+		return TaskStatusNow
+	case "CANCELLED":
+		return TaskStatusCancelled
+	case "CANCELED":
+		return TaskStatusCanceled
+	case "IN-PROGRESS":
+		return TaskStatusInProgress
+	case "WAIT":
+		return TaskStatusWait
+	case "WAITING":
+		return TaskStatusWaiting
+	default:
+		return TaskStatusNone
+	}
+}
+
+// NewTaskMarkerFromString creates a new task marker from a TO DO/DOING/DONE/etc. string.
+func NewTaskMarkerFromString(t string) *TaskMarker {
+	return &TaskMarker{
+		Status: ParseTaskStatus(t),
 	}
 }
 

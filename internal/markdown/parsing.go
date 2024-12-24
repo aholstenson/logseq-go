@@ -288,29 +288,8 @@ func convertTaskMarker(node *content.Paragraph) {
 		potentialMarker = textNode.Value[:potentialMarkerIdx]
 	}
 
-	var taskStatus content.TaskStatus
-	switch potentialMarker {
-	case "TODO":
-		taskStatus = content.TaskStatusTodo
-	case "DONE":
-		taskStatus = content.TaskStatusDone
-	case "DOING":
-		taskStatus = content.TaskStatusDoing
-	case "LATER":
-		taskStatus = content.TaskStatusLater
-	case "NOW":
-		taskStatus = content.TaskStatusNow
-	case "CANCELLED":
-		taskStatus = content.TaskStatusCancelled
-	case "CANCELED":
-		taskStatus = content.TaskStatusCanceled
-	case "IN-PROGRESS":
-		taskStatus = content.TaskStatusInProgress
-	case "WAIT":
-		taskStatus = content.TaskStatusWait
-	case "WAITING":
-		taskStatus = content.TaskStatusWaiting
-	default:
+	taskStatus := content.ParseTaskStatus(potentialMarker)
+	if taskStatus == content.TaskStatusNone {
 		return
 	}
 
