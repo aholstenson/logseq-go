@@ -154,14 +154,20 @@ func (g *Graph) pagePath(title string) (string, error) {
 	return filepath.Join(g.directory, g.config.PagesDir, path+".md"), nil
 }
 
-func (g *Graph) openViaPath(path string) (Page, error) {
-	name := filepath.Base(path)
+// OpenViaPath opens a page or journal via the path to the file, without knowing if it's a journal or page.
+func (g *Graph) OpenViaPath(path string) (Page, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get absolute path to %s: %w", path, err)
+	}
+
+	name := filepath.Base(abs)
 	if filepath.Ext(name) != ".md" {
 		return nil, fmt.Errorf("not a Markdown file")
 	}
 
 	name = name[:len(name)-3]
-	dir := filepath.Dir(path)
+	dir := filepath.Dir(abs)
 
 	if dir == filepath.Join(g.directory, g.config.JournalsDir) {
 		date, err := time.Parse(g.journalNameFormat, name)
@@ -172,17 +178,17 @@ func (g *Graph) openViaPath(path string) (Page, error) {
 
 		title := date.Format(g.journalTitleFormat)
 
-		return openOrCreatePage(path, PageTypeJournal, title, date, "")
+		return openOrCreatePage(abs, PageTypeJournal, title, date, "")
 	} else if dir == filepath.Join(g.directory, g.config.PagesDir) {
 		title, err := utils.FilenameToTitle(g.config.File.NameFormat, name)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get title from filename: %w", err)
 		}
 
-		return openOrCreatePage(path, PageTypeDedicated, title, time.Time{}, "")
+		return openOrCreatePage(abs, PageTypeDedicated, title, time.Time{}, "")
 	}
 
-	return nil, fmt.Errorf("not a page or journal")
+	return nil, fmt.Errorf("%s is not a page or journal under the graph dir %s", abs, g.Directory())
 }
 
 func (g *Graph) Close() error {
@@ -264,7 +270,7 @@ func (g *Graph) createWalker(ctx context.Context, listener func(event OpenEvent)
 }
 
 func (g *Graph) indexDocument(ctx context.Context, docPath string) (Page, error) {
-	page, err := g.openViaPath(docPath)
+	page, err := g.OpenViaPath(docPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open page: %w", err)
 	}
@@ -394,7 +400,7 @@ func (g *Graph) watchForChanges() {
 				g.index.Sync()
 			} else if exists {
 				// No indexing, open the page directly
-				page, err = g.openViaPath(path)
+				page, err = g.OpenViaPath(path)
 				if err != nil {
 					// TODO: Log error
 				}
