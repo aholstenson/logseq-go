@@ -19,3 +19,7 @@ func ParseNodes(text string) (content.NodeList, error) {
 
 	return block.Children(), nil
 }
+
+func AsString(node content.Node) (string, error) {
+	return markdown.AsString(node)
+}
