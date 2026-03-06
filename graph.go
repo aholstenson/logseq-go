@@ -381,9 +381,9 @@ func (g *Graph) watchForChanges() {
 				// Indexing is enabled, update the index and retrieve the page
 				var err error
 				if exists {
-					err = g.index.DeletePage(ctx, path)
-				} else {
 					page, err = g.indexDocument(ctx, path)
+				} else {
+					err = g.index.DeletePage(ctx, path)
 				}
 
 				if err != nil {
