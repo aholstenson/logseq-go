@@ -383,7 +383,8 @@ func (g *Graph) watchForChanges() {
 				if exists {
 					page, err = g.indexDocument(ctx, path)
 				} else {
-					err = g.index.DeletePage(ctx, path)
+					subPath, _ := filepath.Rel(g.directory, path)
+					err = g.index.DeletePage(ctx, subPath)
 				}
 
 				if err != nil {
