@@ -46,7 +46,9 @@ func (b *Block) ID() string {
 	p := b.Properties()
 	id := p.GetAsNode("id")
 	if id != nil {
-		return id.FirstChild().(*Text).Value
+		if child, ok := id.FirstChild().(*Text); ok {
+			return child.Value
+		}
 	}
 
 	return ""
