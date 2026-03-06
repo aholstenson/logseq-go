@@ -22,13 +22,13 @@ when pages are modified. Please open issues if you find any bugs.
 Open a graph to access its content:
 
 ```go
-graph, err := logseq.Open("path/to/graph")
+graph, err := logseq.Open(ctx, "path/to/graph")
 ```
 
 Content can be opened read only:
 
 ```go
-journalPage, err := graph.Journal(time.Now())
+journalPage, err := graph.OpenJournal(time.Now())
 page, err := graph.OpenPage("Example")
 
 for _, block := range page.Blocks() {
@@ -41,7 +41,7 @@ Content can also be opened for writing, by creating a transaction:
 ```go
 tx := graph.NewTransaction()
 
-today, err := tx.OpenJournalPage(time.Now())
+today, err := tx.OpenJournal(time.Now())
 
 today.AddBlock(content.NewBlock(
   content.NewText("Hello!")
