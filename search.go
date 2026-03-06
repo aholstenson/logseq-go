@@ -215,7 +215,7 @@ func (b *blockResultImpl) Open() (*content.Block, Page, error) {
 	blocks := page.Blocks()
 	var block *content.Block
 	for _, i := range b.location {
-		if i > len(blocks) {
+		if i >= len(blocks) {
 			return nil, nil, ErrBlockNotFound
 		}
 

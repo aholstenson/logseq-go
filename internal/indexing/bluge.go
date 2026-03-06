@@ -390,7 +390,9 @@ func blockID(page *Page, block *content.Block) string {
 	for current != nil {
 		idx := 0
 		for sibling := current.PreviousSibling(); sibling != nil; sibling = sibling.PreviousSibling() {
-			idx++
+			if _, ok := sibling.(*content.Block); ok {
+				idx++
+			}
 		}
 
 		path.WriteRune(':')
@@ -723,7 +725,7 @@ func mapMatchToBlock(match *search.DocumentMatch) *Block {
 			for _, part := range strings.Split(string(value), ":") {
 				idx, err := strconv.Atoi(part)
 				if err != nil {
-					break
+					continue
 				}
 
 				location = append(location, idx)
@@ -732,6 +734,11 @@ func mapMatchToBlock(match *search.DocumentMatch) *Block {
 			// Reverse the location
 			for i, j := 0, len(location)-1; i < j; i, j = i+1, j-1 {
 				location[i], location[j] = location[j], location[i]
+			}
+
+			// Remove the first element which is the root block index
+			if len(location) > 0 {
+				location = location[1:]
 			}
 
 			block.Location = location
