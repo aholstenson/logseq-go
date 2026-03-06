@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/aholstenson/logseq-go/content"
@@ -191,6 +192,10 @@ func (t *Transaction) Save() error {
 			} else {
 				return fmt.Errorf("failed to convert page %s: %w", page.Title(), err)
 			}
+		}
+
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			return fmt.Errorf("failed to create directory for %s: %w", path, err)
 		}
 
 		err = os.WriteFile(path, []byte(data), 0644)
