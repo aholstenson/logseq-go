@@ -31,8 +31,9 @@ type not struct {
 func (n *not) isQuery() {}
 
 type fieldMatches struct {
-	field string
-	text  string
+	field   string
+	text    string
+	partial bool
 }
 
 func (f *fieldMatches) isQuery() {}
@@ -82,6 +83,14 @@ func TitleMatches(text string) Query {
 	return &fieldMatches{
 		field: "title",
 		text:  text,
+	}
+}
+
+func TitlePartiallyMatches(text string) Query {
+	return &fieldMatches{
+		field:   "title",
+		text:    text,
+		partial: true,
 	}
 }
 
