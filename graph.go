@@ -421,7 +421,10 @@ func (g *Graph) watchForChanges() {
 				g.mu.Unlock()
 
 				for _, watcher := range watchers {
-					watcher.changes <- event
+					select {
+					case watcher.changes <- event:
+					case <-watcher.done:
+					}
 				}
 			}
 		}
@@ -605,6 +608,7 @@ func (g *Graph) searchBlocks(ctx context.Context, opts []SearchOption, source pa
 func (g *Graph) Watch() *Watcher {
 	watcher := &Watcher{
 		changes: make(chan ChangeEvent),
+		done:    make(chan struct{}),
 	}
 
 	watcher.closer = func() {

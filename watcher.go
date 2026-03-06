@@ -5,14 +5,20 @@ package logseq
 type Watcher struct {
 	changes chan ChangeEvent
 	closer  func()
+	done    chan struct{}
 }
 
 func (w *Watcher) Close() error {
+	close(w.done)
 	w.closer()
-	close(w.changes)
 	return nil
 }
 
 func (w *Watcher) Events() <-chan ChangeEvent {
 	return w.changes
+}
+
+// Done returns a channel that is closed when the watcher is closed.
+func (w *Watcher) Done() <-chan struct{} {
+	return w.done
 }
