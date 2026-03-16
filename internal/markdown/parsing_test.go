@@ -1470,6 +1470,17 @@ var _ = Describe("Parsing", func() {
 				)))
 			})
 
+			It("can parse properties with spaces and punctuation", func() {
+				block, err := markdown.ParseString("key:: value with spaces - dashes (and more)")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewProperties(
+						content.NewProperty("key", content.NewText("value with spaces - dashes (and more)")),
+					),
+				)))
+			})
+
 			It("can parse multiple properties", func() {
 				block, err := markdown.ParseString("key1:: value1\nkey2:: value2")
 				Expect(err).ToNot(HaveOccurred())
