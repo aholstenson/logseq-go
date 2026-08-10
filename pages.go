@@ -133,14 +133,32 @@ func (p *pageImpl) Date() time.Time {
 }
 
 func (p *pageImpl) Properties() *content.Properties {
-	blocks := p.root.Blocks()
-	if len(blocks) == 0 {
-		block := content.NewBlock()
-		p.root.AddChild(block)
-		return block.Properties()
+	if properties := p.findProperties(); properties != nil {
+		return properties
 	}
 
-	return blocks[0].Properties()
+	// The page has no properties yet, create them as content of the root
+	// block so they are written the way Logseq writes them: before the first
+	// bullet of the page.
+	return p.root.Properties()
+}
+
+// findProperties locates the properties of the page, returning nil if the page
+// does not have any.
+func (p *pageImpl) findProperties() *content.Properties {
+	switch first := p.root.FirstChild().(type) {
+	case *content.Properties:
+		// Properties before the first bullet, which is how Logseq writes them.
+		return first
+	case *content.Block:
+		// Properties in the first block of the page are also treated as page
+		// properties by Logseq.
+		if properties, ok := first.FirstChild().(*content.Properties); ok {
+			return properties
+		}
+	}
+
+	return nil
 }
 
 func (p *pageImpl) Blocks() content.BlockList {
@@ -178,10 +196,28 @@ func loadRootBlock(path string) (*content.Block, error) {
 		return nil, fmt.Errorf("failed to parse markdown: %w", err)
 	}
 
-	// Check if the block has content, in which case we wrap it
-	if len(block.Content()) > 0 {
+	// Content that appears before the first bullet stays as content of the
+	// root block, which is where Logseq puts page properties. Keeping it there
+	// makes it round-trip in the same shape instead of turning the rest of the
+	// page into children of it.
+	//
+	// A page without any bullets has no blocks to work with though, so in that
+	// case the content becomes the single block of the page.
+	if len(block.Blocks()) == 0 && hasContentOtherThanProperties(block) {
 		block = content.NewBlock(block)
 	}
 
 	return block, nil
+}
+
+// hasContentOtherThanProperties checks if a block has content that is not
+// properties.
+func hasContentOtherThanProperties(block *content.Block) bool {
+	for _, node := range block.Content() {
+		if _, ok := node.(*content.Properties); !ok {
+			return true
+		}
+	}
+
+	return false
 }

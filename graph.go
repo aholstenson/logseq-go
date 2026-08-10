@@ -282,7 +282,15 @@ func (g *Graph) indexDocument(ctx context.Context, docPath string) (Page, error)
 		Blocks:       page.Blocks(),
 		Title:        page.Title(),
 	}
+
 	doc.SubPath, _ = filepath.Rel(g.directory, docPath)
+
+	if impl, ok := page.(*pageImpl); ok {
+		// Look up the properties without creating them, as indexing should not
+		// modify the page.
+		doc.Properties = impl.findProperties()
+	}
+
 	return page, g.index.IndexPage(ctx, doc)
 }
 

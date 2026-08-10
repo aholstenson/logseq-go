@@ -25,6 +25,11 @@ func indexPage(idx *indexing.BlugeIndex, subPath string, title string, blocks ..
 		Title:        title,
 		Blocks:       blocks,
 	}
+	if len(blocks) > 0 {
+		if properties, ok := blocks[0].FirstChild().(*content.Properties); ok {
+			page.Properties = properties
+		}
+	}
 	Expect(idx.IndexPage(ctx, page)).To(Succeed())
 	Expect(idx.Sync()).To(Succeed())
 }

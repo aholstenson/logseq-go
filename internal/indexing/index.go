@@ -87,6 +87,10 @@ type Page struct {
 
 	// Blocks is the blocks of the page, only used while indexing.
 	Blocks content.BlockList
+
+	// Properties is the properties of the page, nil if it has none. Only used
+	// while indexing.
+	Properties *content.Properties
 }
 
 type Block struct {

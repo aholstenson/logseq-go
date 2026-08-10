@@ -243,9 +243,12 @@ func (i *BlugeIndex) pageToDocument(doc *Page) (*bluge.Document, error) {
 		blugeDoc.AddField(bluge.NewDateTimeField("date", doc.Date).StoreValue())
 	}
 
+	if doc.Properties != nil {
+		i.transferProperties(blugeDoc, doc.Properties)
+		i.transferRefs(blugeDoc, "pages", doc.Properties)
+	}
+
 	if len(doc.Blocks) > 0 {
-		props := doc.Blocks[0].Properties()
-		i.transferProperties(blugeDoc, props)
 		i.transferRefs(blugeDoc, "pages", doc.Blocks[0])
 
 		preview := generatePreview(doc.Blocks[0].Children())

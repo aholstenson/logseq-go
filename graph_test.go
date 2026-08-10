@@ -4,9 +4,12 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	logseq "github.com/aholstenson/logseq-go"
+	"github.com/aholstenson/logseq-go/content"
+	. "github.com/aholstenson/logseq-go/internal/tests"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -108,6 +111,22 @@ var _ = Describe("Graph", func() {
 			Expect(page).ToNot(BeNil())
 			Expect(page.Title()).To(Equal("brandnew"))
 			Expect(page.IsNew()).To(BeTrue())
+		})
+
+		It("keeps blocks at the top level when the page starts with content", func() {
+			Expect(os.WriteFile(
+				filepath.Join(dir, "pages", "intro.md"),
+				[]byte("Intro text\n- Block 1\n- Block 2\n"),
+				0o644,
+			)).To(Succeed())
+
+			graph, err := logseq.Open(context.Background(), dir)
+			Expect(err).ToNot(HaveOccurred())
+			defer graph.Close()
+
+			page, err := graph.OpenPage("intro")
+			Expect(err).ToNot(HaveOccurred())
+			Expect(page.Blocks()).To(HaveLen(2))
 		})
 
 		It("opens a page with special characters in the title", func() {
@@ -317,6 +336,105 @@ var _ = Describe("Graph", func() {
 			err = tx.Save()
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("modified since"))
+		})
+	})
+
+	Describe("Page properties", func() {
+		// saveUnchanged opens a page and saves it again without touching it,
+		// returning the contents the page ended up with on disk. Pages are
+		// written without a trailing newline.
+		saveUnchanged := func(graph *logseq.Graph, path string, title string) string {
+			tx := graph.NewTransaction()
+			_, err := tx.OpenPage(title)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(tx.Save()).To(Succeed())
+
+			data, err := os.ReadFile(path)
+			Expect(err).ToNot(HaveOccurred())
+			return string(data)
+		}
+
+		It("keeps blocks at the top level when properties are not in a bullet", func() {
+			Expect(os.WriteFile(
+				filepath.Join(dir, "pages", "props.md"),
+				[]byte("icon:: 🔀\n- Block 1\n- Block 2\n- Block 3\n"),
+				0o644,
+			)).To(Succeed())
+
+			graph, err := logseq.Open(context.Background(), dir)
+			Expect(err).ToNot(HaveOccurred())
+			defer graph.Close()
+
+			page, err := graph.OpenPage("props")
+			Expect(err).ToNot(HaveOccurred())
+			Expect(page.Blocks()).To(HaveLen(3))
+			Expect(page.Properties().Get("icon")).To(EqualsNodes(content.NewText("🔀")))
+		})
+
+		It("round-trips properties that are not in a bullet", func() {
+			path := filepath.Join(dir, "pages", "props.md")
+			source := "icon:: 🔀\ntitle:: Properties\n- Block 1\n\t- Child\n- Block 2\n"
+			Expect(os.WriteFile(path, []byte(source), 0o644)).To(Succeed())
+
+			graph, err := logseq.Open(context.Background(), dir)
+			Expect(err).ToNot(HaveOccurred())
+			defer graph.Close()
+
+			Expect(saveUnchanged(graph, path, "props")).To(Equal(strings.TrimSuffix(source, "\n")))
+		})
+
+		It("round-trips properties in a bullet", func() {
+			path := filepath.Join(dir, "pages", "props.md")
+			source := "- icon:: 🔀\n- Block 1\n- Block 2\n"
+			Expect(os.WriteFile(path, []byte(source), 0o644)).To(Succeed())
+
+			graph, err := logseq.Open(context.Background(), dir)
+			Expect(err).ToNot(HaveOccurred())
+			defer graph.Close()
+
+			page, err := graph.OpenPage("props")
+			Expect(err).ToNot(HaveOccurred())
+			Expect(page.Blocks()).To(HaveLen(3))
+			Expect(page.Properties().Get("icon")).To(EqualsNodes(content.NewText("🔀")))
+
+			Expect(saveUnchanged(graph, path, "props")).To(Equal(strings.TrimSuffix(source, "\n")))
+		})
+
+		It("writes new properties before the first bullet", func() {
+			path := filepath.Join(dir, "pages", "props.md")
+			Expect(os.WriteFile(path, []byte("- Block 1\n"), 0o644)).To(Succeed())
+
+			graph, err := logseq.Open(context.Background(), dir)
+			Expect(err).ToNot(HaveOccurred())
+			defer graph.Close()
+
+			tx := graph.NewTransaction()
+			page, err := tx.OpenPage("props")
+			Expect(err).ToNot(HaveOccurred())
+			page.Properties().Set("icon", content.NewText("🔀"))
+			Expect(tx.Save()).To(Succeed())
+
+			data, err := os.ReadFile(path)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(string(data)).To(Equal("icon:: 🔀\n- Block 1"))
+		})
+
+		It("indexes properties that are not in a bullet", func() {
+			Expect(os.WriteFile(
+				filepath.Join(dir, "pages", "props.md"),
+				[]byte("status:: done\n- Block 1\n"),
+				0o644,
+			)).To(Succeed())
+
+			graph, err := logseq.Open(context.Background(), dir, logseq.WithInMemoryIndex())
+			Expect(err).ToNot(HaveOccurred())
+			defer graph.Close()
+
+			results, err := graph.SearchPages(context.Background(),
+				logseq.WithQuery(logseq.PropertyEquals("status", "done")),
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(results.Size()).To(Equal(1))
 		})
 	})
 
