@@ -88,7 +88,9 @@ func (t *macroParser) Parse(parent ast.Node, block text.Reader, pc parser.Contex
 	// Scan until the closing }} while also dealing with escaped } characters.
 	state := macroParseStateName
 	for i := start; i < len(line)-1; i++ {
-		if line[i] == '}' && line[i+1] == '}' && (!tripleCurly || (tripleCurly && line[i+2] == '}')) {
+		// A macro opened with three curly braces needs a third } to close, which
+		// has to be on this line for the macro to end here.
+		if line[i] == '}' && line[i+1] == '}' && (!tripleCurly || (i+2 < len(line) && line[i+2] == '}')) {
 			// If the previous character was a \, then this is an escaped } and
 			// we should continue scanning.
 			if line[i-1] == '\\' {

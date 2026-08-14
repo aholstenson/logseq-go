@@ -97,6 +97,7 @@ var _ = Describe("Parsing then outputting", func() {
 
 		Describe("Invalid", func() {
 			FullyEqual("Macro without end", "{{poem red blue")
+			FullyEqual("Macro with three curly braces missing the last closing brace", "{{{poem}}")
 		})
 	})
 

@@ -744,6 +744,20 @@ var _ = Describe("Parsing", func() {
 			)))
 		})
 
+		It("macro with three curly braces missing the last closing brace is parsed from the second brace", func() {
+			// The third { is not part of a macro, so it is left as text and the
+			// rest parses as a regular two brace macro.
+			block, err := markdown.ParseString("{{{macro}}")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("{"),
+					content.NewMacro("macro"),
+				),
+			)))
+		})
+
 		It("can handle multiple macros", func() {
 			block, err := markdown.ParseString("{{macro1}} {{macro2}}")
 			Expect(err).ToNot(HaveOccurred())
