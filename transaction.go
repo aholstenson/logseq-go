@@ -16,6 +16,10 @@ type Transaction struct {
 	graph *Graph
 
 	openedPages map[string]Page
+
+	// removedPaths are the files of pages that will be removed from the graph
+	// when the transaction is saved.
+	removedPaths []string
 }
 
 func newTransaction(graph *Graph) *Transaction {
@@ -65,6 +69,187 @@ func (t *Transaction) OpenPage(title string) (Page, error) {
 
 	t.openedPages[path] = page
 	return page, nil
+}
+
+// openViaPath opens the page stored at the given path, returning the instance
+// already opened in this transaction if there is one. The page only becomes
+// part of the transaction if the caller puts it in openedPages, so pages that
+// end up unchanged are not written back.
+func (t *Transaction) openViaPath(path string) (*pageImpl, error) {
+	page, ok := t.openedPages[path]
+	if !ok {
+		var err error
+		page, err = t.graph.openViaPath(path)
+		if err != nil {
+			return nil, err
+		}
+
+		if page == nil {
+			return nil, nil
+		}
+	}
+
+	impl, ok := page.(*pageImpl)
+	if !ok {
+		return nil, fmt.Errorf("unknown page type: %T", page)
+	}
+
+	return impl, nil
+}
+
+// DeletePage removes a page from the graph when the transaction is saved.
+// Deleting a page that does not exist does nothing.
+//
+// References to the page are left as they are, the same way Logseq leaves them
+// pointing at a page that no longer has any content.
+//
+// Any changes made to the page in this transaction are dropped, as writing them
+// would only recreate the file that is being removed.
+func (t *Transaction) DeletePage(title string) error {
+	path, err := t.graph.pagePath(title)
+	if err != nil {
+		return err
+	}
+
+	t.deletePath(path)
+	return nil
+}
+
+// DeleteJournal removes the journal for the given date from the graph when the
+// transaction is saved. See DeletePage for the details of how pages are
+// removed.
+func (t *Transaction) DeleteJournal(date time.Time) error {
+	path, err := t.graph.journalPath(journalDate(date))
+	if err != nil {
+		return err
+	}
+
+	t.deletePath(path)
+	return nil
+}
+
+func (t *Transaction) deletePath(path string) {
+	delete(t.openedPages, path)
+
+	for _, removed := range t.removedPaths {
+		if removed == path {
+			return
+		}
+	}
+
+	t.removedPaths = append(t.removedPaths, path)
+}
+
+// RenamePage changes the title of a page. The page moves to the file its new
+// title belongs in and every reference to it in the graph, such as `[[Old]]`,
+// `#Old` and `{{embed [[Old]]}}`, is pointed at the new title. As with all
+// other changes, this happens when the transaction is saved.
+//
+// The references are found via the index, so this requires the graph to have
+// been opened with indexing enabled. Pages that have changed on disk without
+// having been indexed yet may keep references to the old title.
+func (t *Transaction) RenamePage(ctx context.Context, from string, to string) error {
+	if t.graph.index == nil {
+		return fmt.Errorf("indexing is not enabled, which is required to rename pages")
+	}
+
+	fromPath, err := t.graph.pagePath(from)
+	if err != nil {
+		return err
+	}
+
+	toPath, err := t.graph.pagePath(to)
+	if err != nil {
+		return err
+	}
+
+	page, err := t.OpenPage(from)
+	if err != nil {
+		return err
+	}
+
+	if page.IsNew() {
+		return fmt.Errorf("%w: %s", ErrPageNotFound, from)
+	}
+
+	current := page.(*pageImpl)
+
+	renamed := current
+	if fromPath != toPath {
+		if err := t.checkRenameTarget(fromPath, toPath, to); err != nil {
+			return err
+		}
+
+		// The page keeps its content but is written to the file of the new
+		// title, leaving the old file to be removed.
+		renamed, err = openOrCreatePage(toPath, PageTypeDedicated, to, time.Time{}, "")
+		if err != nil {
+			return err
+		}
+
+		renamed.root = current.root
+
+		t.deletePath(fromPath)
+	} else {
+		// Only the case of the title changed, so the page stays in its file.
+		renamed.title = to
+	}
+
+	t.openedPages[toPath] = renamed
+
+	// The renamed page may reference itself, and its content is now part of the
+	// page at the new title, so it is retargeted here rather than as one of the
+	// referencing pages below.
+	retargetPageReferences(renamed.root, from, to)
+
+	subPaths, err := t.graph.referencingSubPaths(ctx, from)
+	if err != nil {
+		return fmt.Errorf("failed to find references to %s: %w", from, err)
+	}
+
+	for _, subPath := range subPaths {
+		path := filepath.Join(t.graph.directory, subPath)
+		if path == fromPath || path == toPath {
+			continue
+		}
+
+		referrer, err := t.openViaPath(path)
+		if err != nil {
+			return fmt.Errorf("failed to open referencing page %s: %w", subPath, err)
+		}
+
+		if referrer == nil {
+			continue
+		}
+
+		if retargetPageReferences(referrer.root, from, to) > 0 {
+			// Only pages that actually reference the renamed page are written.
+			t.openedPages[path] = referrer
+		}
+	}
+
+	return nil
+}
+
+// checkRenameTarget makes sure a page can be moved to the given path, which it
+// can as long as no other page is stored there.
+func (t *Transaction) checkRenameTarget(fromPath string, toPath string, to string) error {
+	toInfo, err := os.Stat(toPath)
+	if os.IsNotExist(err) {
+		return nil
+	} else if err != nil {
+		return fmt.Errorf("failed to check if page %s exists: %w", to, err)
+	}
+
+	// On a file system that ignores case a title that only changed in case maps
+	// to a different path but the same file, in which case the page is simply
+	// staying where it is.
+	fromInfo, err := os.Stat(fromPath)
+	if err == nil && os.SameFile(fromInfo, toInfo) {
+		return nil
+	}
+
+	return fmt.Errorf("%w: %s", ErrPageExists, to)
 }
 
 func (t *Transaction) SearchPages(ctx context.Context, options ...SearchOption) (SearchResults[PageResult], error) {
@@ -194,6 +379,12 @@ func (t *Transaction) Save() error {
 		}
 	}
 
+	// written keeps track of the files pages were written to, so that removing
+	// a page can tell if a page was written to the same file. A rename that only
+	// changes the case of a title ends up doing that on a file system that
+	// ignores case.
+	written := make([]os.FileInfo, 0, len(pages))
+
 	for _, page := range pages {
 		path := page.path
 
@@ -221,7 +412,41 @@ func (t *Transaction) Save() error {
 		if err != nil {
 			return fmt.Errorf("failed to write page to %s: %w", path, err)
 		}
+
+		if info, err := os.Stat(path); err == nil {
+			written = append(written, info)
+		}
 	}
 
+	// Removals happen after the writes so that a page moved into the file of a
+	// removed page keeps its content.
+	for _, path := range t.removedPaths {
+		info, err := os.Stat(path)
+		if os.IsNotExist(err) {
+			continue
+		} else if err != nil {
+			return fmt.Errorf("failed to check if page at %s can be removed: %w", path, err)
+		}
+
+		if wasWritten(written, info) {
+			continue
+		}
+
+		if err := t.graph.removePageFile(path); err != nil {
+			return err
+		}
+	}
+
+	t.removedPaths = nil
 	return nil
+}
+
+func wasWritten(written []os.FileInfo, info os.FileInfo) bool {
+	for _, w := range written {
+		if os.SameFile(w, info) {
+			return true
+		}
+	}
+
+	return false
 }

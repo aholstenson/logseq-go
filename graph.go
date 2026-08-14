@@ -167,6 +167,31 @@ func (g *Graph) pagePath(title string) (string, error) {
 	return filepath.Join(g.directory, g.config.PagesDir, path+".md"), nil
 }
 
+// removePageFile removes the file a page is stored in. If the graph was opened
+// with WithRecycleDeletedPages the file is moved into the recycle directory
+// instead, so that it can be recovered.
+func (g *Graph) removePageFile(path string) error {
+	if !g.options.recycleDeletedPages {
+		if err := os.Remove(path); err != nil {
+			return fmt.Errorf("failed to remove page at %s: %w", path, err)
+		}
+
+		return nil
+	}
+
+	recycleDir := filepath.Join(g.directory, "logseq", ".recycle")
+	if err := os.MkdirAll(recycleDir, 0755); err != nil {
+		return fmt.Errorf("failed to create recycle directory: %w", err)
+	}
+
+	target := filepath.Join(recycleDir, filepath.Base(path))
+	if err := os.Rename(path, target); err != nil {
+		return fmt.Errorf("failed to recycle page at %s: %w", path, err)
+	}
+
+	return nil
+}
+
 func (g *Graph) openViaPath(path string) (Page, error) {
 	name := filepath.Base(path)
 	if filepath.Ext(name) != ".md" {

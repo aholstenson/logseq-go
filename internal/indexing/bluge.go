@@ -449,12 +449,20 @@ func (i *BlugeIndex) transferProperties(doc *bluge.Document, properties *content
 func (i *BlugeIndex) transferRefs(doc *bluge.Document, field string, root content.HasChildren) {
 	refs := root.Children().FilterDeep(content.IsOfType[content.PageRef]())
 	for _, ref := range refs {
-		doc.AddField(bluge.NewKeywordField(field+":ref", ref.(content.PageRef).GetTo()))
+		doc.AddField(bluge.NewKeywordField(field+":ref", normalizeRef(ref.(content.PageRef).GetTo())))
 
 		if hashtag, ok := ref.(*content.Hashtag); ok {
-			doc.AddField(bluge.NewKeywordField(field+":tag", hashtag.GetTo()))
+			doc.AddField(bluge.NewKeywordField(field+":tag", normalizeRef(hashtag.GetTo())))
 		}
 	}
+}
+
+// normalizeRef brings the title a reference points at into the form it is
+// indexed and queried in. Logseq does not distinguish between page titles that
+// only differ in case, so `[[example]]` and `[[Example]]` are references to the
+// same page and have to match the same query.
+func normalizeRef(title string) string {
+	return strings.ToLower(title)
 }
 
 func (i *BlugeIndex) transferLinks(doc *bluge.Document, root content.HasChildren) {
@@ -643,10 +651,10 @@ func mapQuery(q Query) bluge.Query {
 		return bluge.NewTermQuery(query.value).SetField(query.field)
 	case *fieldRefs:
 		if query.tag {
-			return bluge.NewTermQuery(query.target).SetField(query.field + ":tag")
+			return bluge.NewTermQuery(normalizeRef(query.target)).SetField(query.field + ":tag")
 		}
 
-		return bluge.NewTermQuery(query.target).SetField(query.field + ":ref")
+		return bluge.NewTermQuery(normalizeRef(query.target)).SetField(query.field + ":ref")
 	default:
 		return bluge.NewMatchNoneQuery()
 	}

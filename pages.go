@@ -1,6 +1,7 @@
 package logseq
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -15,6 +16,14 @@ const (
 	PageTypeDedicated PageType = iota
 	PageTypeJournal
 )
+
+// ErrPageNotFound is returned for operations that need a page to exist in the
+// graph, such as renaming one.
+var ErrPageNotFound = errors.New("page not found")
+
+// ErrPageExists is returned when a page would overwrite another page, such as
+// when renaming a page to a title that is already taken.
+var ErrPageExists = errors.New("page already exists")
 
 type Page interface {
 	// Type returns the type of the page.

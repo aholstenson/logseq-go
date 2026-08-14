@@ -9,6 +9,8 @@ when pages are modified. Please open issues if you find any bugs.
 ## Features
 
 - Read and write journals and pages
+- Rename and delete pages, with references to a renamed page updated across the
+  graph
 - Rich content model
   - Blocks
   - Formatting via headings, paragraphs, lists, code blocks, etc.
@@ -50,6 +52,23 @@ today.AddBlock(content.NewBlock(
 // Save all the changes made
 err = tx.Save()
 ```
+
+Pages can be renamed and deleted in a transaction as well. Renaming points all
+the references to the page, such as `[[Old]]` and `#Old`, at the new title,
+which requires the graph to be opened with indexing enabled:
+
+```go
+tx := graph.NewTransaction()
+
+err = tx.RenamePage(ctx, "Old", "New")
+err = tx.DeletePage("Unwanted")
+
+err = tx.Save()
+```
+
+Deleted pages are removed from the graph, unless the graph is opened with
+`logseq.WithRecycleDeletedPages()`, in which case they are moved to the
+`logseq/.recycle` directory that Logseq recovers deleted pages from.
 
 ## Limitations
 

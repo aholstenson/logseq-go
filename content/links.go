@@ -101,13 +101,18 @@ func (l *AutoLink) debug(p *debugPrinter) {
 var _ InlineNode = (*AutoLink)(nil)
 var _ HasLinkURL = (*AutoLink)(nil)
 
-// PageRef is a reference to a page, such as a `PageLink` or `Hashtag`.
+// PageRef is a reference to a page, such as a `PageLink`, `Hashtag` or
+// `PageEmbed`.
 type PageRef interface {
 	Node
 
 	isPageRef()
 
+	// GetTo gets the title of the page this reference points to.
 	GetTo() string
+
+	// SetTo points this reference at another page.
+	SetTo(target string)
 }
 
 type PageLink struct {
@@ -125,6 +130,10 @@ func NewPageLink(target string) *PageLink {
 
 func (l *PageLink) GetTo() string {
 	return l.To
+}
+
+func (l *PageLink) SetTo(target string) {
+	l.To = target
 }
 
 func (l *PageLink) WithTo(target string) *PageLink {
@@ -160,6 +169,10 @@ func NewHashtag(target string) *Hashtag {
 
 func (l *Hashtag) GetTo() string {
 	return l.To
+}
+
+func (l *Hashtag) SetTo(target string) {
+	l.To = target
 }
 
 func (l *Hashtag) WithTo(target string) *Hashtag {

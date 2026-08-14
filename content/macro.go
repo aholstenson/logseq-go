@@ -87,6 +87,22 @@ func NewPageEmbed(to string) *PageEmbed {
 	}
 }
 
+// GetTo gets the title of the page that is embedded.
+func (p *PageEmbed) GetTo() string {
+	return p.To
+}
+
+// SetTo points this embed at another page.
+func (p *PageEmbed) SetTo(target string) {
+	p.To = target
+}
+
+// WithTo points this embed at another page.
+func (p *PageEmbed) WithTo(target string) *PageEmbed {
+	p.To = target
+	return p
+}
+
 func (p *PageEmbed) debug(pr *debugPrinter) {
 	pr.StartType("PageEmbed")
 	pr.Field("to", p.To)
@@ -95,7 +111,10 @@ func (p *PageEmbed) debug(pr *debugPrinter) {
 
 func (p *PageEmbed) isInline() {}
 
+func (p *PageEmbed) isPageRef() {}
+
 var _ InlineNode = (*PageEmbed)(nil)
+var _ PageRef = (*PageEmbed)(nil)
 
 type BlockEmbed struct {
 	baseNode

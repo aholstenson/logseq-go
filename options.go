@@ -8,6 +8,8 @@ type options struct {
 	index          bool
 	indexDirectory string
 
+	recycleDeletedPages bool
+
 	listener func(event OpenEvent)
 
 	blockTimeFormat       string
@@ -29,6 +31,18 @@ func WithInMemoryIndex() Option {
 	return func(o *options) {
 		o.index = true
 		o.indexDirectory = ""
+	}
+}
+
+// WithRecycleDeletedPages makes deleted pages move into the `logseq/.recycle`
+// directory of the graph instead of being removed. That is where Logseq keeps
+// pages deleted in the app, so they can be recovered by moving them back.
+//
+// Files in the recycle directory keep their name, so recycling a page whose
+// name is already there replaces the previously recycled file.
+func WithRecycleDeletedPages() Option {
+	return func(o *options) {
+		o.recycleDeletedPages = true
 	}
 }
 

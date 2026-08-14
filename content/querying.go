@@ -84,6 +84,8 @@ func IsBoth(a NodePredicate, b NodePredicate) NodePredicate {
 	}
 }
 
+// IsPageReference matches nodes that point at a page by its title, such as
+// page links, hashtags and page embeds.
 func IsPageReference() NodePredicate {
-	return IsEither(IsOfType[*PageLink](), IsOfType[*Hashtag]())
+	return IsOfType[PageRef]()
 }

@@ -304,6 +304,35 @@ var _ = Describe("Queries", func() {
 			Expect(results).To(HaveLen(1))
 			Expect(results[0].Title).To(Equal("Page A"))
 		})
+
+		It("matches references that differ in case", func() {
+			indexPage(idx, "pages/a.md", "Page A",
+				content.NewBlock(
+					content.NewParagraph(
+						content.NewText("see "),
+						content.NewPageLink("target"),
+					),
+				),
+			)
+
+			results := searchPages(idx, indexing.References("Target"))
+			Expect(results).To(HaveLen(1))
+			Expect(results[0].Title).To(Equal("Page A"))
+		})
+
+		It("matches pages that embed another page", func() {
+			indexPage(idx, "pages/a.md", "Page A",
+				content.NewBlock(
+					content.NewParagraph(
+						content.NewPageEmbed("Target"),
+					),
+				),
+			)
+
+			results := searchPages(idx, indexing.References("Target"))
+			Expect(results).To(HaveLen(1))
+			Expect(results[0].Title).To(Equal("Page A"))
+		})
 	})
 
 	Describe("ReferencesTag", func() {
