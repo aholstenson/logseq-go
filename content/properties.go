@@ -80,6 +80,12 @@ type Property struct {
 
 	// Name is the name of the property.
 	Name string
+
+	// PageRefsIgnored is whether the pages named in the value of this property
+	// are only text rather than references to those pages, which is what
+	// `:ignored-page-references-keywords` sets up. A page is not found via the
+	// value of such a property, not even where the value is written as a link.
+	PageRefsIgnored bool
 }
 
 // NewProperty creates a new Property node with the given name and values.
@@ -97,9 +103,19 @@ func (p *Property) WithName(name string) *Property {
 	return p
 }
 
+// WithPageRefsIgnored sets whether the pages named in the value of this
+// property are only text rather than references to those pages.
+func (p *Property) WithPageRefsIgnored(ignored bool) *Property {
+	p.PageRefsIgnored = ignored
+	return p
+}
+
 func (p *Property) debug(p2 *debugPrinter) {
 	p2.StartType("Property")
 	p2.Field("Name", p.Name)
+	if p.PageRefsIgnored {
+		p2.Field("PageRefsIgnored", "true")
+	}
 	p2.Children(p)
 	p2.EndType()
 }

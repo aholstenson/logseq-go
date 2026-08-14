@@ -21,6 +21,19 @@ func FullyEqual(name string, input string, opts ...markdown.Option) {
 	})
 }
 
+// FullyEqualWhenReadWith is FullyEqual for input that is read with the
+// settings of a graph.
+func FullyEqualWhenReadWith(name string, input string, parseOpts ...markdown.ParseOption) {
+	It(name, func() {
+		block, err := markdown.ParseString(input, parseOpts...)
+		Expect(err).ToNot(HaveOccurred())
+
+		v, err := markdown.AsString(block)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(v).To(Equal(input))
+	})
+}
+
 func Varies(name string, input string, output string, opts ...markdown.Option) {
 	It(name, func() {
 		v := parseAndOutput(input, opts...)
@@ -124,6 +137,18 @@ var _ = Describe("Parsing then outputting", func() {
 		FullyEqual("Property with a value of several words", "key:: a longer value")
 		FullyEqual("Property with several values", "alias:: First, Second Name")
 		FullyEqual("Property with several values as page links", "alias:: [[First]], [[Second Name]]")
+		FullyEqual("Property with values that mix page links and text", "tags:: [[First]], Second, #Third")
+		FullyEqual("Property with values separated by a full width comma", "tags:: First，Second")
+		FullyEqual("Property with extra space around its values", "tags::  First ,  Second")
+		FullyEqual("Property with values that are escaped", "tags:: First, Second \\[escaped\\]")
+		FullyEqualWhenReadWith("Property with values of a configured list property",
+			"key:: First, Second Name",
+			markdown.WithPropertiesSeparatedByCommas("key"),
+		)
+		FullyEqualWhenReadWith("Property whose references are ignored",
+			"author:: [[Someone]], Another",
+			markdown.WithIgnoredPageReferences("author"),
+		)
 		FullyEqual("Multiple properties", "key:: value\nkey2:: value2")
 		FullyEqual("Properties followed by trailing paragraph", "key:: value\nParagraph")
 		FullyEqual("Paragraphs interrupted by properties", "Paragraph\nkey:: value")

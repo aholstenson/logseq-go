@@ -287,6 +287,80 @@ var _ = Describe("Config", func() {
 		})
 	})
 
+	Describe("Property values", func() {
+		// writePage puts a page in the graph, which has to happen before the
+		// graph is opened for it to be indexed.
+		writePage := func(name string, content string) {
+			Expect(os.WriteFile(
+				filepath.Join(dir, "pages", name),
+				[]byte(content),
+				0o644,
+			)).To(Succeed())
+		}
+
+		referencesTo := func(graph *logseq.Graph, title string) int {
+			page, err := graph.OpenPage(title)
+			Expect(err).ToNot(HaveOccurred())
+
+			results, err := page.LinkedReferences(context.Background())
+			Expect(err).ToNot(HaveOccurred())
+			return results.Size()
+		}
+
+		It("references the pages of a property that is separated by commas", func() {
+			writePage("target.md", "- content of target\n")
+			writePage("referrer.md", "- a block\n  author:: target, Someone Else\n")
+
+			graph := openWithConfig(
+				`{:property/separated-by-commas #{:author}}`,
+				logseq.WithInMemoryIndex(),
+			)
+
+			Expect(referencesTo(graph, "target")).To(Equal(1))
+		})
+
+		It("keeps the value of a property that is not separated by commas as text", func() {
+			writePage("target.md", "- content of target\n")
+			writePage("referrer.md", "- a block\n  author:: target, Someone Else\n")
+
+			graph := openWithConfig(`{}`, logseq.WithInMemoryIndex())
+
+			Expect(referencesTo(graph, "target")).To(Equal(0))
+		})
+
+		It("does not reference the pages of a property whose references are ignored", func() {
+			writePage("target.md", "- content of target\n")
+			writePage("referrer.md", "- a block\n  author:: [[target]]\n")
+
+			graph := openWithConfig(
+				`{:ignored-page-references-keywords #{:author}}`,
+				logseq.WithInMemoryIndex(),
+			)
+
+			Expect(referencesTo(graph, "target")).To(Equal(0))
+		})
+
+		It("references the pages of a property that is written as a link", func() {
+			writePage("target.md", "- content of target\n")
+			writePage("referrer.md", "- a block\n  author:: [[target]]\n")
+
+			graph := openWithConfig(`{}`, logseq.WithInMemoryIndex())
+
+			Expect(referencesTo(graph, "target")).To(Equal(1))
+		})
+
+		It("reads a block with the settings of the graph", func() {
+			graph := openWithConfig(`{:property/separated-by-commas #{:author}}`)
+
+			block, err := graph.ParseBlock("author:: First, Second Name")
+			Expect(err).ToNot(HaveOccurred())
+
+			properties := block.FindProperties()
+			Expect(properties).ToNot(BeNil())
+			Expect(properties.Get("author").PageReferences()).To(HaveLen(2))
+		})
+	})
+
 	Describe("DefaultJournalQueries", func() {
 		It("returns no queries when the graph has none", func() {
 			graph := openWithConfig(`{}`)

@@ -468,7 +468,7 @@ func (i *BlugeIndex) transferProperties(doc *bluge.Document, properties *content
 }
 
 func (i *BlugeIndex) transferRefs(doc *bluge.Document, field string, root content.HasChildren) {
-	refs := root.Children().FilterDeep(content.IsOfType[content.PageRef]())
+	refs := root.Children().PageReferences()
 	for _, ref := range refs {
 		doc.AddField(bluge.NewKeywordField(field+":ref", normalizeRef(ref.(content.PageRef).GetTo())))
 
@@ -614,6 +614,8 @@ func plainText0(nodes content.NodeList, builder *strings.Builder) {
 			builder.WriteString("#")
 			builder.WriteString(n.To)
 		case *content.PageLink:
+			builder.WriteString(n.To)
+		case *content.PageRefText:
 			builder.WriteString(n.To)
 		case *content.CodeSpan:
 			builder.WriteString(n.Value)

@@ -277,7 +277,7 @@ func (t *Transaction) renamePage(ctx context.Context, from string, to string) er
 
 		// The page keeps its content but is written to the file of the new
 		// title, leaving the old file to be removed.
-		renamed, err = openOrCreatePage(t, toPath, PageTypeDedicated, to, time.Time{}, "")
+		renamed, err = openOrCreatePage(t, toPath, PageTypeDedicated, to, time.Time{}, "", t.graph.markdownParseOptions()...)
 		if err != nil {
 			return err
 		}

@@ -1826,6 +1826,167 @@ var _ = Describe("Parsing", func() {
 				)))
 			})
 
+			It("keeps the value of a property that is not a list", func() {
+				block, err := markdown.ParseString("key:: First, Second Name")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewProperties(
+						content.NewProperty("key", content.NewText("First, Second Name")),
+					),
+				)))
+			})
+
+			It("reads the values of a built-in list property as page references", func() {
+				block, err := markdown.ParseString("alias:: First, Second Name")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewProperties(
+						content.NewProperty(
+							"alias",
+							content.NewPageRefText("First"),
+							content.NewText(", "),
+							content.NewPageRefText("Second Name"),
+						),
+					),
+				)))
+			})
+
+			It("reads the single value of a list property as a page reference", func() {
+				block, err := markdown.ParseString("tags:: Example")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewProperties(
+						content.NewProperty("tags", content.NewPageRefText("Example")),
+					),
+				)))
+			})
+
+			It("reads the values of a list property split by a full width comma", func() {
+				block, err := markdown.ParseString("tags:: First，Second")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewProperties(
+						content.NewProperty(
+							"tags",
+							content.NewPageRefText("First"),
+							content.NewText("，"),
+							content.NewPageRefText("Second"),
+						),
+					),
+				)))
+			})
+
+			It("mixes page links and text in the values of a list property", func() {
+				block, err := markdown.ParseString("tags:: [[First]], Second, #Third")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewProperties(
+						content.NewProperty(
+							"tags",
+							content.NewPageLink("First"),
+							content.NewText(", "),
+							content.NewPageRefText("Second"),
+							content.NewText(", "),
+							content.NewHashtag("Third"),
+						),
+					),
+				)))
+			})
+
+			It("keeps a list property that has no values as it was written", func() {
+				block, err := markdown.ParseString("tags:: ,")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewProperties(
+						content.NewProperty("tags", content.NewText(",")),
+					),
+				)))
+			})
+
+			It("reads the values of a configured list property as page references", func() {
+				block, err := markdown.ParseString(
+					"key:: First, Second Name",
+					markdown.WithPropertiesSeparatedByCommas("key"),
+				)
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewProperties(
+						content.NewProperty(
+							"key",
+							content.NewPageRefText("First"),
+							content.NewText(", "),
+							content.NewPageRefText("Second Name"),
+						),
+					),
+				)))
+			})
+
+			It("matches the name of a list property without regard to case", func() {
+				block, err := markdown.ParseString(
+					"Key:: First",
+					markdown.WithPropertiesSeparatedByCommas("KEY"),
+				)
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewProperties(
+						content.NewProperty("Key", content.NewPageRefText("First")),
+					),
+				)))
+			})
+
+			It("marks a property whose references are ignored", func() {
+				block, err := markdown.ParseString(
+					"author:: Someone",
+					markdown.WithIgnoredPageReferences("author"),
+				)
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewProperties(
+						content.NewProperty("author", content.NewText("Someone")).
+							WithPageRefsIgnored(true),
+					),
+				)))
+			})
+
+			It("keeps the page links of a property whose references are ignored", func() {
+				block, err := markdown.ParseString(
+					"author:: [[Someone]]",
+					markdown.WithIgnoredPageReferences("author"),
+				)
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewProperties(
+						content.NewProperty("author", content.NewPageLink("Someone")).
+							WithPageRefsIgnored(true),
+					),
+				)))
+			})
+
+			It("does not split a list property whose references are ignored", func() {
+				block, err := markdown.ParseString(
+					"tags:: First, Second",
+					markdown.WithIgnoredPageReferences("tags"),
+				)
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewProperties(
+						content.NewProperty("tags", content.NewText("First, Second")).
+							WithPageRefsIgnored(true),
+					),
+				)))
+			})
+
 			It("can parse property in block", func() {
 				block, err := markdown.ParseString("- key:: value\nItem 1\n- Item 2\n")
 				Expect(err).ToNot(HaveOccurred())

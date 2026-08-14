@@ -20,7 +20,7 @@ func pageTitlesEqual(a string, b string) bool {
 // tree at the page `to`, returning the number of references that changed.
 func retargetPageReferences(root content.HasChildren, from string, to string) int {
 	changed := 0
-	for _, node := range root.Children().FilterDeep(content.IsPageReference()) {
+	for _, node := range root.Children().PageReferences() {
 		ref := node.(content.PageRef)
 		if !pageTitlesEqual(ref.GetTo(), from) {
 			continue

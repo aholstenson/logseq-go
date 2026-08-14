@@ -124,7 +124,7 @@ type pageImpl struct {
 	root *content.Block
 }
 
-func openOrCreatePage(source pageSource, path string, pageType PageType, title string, date time.Time, templatePath string) (*pageImpl, error) {
+func openOrCreatePage(source pageSource, path string, pageType PageType, title string, date time.Time, templatePath string, parseOptions ...markdown.ParseOption) (*pageImpl, error) {
 	// Get the last modified time for the file
 	info, err := os.Stat(path)
 	var root *content.Block
@@ -134,7 +134,7 @@ func openOrCreatePage(source pageSource, path string, pageType PageType, title s
 			// No template, start with an empty page
 			root = content.NewBlock()
 		} else {
-			root, err = loadRootBlock(templatePath)
+			root, err = loadRootBlock(templatePath, parseOptions...)
 			if err != nil {
 				return nil, fmt.Errorf("failed to load template: %w", err)
 			}
@@ -144,7 +144,7 @@ func openOrCreatePage(source pageSource, path string, pageType PageType, title s
 		return nil, err
 	} else {
 		// This page exists, load it
-		root, err = loadRootBlock(path)
+		root, err = loadRootBlock(path, parseOptions...)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load page: %w", err)
 		}
@@ -336,13 +336,13 @@ func (p *pageImpl) InsertBlockBefore(block *content.Block, before *content.Block
 	p.root.InsertChildBefore(block, before)
 }
 
-func loadRootBlock(path string) (*content.Block, error) {
+func loadRootBlock(path string, parseOptions ...markdown.ParseOption) (*content.Block, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
 
-	block, err := markdown.Parse(data)
+	block, err := markdown.Parse(data, parseOptions...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse markdown: %w", err)
 	}

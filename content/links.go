@@ -154,6 +154,49 @@ func (l *PageLink) isPageRef() {}
 var _ InlineNode = (*PageLink)(nil)
 var _ PageRef = (*PageLink)(nil)
 
+// PageRefText is a reference to a page written as plain text, without any
+// markup around it. Logseq reads the values of the properties that hold a list
+// of pages this way, so `tags:: Example, Other` refers to two pages even
+// though neither is written as a link.
+type PageRefText struct {
+	baseNode
+
+	// To is the target of the reference.
+	To string
+}
+
+func NewPageRefText(target string) *PageRefText {
+	return &PageRefText{
+		To: target,
+	}
+}
+
+func (l *PageRefText) GetTo() string {
+	return l.To
+}
+
+func (l *PageRefText) SetTo(target string) {
+	l.To = target
+}
+
+func (l *PageRefText) WithTo(target string) *PageRefText {
+	l.To = target
+	return l
+}
+
+func (l *PageRefText) isInline() {}
+
+func (l *PageRefText) debug(p *debugPrinter) {
+	p.StartType("PageRefText")
+	p.Field("to", l.To)
+	p.EndType()
+}
+
+func (l *PageRefText) isPageRef() {}
+
+var _ InlineNode = (*PageRefText)(nil)
+var _ PageRef = (*PageRefText)(nil)
+
 type Hashtag struct {
 	baseNode
 

@@ -193,6 +193,9 @@ func (w *Output) Write(n content.Node) error {
 		return w.writeAutoLink(node)
 	case *content.PageLink:
 		return w.writePageLink(node)
+	case *content.PageRefText:
+		// The title is the whole of the reference, written the same way text is.
+		return w.write(node.To, EscapePotentialMarkdown)
 	case *content.Hashtag:
 		return w.writeHashtag(node)
 	case *content.BlockRef:

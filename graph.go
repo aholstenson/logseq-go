@@ -155,7 +155,7 @@ func (g *Graph) openJournal(date time.Time, source pageSource) (Page, error) {
 
 	title := g.journalTitleFormat.Format(date)
 
-	return openOrCreatePage(source, path, PageTypeJournal, title, date, templatePath)
+	return openOrCreatePage(source, path, PageTypeJournal, title, date, templatePath, g.markdownParseOptions()...)
 }
 
 func (g *Graph) journalPath(date time.Time) (string, error) {
@@ -174,7 +174,7 @@ func (g *Graph) openPage(title string, source pageSource) (Page, error) {
 		return nil, err
 	}
 
-	page, err := openOrCreatePage(source, path, PageTypeDedicated, title, time.Time{}, "")
+	page, err := openOrCreatePage(source, path, PageTypeDedicated, title, time.Time{}, "", g.markdownParseOptions()...)
 	if err != nil {
 		return nil, err
 	}
@@ -202,7 +202,7 @@ func (g *Graph) openPage(title string, source pageSource) (Page, error) {
 		return nil, err
 	}
 
-	return openOrCreatePage(source, path, PageTypeDedicated, target, time.Time{}, "")
+	return openOrCreatePage(source, path, PageTypeDedicated, target, time.Time{}, "", g.markdownParseOptions()...)
 }
 
 // pageTitleForAlias finds the title of the page that has the given title as one
@@ -281,14 +281,14 @@ func (g *Graph) openViaPath(path string, source pageSource) (Page, error) {
 
 		title := g.journalTitleFormat.Format(date)
 
-		return openOrCreatePage(source, path, PageTypeJournal, title, date, "")
+		return openOrCreatePage(source, path, PageTypeJournal, title, date, "", g.markdownParseOptions()...)
 	} else if dir == filepath.Join(g.directory, g.config.PagesDir) {
 		title, err := utils.FilenameToTitle(g.config.FileNameFormat, name)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get title from filename: %w", err)
 		}
 
-		return openOrCreatePage(source, path, PageTypeDedicated, title, time.Time{}, "")
+		return openOrCreatePage(source, path, PageTypeDedicated, title, time.Time{}, "", g.markdownParseOptions()...)
 	}
 
 	return nil, nil

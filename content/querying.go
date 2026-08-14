@@ -89,3 +89,26 @@ func IsBoth(a NodePredicate, b NodePredicate) NodePredicate {
 func IsPageReference() NodePredicate {
 	return IsOfType[PageRef]()
 }
+
+// PageReferences finds every reference to a page in these nodes and the nodes
+// below them, which is what makes a page show up in the linked references of
+// another. The values of the properties that ignore references are left out,
+// as Logseq reads those as text rather than as pointing at a page.
+func (n NodeList) PageReferences() NodeList {
+	refs := make(NodeList, 0)
+	for _, node := range n {
+		if property, ok := node.(*Property); ok && property.PageRefsIgnored {
+			continue
+		}
+
+		if IsPageReference()(node) {
+			refs = append(refs, node)
+		}
+
+		if children, ok := node.(HasChildren); ok {
+			refs = append(refs, children.Children().PageReferences()...)
+		}
+	}
+
+	return refs
+}

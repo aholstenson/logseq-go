@@ -62,8 +62,98 @@ func init() {
 	)
 }
 
-func Parse(src []byte) (*content.Block, error) {
-	doc := markdownParser.Parse(text.NewReader(src))
+// ParseOption changes how Markdown is read for the parts of the syntax that a
+// graph configures the shape of.
+type ParseOption func(*parseOptions)
+
+// parseOptionsKey is where the options of the current parse are kept, so that
+// the parts of parsing that Goldmark drives can reach them.
+var parseOptionsKey = parser.NewContextKey()
+
+// builtInPropertiesSeparatedByCommas are the properties whose value Logseq
+// always reads as a list of pages separated by commas, no matter what the
+// graph configures.
+var builtInPropertiesSeparatedByCommas = []string{"alias", "aliases", "tags"}
+
+// parseOptions are the settings that parsing takes from the graph. The zero
+// value is not usable, use defaultParseOptions to get the defaults of Logseq.
+type parseOptions struct {
+	// propertiesSeparatedByCommas are the properties whose value is a list of
+	// pages separated by commas.
+	propertiesSeparatedByCommas map[string]struct{}
+
+	// ignoredPageReferences are the properties whose value never points at a
+	// page, even where it is written as a link.
+	ignoredPageReferences map[string]struct{}
+}
+
+// defaultParseOptions are what Logseq does for a graph that does not configure
+// anything else.
+func defaultParseOptions() parseOptions {
+	options := parseOptions{
+		propertiesSeparatedByCommas: make(map[string]struct{}),
+		ignoredPageReferences:       make(map[string]struct{}),
+	}
+
+	for _, name := range builtInPropertiesSeparatedByCommas {
+		options.propertiesSeparatedByCommas[name] = struct{}{}
+	}
+
+	return options
+}
+
+// WithPropertiesSeparatedByCommas adds properties whose value is a list of
+// pages separated by commas, which is `:property/separated-by-commas`. The
+// properties Logseq always reads that way are included without being listed.
+func WithPropertiesSeparatedByCommas(names ...string) ParseOption {
+	return func(o *parseOptions) {
+		for _, name := range names {
+			o.propertiesSeparatedByCommas[normalizePropertyName(name)] = struct{}{}
+		}
+	}
+}
+
+// WithIgnoredPageReferences adds properties whose value does not point at a
+// page, which is `:ignored-page-references-keywords`.
+func WithIgnoredPageReferences(names ...string) ParseOption {
+	return func(o *parseOptions) {
+		for _, name := range names {
+			o.ignoredPageReferences[normalizePropertyName(name)] = struct{}{}
+		}
+	}
+}
+
+// isSeparatedByCommas checks if the value of the property with the given name
+// is a list of pages separated by commas.
+func (o *parseOptions) isSeparatedByCommas(name string) bool {
+	_, ok := o.propertiesSeparatedByCommas[normalizePropertyName(name)]
+	return ok
+}
+
+// ignoresPageReferences checks if the value of the property with the given
+// name points at pages or is only text.
+func (o *parseOptions) ignoresPageReferences(name string) bool {
+	_, ok := o.ignoredPageReferences[normalizePropertyName(name)]
+	return ok
+}
+
+// normalizePropertyName brings a property name into the form it is matched in,
+// as Logseq does not distinguish between property names that only differ in
+// case.
+func normalizePropertyName(name string) string {
+	return strings.ToLower(name)
+}
+
+func Parse(src []byte, opts ...ParseOption) (*content.Block, error) {
+	options := defaultParseOptions()
+	for _, opt := range opts {
+		opt(&options)
+	}
+
+	context := parser.NewContext()
+	context.Set(parseOptionsKey, &options)
+
+	doc := markdownParser.Parse(text.NewReader(src), parser.WithContext(context))
 	node, err := convert(src, doc)
 	if err != nil {
 		return nil, fmt.Errorf("Could not parse Markdown: %w", err)
@@ -76,8 +166,8 @@ func Parse(src []byte) (*content.Block, error) {
 	return nil, errors.New("Could not parse Markdown")
 }
 
-func ParseString(src string) (*content.Block, error) {
-	return Parse([]byte(src))
+func ParseString(src string, opts ...ParseOption) (*content.Block, error) {
+	return Parse([]byte(src), opts...)
 }
 
 // convert convert from the Goldmark AST into our AST.
@@ -107,6 +197,8 @@ func convert(src []byte, in ast.Node) (content.Node, error) {
 		return content.NewHashtag(node.Page), nil
 	case *pageLink:
 		return content.NewPageLink(node.Page), nil
+	case *pageRefText:
+		return content.NewPageRefText(unescapeString(node.Segment.Value(src))), nil
 	case *blockRef:
 		return content.NewBlockRef(node.ID), nil
 	case *priority:
@@ -577,7 +669,7 @@ func convertProperties(src []byte, node *properties) (*content.Properties, error
 			return nil, errors.New("Invalid child in properties")
 		}
 
-		prop := content.NewProperty(p.Name)
+		prop := content.NewProperty(p.Name).WithPageRefsIgnored(p.PageRefsIgnored)
 		err := convertChildren(src, p, prop)
 		if err != nil {
 			return nil, err

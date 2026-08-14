@@ -44,6 +44,13 @@ In a graph with indexing enabled, opening a page by one of the aliases in its
 `alias::` property opens the page the alias belongs to, instead of creating a
 second page for the same content.
 
+The properties that hold a list of pages, such as `alias::` and `tags::`, have
+their values read as references to those pages, so `tags:: Book, Reading`
+points at two pages without either being written as a link. The graph decides
+which other properties are read that way via `:property/separated-by-commas`,
+and which properties never point at a page via
+`:ignored-page-references-keywords`.
+
 The blocks that reference a page, what Logseq shows as its linked references,
 are available from the page itself:
 
