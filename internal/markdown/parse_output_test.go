@@ -121,6 +121,9 @@ var _ = Describe("Parsing then outputting", func() {
 
 	Describe("Properties", func() {
 		FullyEqual("Single property", "key:: value")
+		FullyEqual("Property with a value of several words", "key:: a longer value")
+		FullyEqual("Property with several values", "alias:: First, Second Name")
+		FullyEqual("Property with several values as page links", "alias:: [[First]], [[Second Name]]")
 		FullyEqual("Multiple properties", "key:: value\nkey2:: value2")
 		FullyEqual("Properties followed by trailing paragraph", "key:: value\nParagraph")
 		FullyEqual("Paragraphs interrupted by properties", "Paragraph\nkey:: value")

@@ -1533,6 +1533,31 @@ var _ = Describe("Parsing", func() {
 				)))
 			})
 
+			It("can parse property with a value of several words", func() {
+				block, err := markdown.ParseString("key:: a longer value")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewProperties(
+						content.NewProperty("key", content.NewText("a longer value")),
+					),
+				)))
+			})
+
+			It("can parse property with a value of several words followed by a paragraph", func() {
+				block, err := markdown.ParseString("key:: a longer value\nThis is a paragraph\n")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewProperties(
+						content.NewProperty("key", content.NewText("a longer value")),
+					),
+					content.NewParagraph(
+						content.NewText("This is a paragraph"),
+					).WithPreviousLineType(content.PreviousLineTypeNonBlank),
+				)))
+			})
+
 			It("can parse multiple properties", func() {
 				block, err := markdown.ParseString("key1:: value1\nkey2:: value2")
 				Expect(err).ToNot(HaveOccurred())

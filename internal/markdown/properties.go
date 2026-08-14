@@ -120,8 +120,14 @@ func (t *propertiesASTTransformer) transformTextBlockOrParagraph(node ast.Node, 
 					continue
 				}
 
+				// The value of the property starts after the name and the space
+				// that separates the two.
+				valueStart := matches[1]
+
 				// Check if there is a space after the ::
-				if !strings.HasPrefix(potentialName[matches[3]+2:], " ") {
+				if strings.HasPrefix(potentialName[valueStart:], " ") {
+					valueStart++
+				} else {
 					// There isn't a space after :: in the current text node
 					nextTextNode, _ := next.(*ast.Text)
 					if startsWithSpace(nextTextNode, reader) {
@@ -163,8 +169,25 @@ func (t *propertiesASTTransformer) transformTextBlockOrParagraph(node ast.Node, 
 					previousTextNode.SetSoftLineBreak(false)
 				}
 
-				// Remove the text node with the parameter name
-				node.RemoveChild(node, child)
+				// Only the name is taken out of the text node, as anything that
+				// follows it on the line is the start of the value.
+				textNode.Segment = textNode.Segment.WithStart(textNode.Segment.Start + valueStart)
+
+				if textNode.Segment.IsEmpty() {
+					node.RemoveChild(node, child)
+				} else {
+					currentProperty.AppendChild(currentProperty, child)
+				}
+
+				if textNode.HardLineBreak() || textNode.SoftLineBreak() {
+					// The value of the property ends with the line it starts on
+					currentProperty = nil
+
+					textNode.SetHardLineBreak(false)
+					textNode.SetSoftLineBreak(false)
+
+					wasPreviousLinebreak = true
+				}
 			} else {
 				wasPreviousLinebreak = textNode.HardLineBreak() || textNode.SoftLineBreak()
 			}
