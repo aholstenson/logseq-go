@@ -231,6 +231,60 @@ var _ = Describe("Config", func() {
 				EnabledInTimestampedBlocks: true,
 			}))
 		})
+
+		// logbookBlock is a task with a two minute clock entry on it.
+		logbookBlock := func() *content.Block {
+			return content.NewBlock(
+				content.NewParagraph(
+					content.NewTaskMarker(content.TaskStatusTodo),
+					content.NewText("Task"),
+				),
+				content.NewLogbook(content.NewLogbookEntryClock(
+					time.Date(2023, time.June, 26, 17, 25, 56, 0, time.Local),
+					time.Date(2023, time.June, 26, 17, 27, 58, 0, time.Local),
+				)).WithPreviousLineType(content.PreviousLineTypeNonBlank),
+			)
+		}
+
+		It("writes logbooks with seconds by default", func() {
+			graph := openWithConfig(`{}`)
+
+			tx := graph.NewTransaction()
+			page, err := tx.OpenPage("clocked")
+			Expect(err).ToNot(HaveOccurred())
+			page.AddBlock(logbookBlock())
+			Expect(tx.Save()).To(Succeed())
+
+			data, err := os.ReadFile(filepath.Join(dir, "pages", "clocked.md"))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(string(data)).To(ContainSubstring(
+				"CLOCK: [2023-06-26 Mon 17:25:56]--[2023-06-26 Mon 17:27:58] =>  00:02:02",
+			))
+		})
+
+		It("writes logbooks without seconds when the graph is set up that way", func() {
+			graph := openWithConfig(`{:logbook/settings {:with-second-support? false}}`)
+
+			tx := graph.NewTransaction()
+			page, err := tx.OpenPage("clocked")
+			Expect(err).ToNot(HaveOccurred())
+			page.AddBlock(logbookBlock())
+			Expect(tx.Save()).To(Succeed())
+
+			data, err := os.ReadFile(filepath.Join(dir, "pages", "clocked.md"))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(string(data)).To(ContainSubstring(
+				"CLOCK: [2023-06-26 Mon 17:25]--[2023-06-26 Mon 17:27] =>  00:02",
+			))
+		})
+
+		It("converts a node to Markdown with the settings of the graph", func() {
+			graph := openWithConfig(`{:logbook/settings {:with-second-support? false}}`)
+
+			Expect(graph.AsString(logbookBlock())).To(Equal(
+				"TODO Task\n:LOGBOOK:\nCLOCK: [2023-06-26 Mon 17:25]--[2023-06-26 Mon 17:27] =>  00:02\n:END:",
+			))
+		})
 	})
 
 	Describe("DefaultJournalQueries", func() {

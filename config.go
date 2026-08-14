@@ -68,7 +68,8 @@ func (g *Graph) IsHidden(path string) bool {
 
 // LogbookSettings is how a graph records and displays the logbooks of tasks.
 type LogbookSettings struct {
-	// WithSeconds is whether the times in clock entries include seconds.
+	// WithSeconds is whether the times in logbook entries include seconds.
+	// Saving a page in the graph writes its logbooks this way.
 	WithSeconds bool
 
 	// EnabledInAllBlocks is whether logbooks are shown on every block instead

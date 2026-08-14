@@ -2478,12 +2478,40 @@ var _ = Describe("Parsing", func() {
 				)))
 			})
 
-			It("keeps a clock without seconds as a raw entry", func() {
+			It("can parse a clock written without seconds", func() {
+				block, err := markdown.ParseString("TODO Task\n:LOGBOOK:\nCLOCK: [2023-06-26 Mon 17:25]--[2023-06-26 Mon 17:27] =>  00:02\n:END:")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(logbookBlock(
+					content.NewLogbookEntryClock(
+						time.Date(2023, time.June, 26, 17, 25, 0, 0, time.Local),
+						time.Date(2023, time.June, 26, 17, 27, 0, 0, time.Local),
+					),
+				)))
+			})
+
+			It("can parse a running clock written without seconds", func() {
 				block, err := markdown.ParseString("TODO Task\n:LOGBOOK:\nCLOCK: [2023-06-26 Mon 17:25]\n:END:")
 				Expect(err).ToNot(HaveOccurred())
 
 				Expect(block).To(tests.EqualNode(logbookBlock(
-					content.NewLogbookEntryRaw("CLOCK: [2023-06-26 Mon 17:25]"),
+					content.NewLogbookEntryClock(
+						time.Date(2023, time.June, 26, 17, 25, 0, 0, time.Local),
+						time.Time{},
+					),
+				)))
+			})
+
+			It("can parse a state change written without seconds", func() {
+				block, err := markdown.ParseString("TODO Task\n:LOGBOOK:\n* State \"DONE\" from \"TODO\" [2023-06-26 Mon 17:25]\n:END:")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(logbookBlock(
+					content.NewLogbookEntryStateChange(
+						content.TaskStatusTodo,
+						content.TaskStatusDone,
+						time.Date(2023, time.June, 26, 17, 25, 0, 0, time.Local),
+					),
 				)))
 			})
 

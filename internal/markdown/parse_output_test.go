@@ -6,24 +6,24 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-func parseAndOutput(input string) string {
+func parseAndOutput(input string, opts ...markdown.Option) string {
 	block, err := markdown.ParseString(input)
 	Expect(err).ToNot(HaveOccurred())
-	v, err := markdown.AsString(block)
+	v, err := markdown.AsString(block, opts...)
 	Expect(err).ToNot(HaveOccurred())
 	return v
 }
 
-func FullyEqual(name string, input string) {
+func FullyEqual(name string, input string, opts ...markdown.Option) {
 	It(name, func() {
-		v := parseAndOutput(input)
+		v := parseAndOutput(input, opts...)
 		Expect(v).To(Equal(input))
 	})
 }
 
-func Varies(name string, input string, output string) {
+func Varies(name string, input string, output string, opts ...markdown.Option) {
 	It(name, func() {
-		v := parseAndOutput(input)
+		v := parseAndOutput(input, opts...)
 		Expect(v).To(Equal(output))
 	})
 }
@@ -193,8 +193,31 @@ var _ = Describe("Parsing then outputting", func() {
 
 			// Entries that are not modelled are kept as they were found.
 			FullyEqual("Unknown entry", "TODO Task\n:LOGBOOK:\nsomething else\n:END:")
-			FullyEqual("Clock without seconds", "TODO Task\n:LOGBOOK:\nCLOCK: [2023-06-26 Mon 17:25]\n:END:")
 			FullyEqual("State change with an unknown status", "TODO Task\n:LOGBOOK:\n* State \"SOMEDAY\" [2023-06-26 Mon 17:25:56]\n:END:")
+
+			// Entries are written with the precision the graph is set up for,
+			// so one written with the other precision is converted.
+			Varies(
+				"Clock without seconds",
+				"TODO Task\n:LOGBOOK:\nCLOCK: [2023-06-26 Mon 17:25]--[2023-06-26 Mon 17:27] =>  00:02\n:END:",
+				"TODO Task\n:LOGBOOK:\nCLOCK: [2023-06-26 Mon 17:25:00]--[2023-06-26 Mon 17:27:00] =>  00:02:00\n:END:",
+			)
+		})
+
+		Describe("Logbooks without second support", func() {
+			withoutSeconds := markdown.WithLogbookSeconds(false)
+
+			FullyEqual("Clock", "TODO Task\n:LOGBOOK:\nCLOCK: [2023-06-26 Mon 17:25]--[2023-06-26 Mon 17:27] =>  00:02\n:END:", withoutSeconds)
+			FullyEqual("Clock that is still running", "TODO Task\n:LOGBOOK:\nCLOCK: [2023-06-26 Mon 17:25]\n:END:", withoutSeconds)
+			FullyEqual("Clock spanning more than a day", "TODO Task\n:LOGBOOK:\nCLOCK: [2023-06-26 Mon 09:00]--[2023-06-27 Tue 11:30] =>  26:30\n:END:", withoutSeconds)
+			FullyEqual("State change", "TODO Task\n:LOGBOOK:\n* State \"DONE\" from \"TODO\" [2023-06-26 Mon 17:25]\n:END:", withoutSeconds)
+
+			Varies(
+				"Clock with seconds",
+				"TODO Task\n:LOGBOOK:\nCLOCK: [2023-06-26 Mon 17:25:56]--[2023-06-26 Mon 17:27:58] =>  00:02:02\n:END:",
+				"TODO Task\n:LOGBOOK:\nCLOCK: [2023-06-26 Mon 17:25]--[2023-06-26 Mon 17:27] =>  00:02\n:END:",
+				withoutSeconds,
+			)
 		})
 
 		Describe("Footnotes", func() {

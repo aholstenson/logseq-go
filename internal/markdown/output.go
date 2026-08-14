@@ -106,22 +106,58 @@ func escapeRunes(str string, f func(prev rune, r rune) bool) string {
 	return out.String()
 }
 
-// Output is used to write Markdown to an output buffer. It will help keep
-// track of list indentation and when to add newlines.
-type Output struct {
-	out *writer
+// Option changes how Markdown is written for the parts of the syntax that a
+// graph configures the shape of.
+type Option func(*outputOptions)
+
+// outputOptions are the settings that the writer takes from the graph. The
+// zero value is not usable, use defaultOutputOptions to get the defaults of
+// Logseq.
+type outputOptions struct {
+	// logbookWithSeconds is whether the times in logbook entries are written
+	// with seconds.
+	logbookWithSeconds bool
 }
 
-// NewWriter creates a new Markdown writer.
-func NewWriter(out io.Writer) *Output {
-	return &Output{
-		out: newWriter(out),
+// defaultOutputOptions are what Logseq does for a graph that does not
+// configure anything else.
+func defaultOutputOptions() outputOptions {
+	return outputOptions{
+		logbookWithSeconds: true,
 	}
 }
 
-func AsString(n content.Node) (string, error) {
+// WithLogbookSeconds sets whether the times in logbook entries are written
+// with seconds, which is `:with-second-support?` of `:logbook/settings`.
+func WithLogbookSeconds(withSeconds bool) Option {
+	return func(o *outputOptions) {
+		o.logbookWithSeconds = withSeconds
+	}
+}
+
+// Output is used to write Markdown to an output buffer. It will help keep
+// track of list indentation and when to add newlines.
+type Output struct {
+	out  *writer
+	opts outputOptions
+}
+
+// NewWriter creates a new Markdown writer.
+func NewWriter(out io.Writer, opts ...Option) *Output {
+	options := defaultOutputOptions()
+	for _, opt := range opts {
+		opt(&options)
+	}
+
+	return &Output{
+		out:  newWriter(out),
+		opts: options,
+	}
+}
+
+func AsString(n content.Node, opts ...Option) (string, error) {
 	out := strings.Builder{}
-	w := NewWriter(&out)
+	w := NewWriter(&out, opts...)
 	if err := w.Write(n); err != nil {
 		return "", err
 	}
@@ -129,8 +165,8 @@ func AsString(n content.Node) (string, error) {
 	return out.String(), nil
 }
 
-func Write(n content.Node, out io.Writer) error {
-	w := NewWriter(out)
+func Write(n content.Node, out io.Writer, opts ...Option) error {
+	w := NewWriter(out, opts...)
 	return w.Write(n)
 }
 
@@ -1172,30 +1208,53 @@ func (w *Output) writeTaskDate(node *content.TaskDate) error {
 	return nil
 }
 
+// logbookLayout is the timestamp format of the graph, which leaves the seconds
+// out when the graph is set up without second support.
+func (w *Output) logbookLayout() string {
+	if w.opts.logbookWithSeconds {
+		return logbookTimeLayout
+	}
+
+	return logbookTimeLayoutWithoutSeconds
+}
+
 // logbookClock formats a clock entry, deriving the duration from the two
 // times so it always matches them.
-func logbookClock(node *content.LogbookEntryClock) (string, error) {
-	value := "CLOCK: [" + node.Start.Format(logbookTimeLayout) + "]"
+func (w *Output) logbookClock(node *content.LogbookEntryClock) (string, error) {
+	layout := w.logbookLayout()
+
+	value := "CLOCK: [" + node.Start.Format(layout) + "]"
 	if node.IsRunning() {
 		return value, nil
 	}
 
-	duration := node.Duration()
-	if duration < 0 {
+	if node.Duration() < 0 {
 		return "", fmt.Errorf("logbook clock ends before it starts: %s", value)
 	}
 
-	return fmt.Sprintf(
-		"%s--[%s] =>  %02d:%02d:%02d",
-		value,
-		node.End.Format(logbookTimeLayout),
+	value += "--[" + node.End.Format(layout) + "] =>  "
+
+	if !w.opts.logbookWithSeconds {
+		// The duration is measured between the times as they are written, so
+		// that it adds up for whoever reads the entry.
+		duration := node.End.Truncate(time.Minute).Sub(node.Start.Truncate(time.Minute))
+		return value + fmt.Sprintf(
+			"%02d:%02d",
+			int(duration/time.Hour),
+			int(duration/time.Minute)%60,
+		), nil
+	}
+
+	duration := node.Duration()
+	return value + fmt.Sprintf(
+		"%02d:%02d:%02d",
 		int(duration/time.Hour),
 		int(duration/time.Minute)%60,
 		int(duration/time.Second)%60,
 	), nil
 }
 
-func logbookStateChange(node *content.LogbookEntryStateChange) (string, error) {
+func (w *Output) logbookStateChange(node *content.LogbookEntryStateChange) (string, error) {
 	to := node.To.String()
 	if to == "" {
 		return "", fmt.Errorf("unsupported task status: %d", node.To)
@@ -1212,7 +1271,7 @@ func logbookStateChange(node *content.LogbookEntryStateChange) (string, error) {
 		value += ` from "` + from + `"`
 	}
 
-	return value + " [" + node.Time.Format(logbookTimeLayout) + "]", nil
+	return value + " [" + node.Time.Format(w.logbookLayout()) + "]", nil
 }
 
 func (w *Output) writeLogbook(node *content.Logbook) error {
@@ -1232,9 +1291,9 @@ func (w *Output) writeLogbook(node *content.Logbook) error {
 		case *content.LogbookEntryRaw:
 			value = e.Value
 		case *content.LogbookEntryClock:
-			value, err = logbookClock(e)
+			value, err = w.logbookClock(e)
 		case *content.LogbookEntryStateChange:
-			value, err = logbookStateChange(e)
+			value, err = w.logbookStateChange(e)
 		default:
 			return fmt.Errorf("unsupported logbook entry: %T", entry)
 		}

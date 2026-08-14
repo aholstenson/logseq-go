@@ -17,9 +17,13 @@ import (
 // day name is only there for readability and is regenerated on output.
 const logbookTimeLayout = "2006-01-02 Mon 15:04:05"
 
+// logbookTimeLayoutWithoutSeconds is the timestamp format of graphs where
+// `:logbook/settings :with-second-support?` is off.
+const logbookTimeLayoutWithoutSeconds = "2006-01-02 Mon 15:04"
+
 // clockRegexp matches a clock entry. The duration at the end is not captured
 // as it is derived from the two timestamps when the entry is written.
-var clockRegexp = regexp.MustCompile(`^CLOCK: \[([^\]]+)\](?:--\[([^\]]+)\] +=> +\d+:\d{2}:\d{2})?$`)
+var clockRegexp = regexp.MustCompile(`^CLOCK: \[([^\]]+)\](?:--\[([^\]]+)\] +=> +\d+:\d{2}(?::\d{2})?)?$`)
 
 // stateChangeRegexp matches the entry Logseq writes when a repeating task
 // changes status.
@@ -42,20 +46,31 @@ func parseLogbookEntry(value string) content.LogbookEntry {
 	return content.NewLogbookEntryRaw(value)
 }
 
+// parseLogbookTime reads a timestamp of a logbook entry. Both precisions are
+// accepted, as a graph without second support leaves the seconds out.
+func parseLogbookTime(value string) (time.Time, error) {
+	parsed, err := time.ParseInLocation(logbookTimeLayout, value, time.Local)
+	if err == nil {
+		return parsed, nil
+	}
+
+	return time.ParseInLocation(logbookTimeLayoutWithoutSeconds, value, time.Local)
+}
+
 func parseLogbookClock(line string) content.LogbookEntry {
 	matches := clockRegexp.FindStringSubmatch(line)
 	if matches == nil {
 		return nil
 	}
 
-	start, err := time.ParseInLocation(logbookTimeLayout, matches[1], time.Local)
+	start, err := parseLogbookTime(matches[1])
 	if err != nil {
 		return nil
 	}
 
 	var end time.Time
 	if matches[2] != "" {
-		end, err = time.ParseInLocation(logbookTimeLayout, matches[2], time.Local)
+		end, err = parseLogbookTime(matches[2])
 		if err != nil {
 			return nil
 		}
@@ -88,7 +103,7 @@ func parseLogbookStateChange(line string) content.LogbookEntry {
 		}
 	}
 
-	at, err := time.ParseInLocation(logbookTimeLayout, matches[3], time.Local)
+	at, err := parseLogbookTime(matches[3])
 	if err != nil {
 		return nil
 	}

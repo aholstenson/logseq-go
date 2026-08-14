@@ -514,7 +514,7 @@ func (t *Transaction) Save() error {
 	for _, page := range pages {
 		path := page.path
 
-		data, err := markdown.AsString(page.root)
+		data, err := markdown.AsString(page.root, t.graph.markdownOptions()...)
 		if err != nil {
 			if page.Type() == PageTypeJournal {
 				return fmt.Errorf("failed to convert journal %s: %w", page.Date().Format("2006-01-02"), err)

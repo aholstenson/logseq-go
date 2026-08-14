@@ -546,6 +546,10 @@ func (t *LogbookEntryRaw) isLogbookEntry() {}
 //
 // The duration at the end is derived from Start and End when the entry is
 // written, so it can never drift from the times it sums up.
+//
+// The times are kept with second precision no matter how they were written. A
+// graph where `:logbook/settings :with-second-support?` is off writes them,
+// and the duration, without the seconds.
 type LogbookEntryClock struct {
 	baseNode
 

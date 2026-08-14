@@ -1365,6 +1365,83 @@ var _ = Describe("Output", func() {
 
 				Expect(buf.String()).To(Equal(":LOGBOOK:\n* State \"DONE\" [2023-06-26 Mon 17:25:56]\n:END:"))
 			})
+
+			Describe("Without second support", func() {
+				BeforeEach(func() {
+					writer = markdown.NewWriter(buf, markdown.WithLogbookSeconds(false))
+				})
+
+				It("can write a clock entry", func() {
+					err := writer.Write(content.NewLogbook(
+						content.NewLogbookEntryClock(
+							time.Date(2023, time.June, 26, 17, 25, 0, 0, time.Local),
+							time.Date(2023, time.June, 26, 17, 27, 0, 0, time.Local),
+						),
+					))
+					Expect(err).ToNot(HaveOccurred())
+
+					Expect(buf.String()).To(Equal(":LOGBOOK:\nCLOCK: [2023-06-26 Mon 17:25]--[2023-06-26 Mon 17:27] =>  00:02\n:END:"))
+				})
+
+				It("can write a clock entry that is still running", func() {
+					err := writer.Write(content.NewLogbook(
+						content.NewLogbookEntryClock(
+							time.Date(2023, time.June, 26, 17, 25, 0, 0, time.Local),
+							time.Time{},
+						),
+					))
+					Expect(err).ToNot(HaveOccurred())
+
+					Expect(buf.String()).To(Equal(":LOGBOOK:\nCLOCK: [2023-06-26 Mon 17:25]\n:END:"))
+				})
+
+				It("measures the duration between the times as they are written", func() {
+					err := writer.Write(content.NewLogbook(
+						content.NewLogbookEntryClock(
+							time.Date(2023, time.June, 26, 17, 25, 56, 0, time.Local),
+							time.Date(2023, time.June, 26, 17, 27, 4, 0, time.Local),
+						),
+					))
+					Expect(err).ToNot(HaveOccurred())
+
+					Expect(buf.String()).To(Equal(":LOGBOOK:\nCLOCK: [2023-06-26 Mon 17:25]--[2023-06-26 Mon 17:27] =>  00:02\n:END:"))
+				})
+
+				It("writes a clock entry spanning more than a day", func() {
+					err := writer.Write(content.NewLogbook(
+						content.NewLogbookEntryClock(
+							time.Date(2023, time.June, 26, 9, 0, 0, 0, time.Local),
+							time.Date(2023, time.June, 27, 11, 30, 0, 0, time.Local),
+						),
+					))
+					Expect(err).ToNot(HaveOccurred())
+
+					Expect(buf.String()).To(Equal(":LOGBOOK:\nCLOCK: [2023-06-26 Mon 09:00]--[2023-06-27 Tue 11:30] =>  26:30\n:END:"))
+				})
+
+				It("fails on a clock entry that ends before it starts", func() {
+					err := writer.Write(content.NewLogbook(
+						content.NewLogbookEntryClock(
+							time.Date(2023, time.June, 26, 17, 25, 58, 0, time.Local),
+							time.Date(2023, time.June, 26, 17, 25, 56, 0, time.Local),
+						),
+					))
+					Expect(err).To(HaveOccurred())
+				})
+
+				It("can write a state change", func() {
+					err := writer.Write(content.NewLogbook(
+						content.NewLogbookEntryStateChange(
+							content.TaskStatusTodo,
+							content.TaskStatusDone,
+							time.Date(2023, time.June, 26, 17, 25, 0, 0, time.Local),
+						),
+					))
+					Expect(err).ToNot(HaveOccurred())
+
+					Expect(buf.String()).To(Equal(":LOGBOOK:\n* State \"DONE\" from \"TODO\" [2023-06-26 Mon 17:25]\n:END:"))
+				})
+			})
 		})
 	})
 })
