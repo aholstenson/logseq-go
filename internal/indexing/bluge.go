@@ -243,6 +243,12 @@ func (i *BlugeIndex) pageToDocument(doc *Page) (*bluge.Document, error) {
 		blugeDoc.AddField(bluge.NewDateTimeField("date", doc.Date).StoreValue())
 	}
 
+	// Aliases are matched the same way references are, so that a page can be
+	// found via a title that only differs in case from the alias.
+	for _, alias := range doc.Aliases {
+		blugeDoc.AddField(bluge.NewKeywordField("alias:ref", normalizeRef(alias)))
+	}
+
 	if doc.Properties != nil {
 		i.transferProperties(blugeDoc, doc.Properties)
 		i.transferRefs(blugeDoc, "pages", doc.Properties)

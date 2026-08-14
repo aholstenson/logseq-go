@@ -39,6 +39,10 @@ for _, block := range page.Blocks() {
 }
 ```
 
+In a graph with indexing enabled, opening a page by one of the aliases in its
+`alias::` property opens the page the alias belongs to, instead of creating a
+second page for the same content.
+
 The blocks that reference a page, what Logseq shows as its linked references,
 are available from the page itself:
 

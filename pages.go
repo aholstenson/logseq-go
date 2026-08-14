@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/aholstenson/logseq-go/content"
@@ -47,6 +48,11 @@ type Page interface {
 	// Properties returns the properties for the page. Properties belong to the
 	// first block of the page, which is the pre-block if the page has one.
 	Properties() *content.Properties
+
+	// Aliases returns the alternative titles of the page, as declared by its
+	// `alias` property. In a graph with indexing enabled, opening a page by one
+	// of its aliases opens the page itself.
+	Aliases() []string
 
 	// Blocks returns the blocks for the page. If the page has content before
 	// its first bullet, such as page properties, that content is the first
@@ -177,6 +183,57 @@ func (p *pageImpl) Properties() *content.Properties {
 	properties := content.NewProperties()
 	p.preBlock().PrependChild(properties)
 	return properties
+}
+
+func (p *pageImpl) Aliases() []string {
+	properties := p.findProperties()
+	if properties == nil {
+		return nil
+	}
+
+	return propertyTitles(properties.GetAsNode("alias"))
+}
+
+// propertyTitles reads the page titles that are the value of a property, such
+// as `alias:: [[Example]], Another`. Page references are taken as they are,
+// while the rest of the value is split on commas, which is how Logseq writes
+// properties that hold several values.
+func propertyTitles(property *content.Property) []string {
+	if property == nil {
+		return nil
+	}
+
+	titles := make([]string, 0)
+
+	var text strings.Builder
+	takeText := func() {
+		for _, part := range strings.Split(text.String(), ",") {
+			part = strings.TrimSpace(part)
+			if part != "" {
+				titles = append(titles, part)
+			}
+		}
+
+		text.Reset()
+	}
+
+	for _, node := range property.Children() {
+		switch n := node.(type) {
+		case content.PageRef:
+			takeText()
+			titles = append(titles, n.GetTo())
+		case *content.Text:
+			text.WriteString(n.Value)
+		}
+	}
+
+	takeText()
+
+	if len(titles) == 0 {
+		return nil
+	}
+
+	return titles
 }
 
 // findProperties locates the properties of the page, returning nil if the page

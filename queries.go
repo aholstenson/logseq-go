@@ -54,6 +54,12 @@ func PropertyReferencesTag(property, tag string) Query {
 	return indexing.PropertyReferencesTag(property, tag)
 }
 
+// HasAlias matches the page that has the given title as one of the aliases in
+// its `alias` property.
+func HasAlias(alias string) Query {
+	return indexing.HasAlias(alias)
+}
+
 func References(page string) Query {
 	return indexing.References(page)
 }

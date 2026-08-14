@@ -67,6 +67,16 @@ func (t *Transaction) OpenPage(title string) (Page, error) {
 		return nil, err
 	}
 
+	// Opening a page by one of its aliases gives the page the alias belongs to,
+	// which is stored elsewhere and may already be part of this transaction.
+	if impl, ok := page.(*pageImpl); ok {
+		path = impl.path
+
+		if opened, ok := t.openedPages[path]; ok {
+			return opened, nil
+		}
+	}
+
 	t.openedPages[path] = page
 	return page, nil
 }

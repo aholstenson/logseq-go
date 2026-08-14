@@ -166,7 +166,55 @@ func (g *Graph) openPage(title string, source pageSource) (Page, error) {
 		return nil, err
 	}
 
-	return openOrCreatePage(source, path, PageTypeDedicated, title, time.Time{}, "")
+	page, err := openOrCreatePage(source, path, PageTypeDedicated, title, time.Time{}, "")
+	if err != nil {
+		return nil, err
+	}
+
+	if !page.IsNew() || g.index == nil {
+		// The page has content of its own, or there is no index to look for
+		// aliases in.
+		return page, nil
+	}
+
+	// Nothing is stored under this title, so it may be an alias of another
+	// page. Opening the page it is an alias of keeps a second page for the same
+	// content from being created.
+	target, err := g.pageTitleForAlias(context.Background(), title)
+	if err != nil {
+		return nil, err
+	}
+
+	if target == "" {
+		return page, nil
+	}
+
+	path, err = g.pagePath(target)
+	if err != nil {
+		return nil, err
+	}
+
+	return openOrCreatePage(source, path, PageTypeDedicated, target, time.Time{}, "")
+}
+
+// pageTitleForAlias finds the title of the page that has the given title as one
+// of its aliases, returning an empty string if no page does. If more than one
+// page uses the alias, which Logseq does not expect, one of them is picked.
+func (g *Graph) pageTitleForAlias(ctx context.Context, alias string) (string, error) {
+	results, err := g.index.SearchPages(ctx, indexing.HasAlias(alias), indexing.SearchOptions{
+		Size: 1,
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to look up the page with the alias %s: %w", alias, err)
+	}
+
+	for _, page := range results.Results() {
+		if page.Type == indexing.PageTypeDedicated {
+			return page.Title, nil
+		}
+	}
+
+	return "", nil
 }
 
 func (g *Graph) pagePath(title string) (string, error) {
@@ -341,6 +389,7 @@ func (g *Graph) indexDocument(ctx context.Context, docPath string) (Page, error)
 		// Look up the properties without creating them, as indexing should not
 		// modify the page.
 		doc.Properties = impl.findProperties()
+		doc.Aliases = impl.Aliases()
 	}
 
 	return page, g.index.IndexPage(ctx, doc)

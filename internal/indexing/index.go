@@ -88,6 +88,9 @@ type Page struct {
 	// Blocks is the blocks of the page, only used while indexing.
 	Blocks content.BlockList
 
+	// Aliases is the alternative titles of the page, only used while indexing.
+	Aliases []string
+
 	// Properties is the properties of the page, nil if it has none. Only used
 	// while indexing.
 	Properties *content.Properties

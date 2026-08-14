@@ -137,6 +137,13 @@ func PropertyReferencesTag(property string, target string) Query {
 	}
 }
 
+func HasAlias(alias string) Query {
+	return &fieldRefs{
+		field:  "alias",
+		target: alias,
+	}
+}
+
 func References(page string) Query {
 	return &fieldRefs{
 		field:  "pages",
