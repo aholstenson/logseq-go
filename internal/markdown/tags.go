@@ -61,21 +61,22 @@ func (t *tagParser) Parse(parent ast.Node, block text.Reader, pc parser.Context)
 		value = line[2:end]
 		end += 2
 	} else {
-		// TODO: Does Logseq support Unicode tags?
-		// Scan until a Unicode space character is found.
-		for i, r := range line {
-			if unicode.IsSpace(rune(r)) {
+		// Scan until a Unicode space character is found, or use the rest of the
+		// line if there is none.
+		end = len(line)
+		for i, r := range string(line) {
+			if unicode.IsSpace(r) {
 				end = i
 				break
 			}
 		}
 
-		if end == 0 {
-			// No space found, assume the tag is until end of line.
-			end = len(line)
-		}
-
 		value = line[:end]
+	}
+
+	if len(value) == 0 {
+		// A tag needs a name, so a # on its own is just text.
+		return nil
 	}
 
 	seg = seg.WithStop(seg.Start + end + 1)

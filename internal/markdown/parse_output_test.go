@@ -61,6 +61,15 @@ var _ = Describe("Parsing then outputting", func() {
 		FullyEqual("Code text maintains spaces before 'hard' newline", "`Basic  \ncontent`")
 	})
 
+	Describe("Tags", func() {
+		FullyEqual("Tag", "#tag and content")
+		FullyEqual("Tag at end of line", "content #tag")
+		FullyEqual("Tag with spaces", "#[[tag with spaces]] and content")
+		FullyEqual("Hash followed by a space", "issue # 5")
+		FullyEqual("Hash at the end of a word", "C# is fine")
+		FullyEqual("Hash at the end of a line", "content #")
+	})
+
 	Describe("Heading", func() {
 		FullyEqual("Heading 1", "# Heading")
 		FullyEqual("Heading 2", "## Heading")

@@ -432,6 +432,42 @@ var _ = Describe("Parsing", func() {
 			)))
 		})
 
+		It("does not treat a hash followed by a space as a tag", func() {
+			block, err := markdown.ParseString("issue # 5")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("issue # 5"),
+				),
+			)))
+		})
+
+		It("does not treat a hash at the end of a word as a tag", func() {
+			block, err := markdown.ParseString("C# is fine")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("C# is fine"),
+				),
+			)))
+		})
+
+		It("does not end a tag inside a multi-byte character", func() {
+			// A non-breaking space ends the tag, but only as a whole character
+			// and not on the byte of it that looks like one.
+			block, err := markdown.ParseString("#tag\u00a0name")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewHashtag("tag"),
+					content.NewText("\u00a0name"),
+				),
+			)))
+		})
+
 		It("will skip tag with spaces if end not found", func() {
 			block, err := markdown.ParseString("#[[tag with spaces")
 			Expect(err).ToNot(HaveOccurred())
