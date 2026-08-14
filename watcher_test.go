@@ -198,6 +198,58 @@ var _ = Describe("Watcher", func() {
 	})
 })
 
+var _ = Describe("Watcher lifecycle", func() {
+	var dir string
+
+	BeforeEach(func() {
+		dir = setupGraph()
+	})
+
+	It("keeps indexing changes after a watcher is closed", func() {
+		graph, err := logseq.Open(context.Background(), dir, logseq.WithInMemoryIndex())
+		Expect(err).ToNot(HaveOccurred())
+		defer graph.Close()
+
+		watcher := graph.Watch()
+		Expect(watcher.Close()).To(Succeed())
+
+		Expect(os.WriteFile(
+			filepath.Join(dir, "pages", "later.md"),
+			[]byte("- indexed after the watcher was closed\n"),
+			0o644,
+		)).To(Succeed())
+
+		Eventually(func() int {
+			results, err := graph.SearchPages(context.Background(),
+				logseq.WithQuery(logseq.TitleMatches("later")),
+			)
+			Expect(err).ToNot(HaveOccurred())
+			return results.Size()
+		}, 5*time.Second).Should(Equal(1))
+	})
+
+	It("watches again after all watchers have been closed without an index", func() {
+		graph, err := logseq.Open(context.Background(), dir)
+		Expect(err).ToNot(HaveOccurred())
+		defer graph.Close()
+
+		Expect(graph.Watch().Close()).To(Succeed())
+
+		watcher := graph.Watch()
+		defer watcher.Close()
+
+		Expect(os.WriteFile(
+			filepath.Join(dir, "pages", "again.md"),
+			[]byte("- content\n"),
+			0o644,
+		)).To(Succeed())
+
+		var event logseq.ChangeEvent
+		Eventually(watcher.Events(), 5*time.Second).Should(Receive(&event))
+		Expect(event).To(BeAssignableToTypeOf(&logseq.PageUpdated{}))
+	})
+})
+
 var _ = Describe("Change watching shutdown", func() {
 	It("does not panic when the graph is closed while changes are debounced", func() {
 		// Changes are debounced for a second before they are indexed, so each

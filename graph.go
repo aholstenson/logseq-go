@@ -319,12 +319,12 @@ func (g *Graph) watchForChanges() {
 
 	g.changeWatcher = changeWatcher
 
-	err = g.changeWatcher.Add(filepath.Join(g.directory, g.config.JournalsDir))
+	err = changeWatcher.Add(filepath.Join(g.directory, g.config.JournalsDir))
 	if err != nil {
 		return
 	}
 
-	err = g.changeWatcher.Add(filepath.Join(g.directory, g.config.PagesDir))
+	err = changeWatcher.Add(filepath.Join(g.directory, g.config.PagesDir))
 	if err != nil {
 		return
 	}
@@ -345,7 +345,7 @@ func (g *Graph) watchForChanges() {
 	_outer:
 		for {
 			select {
-			case event, ok := <-g.changeWatcher.Events:
+			case event, ok := <-changeWatcher.Events:
 				if !ok {
 					break _outer
 				}
@@ -379,7 +379,7 @@ func (g *Graph) watchForChanges() {
 					}
 				})
 				mu.Unlock()
-			case _, ok := <-g.changeWatcher.Errors:
+			case _, ok := <-changeWatcher.Errors:
 				if !ok {
 					break _outer
 				}
@@ -671,8 +671,10 @@ func (g *Graph) Watch() *Watcher {
 			}
 		}
 
-		if len(g.watchers) == 0 && g.changeWatcher != nil && g.index != nil {
-			// Close the change watcher if there are no more watchers
+		if len(g.watchers) == 0 && g.index == nil && g.changeWatcher != nil {
+			// Nothing is watching and there is no index that needs to be kept
+			// up to date, so stop watching until something needs it again. With
+			// an index the graph keeps watching for the rest of its life.
 			g.changeWatcher.Close()
 			g.changeWatcher = nil
 		}
