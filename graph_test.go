@@ -336,6 +336,51 @@ var _ = Describe("Graph", func() {
 			Expect(j1).To(BeIdenticalTo(j2))
 		})
 
+		It("returns the same journal instance for times on the same day", func() {
+			withTimeZone(time.FixedZone("UTC-5", -5*60*60))
+
+			graph, err := logseq.Open(context.Background(), dir)
+			Expect(err).ToNot(HaveOccurred())
+			defer graph.Close()
+
+			tx := graph.NewTransaction()
+
+			morning, err := tx.OpenJournal(time.Date(2025, 3, 1, 8, 0, 0, 0, time.Local))
+			Expect(err).ToNot(HaveOccurred())
+
+			// The same journal day, but late enough that the instant lands on
+			// the next day in UTC.
+			evening, err := tx.OpenJournal(
+				time.Date(2025, 3, 1, 22, 0, 0, 0, time.Local).In(time.UTC),
+			)
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(morning).To(BeIdenticalTo(evening))
+		})
+
+		It("saves a journal opened with a time in another zone to the right file", func() {
+			// 2025-06-16 02:00 UTC is still 2025-06-15 in a zone behind UTC, so
+			// the block belongs in that day's journal.
+			withTimeZone(time.FixedZone("UTC-5", -5*60*60))
+
+			graph, err := logseq.Open(context.Background(), dir)
+			Expect(err).ToNot(HaveOccurred())
+			defer graph.Close()
+
+			tx := graph.NewTransaction()
+			page, err := tx.OpenJournal(time.Date(2025, 6, 16, 2, 0, 0, 0, time.UTC))
+			Expect(err).ToNot(HaveOccurred())
+
+			page.AddBlock(content.NewBlock(content.NewParagraph(content.NewText("entry"))))
+			Expect(tx.Save()).To(Succeed())
+
+			data, err := os.ReadFile(filepath.Join(dir, "journals", "2025_06_15.md"))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(string(data)).To(Equal("- entry\n"))
+
+			Expect(filepath.Join(dir, "journals", "2025_06_16.md")).ToNot(BeAnExistingFile())
+		})
+
 		It("detects concurrent modification", func() {
 			pagePath := filepath.Join(dir, "pages", "conflict.md")
 			Expect(os.WriteFile(pagePath, []byte("- original\n"), 0o644)).To(Succeed())

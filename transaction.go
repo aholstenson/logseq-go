@@ -26,12 +26,14 @@ func newTransaction(graph *Graph) *Transaction {
 }
 
 func (t *Transaction) OpenJournal(date time.Time) (Page, error) {
-	path, err := t.graph.journalPath(date)
+	// The date has to be normalized the same way the graph does it, or two
+	// times on the same journal day would open the page twice.
+	path, err := t.graph.journalPath(journalDate(date))
 	if err != nil {
 		return nil, err
 	}
 
-	page, ok := t.openedPages[path].(Page)
+	page, ok := t.openedPages[path]
 	if ok {
 		return page, nil
 	}
@@ -51,7 +53,7 @@ func (t *Transaction) OpenPage(title string) (Page, error) {
 		return nil, err
 	}
 
-	page, ok := t.openedPages[path].(Page)
+	page, ok := t.openedPages[path]
 	if ok {
 		return page, nil
 	}
@@ -156,7 +158,21 @@ func parseBlockTime(format string, reference time.Time, block *content.Block) *t
 }
 
 func (t *Transaction) Save() error {
-	for path, page := range t.openedPages {
+	// Pages are written to the path they were opened from, which is the only
+	// place they can be written back to without moving them.
+	pages := make([]*pageImpl, 0, len(t.openedPages))
+	for _, page := range t.openedPages {
+		impl, ok := page.(*pageImpl)
+		if !ok {
+			return fmt.Errorf("unknown page type: %T", page)
+		}
+
+		pages = append(pages, impl)
+	}
+
+	for _, page := range pages {
+		path := page.path
+
 		info, err := os.Stat(path)
 		if os.IsNotExist(err) {
 			if !page.IsNew() {
@@ -178,15 +194,10 @@ func (t *Transaction) Save() error {
 		}
 	}
 
-	for path, page := range t.openedPages {
-		var root *content.Block
-		if j, ok := page.(*pageImpl); ok {
-			root = j.root
-		} else {
-			return fmt.Errorf("unknown page type: %T", page)
-		}
+	for _, page := range pages {
+		path := page.path
 
-		data, err := markdown.AsString(root)
+		data, err := markdown.AsString(page.root)
 		if err != nil {
 			if page.Type() == PageTypeJournal {
 				return fmt.Errorf("failed to convert journal %s: %w", page.Date().Format("2006-01-02"), err)
