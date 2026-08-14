@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/aholstenson/logseq-go/content"
@@ -192,6 +193,13 @@ func (t *Transaction) Save() error {
 			} else {
 				return fmt.Errorf("failed to convert page %s: %w", page.Title(), err)
 			}
+		}
+
+		// Pages are line based, so make sure the file ends with a newline the
+		// same way Logseq and most editors write them. AsString is left alone
+		// so that it stays usable for fragments that should not gain one.
+		if data != "" && !strings.HasSuffix(data, "\n") {
+			data += "\n"
 		}
 
 		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {

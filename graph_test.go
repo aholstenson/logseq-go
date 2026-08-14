@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	logseq "github.com/aholstenson/logseq-go"
@@ -337,12 +336,49 @@ var _ = Describe("Graph", func() {
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("modified since"))
 		})
+
+		It("keeps the trailing newline when saving a page", func() {
+			pagePath := filepath.Join(dir, "pages", "newline.md")
+			source := "- Block 1\n- Block 2\n"
+			Expect(os.WriteFile(pagePath, []byte(source), 0o644)).To(Succeed())
+
+			graph, err := logseq.Open(context.Background(), dir)
+			Expect(err).ToNot(HaveOccurred())
+			defer graph.Close()
+
+			tx := graph.NewTransaction()
+			_, err = tx.OpenPage("newline")
+			Expect(err).ToNot(HaveOccurred())
+			Expect(tx.Save()).To(Succeed())
+
+			data, err := os.ReadFile(pagePath)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(string(data)).To(Equal(source))
+		})
+
+		It("writes a single trailing newline when adding a block", func() {
+			pagePath := filepath.Join(dir, "pages", "newline.md")
+			Expect(os.WriteFile(pagePath, []byte("- Block 1\n"), 0o644)).To(Succeed())
+
+			graph, err := logseq.Open(context.Background(), dir)
+			Expect(err).ToNot(HaveOccurred())
+			defer graph.Close()
+
+			tx := graph.NewTransaction()
+			page, err := tx.OpenPage("newline")
+			Expect(err).ToNot(HaveOccurred())
+			page.AddBlock(content.NewBlock(content.NewParagraph(content.NewText("Block 2"))))
+			Expect(tx.Save()).To(Succeed())
+
+			data, err := os.ReadFile(pagePath)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(string(data)).To(Equal("- Block 1\n- Block 2\n"))
+		})
 	})
 
 	Describe("Page properties", func() {
 		// saveUnchanged opens a page and saves it again without touching it,
-		// returning the contents the page ended up with on disk. Pages are
-		// written without a trailing newline.
+		// returning the contents the page ended up with on disk.
 		saveUnchanged := func(graph *logseq.Graph, path string, title string) string {
 			tx := graph.NewTransaction()
 			_, err := tx.OpenPage(title)
@@ -380,7 +416,7 @@ var _ = Describe("Graph", func() {
 			Expect(err).ToNot(HaveOccurred())
 			defer graph.Close()
 
-			Expect(saveUnchanged(graph, path, "props")).To(Equal(strings.TrimSuffix(source, "\n")))
+			Expect(saveUnchanged(graph, path, "props")).To(Equal(source))
 		})
 
 		It("round-trips properties in a bullet", func() {
@@ -397,7 +433,7 @@ var _ = Describe("Graph", func() {
 			Expect(page.Blocks()).To(HaveLen(3))
 			Expect(page.Properties().Get("icon")).To(EqualsNodes(content.NewText("🔀")))
 
-			Expect(saveUnchanged(graph, path, "props")).To(Equal(strings.TrimSuffix(source, "\n")))
+			Expect(saveUnchanged(graph, path, "props")).To(Equal(source))
 		})
 
 		It("writes new properties before the first bullet", func() {
@@ -416,7 +452,7 @@ var _ = Describe("Graph", func() {
 
 			data, err := os.ReadFile(path)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(string(data)).To(Equal("icon:: 🔀\n- Block 1"))
+			Expect(string(data)).To(Equal("icon:: 🔀\n- Block 1\n"))
 		})
 
 		It("indexes properties that are not in a bullet", func() {
