@@ -578,6 +578,8 @@ func plainText0(nodes content.NodeList, builder *strings.Builder) {
 			if n.SoftLineBreak || n.HardLineBreak {
 				builder.WriteRune('\n')
 			}
+		case *content.RawText:
+			builder.WriteString(n.Value)
 		case *content.Hashtag:
 			builder.WriteString("#")
 			builder.WriteString(n.To)

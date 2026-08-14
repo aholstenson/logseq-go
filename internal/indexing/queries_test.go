@@ -222,6 +222,18 @@ var _ = Describe("Queries", func() {
 			Expect(results).To(HaveLen(1))
 			Expect(results[0].PageSubPath).To(Equal("pages/a.md"))
 		})
+
+		It("matches pages by raw text content", func() {
+			indexPage(idx, "pages/a.md", "Page A",
+				content.NewBlock(content.NewParagraph(
+					content.NewRawText("**pre-generated** content"),
+				)),
+			)
+
+			results := searchPages(idx, indexing.ContentMatches("pre-generated"))
+			Expect(results).To(HaveLen(1))
+			Expect(results[0].Title).To(Equal("Page A"))
+		})
 	})
 
 	Describe("PropertyMatches", func() {

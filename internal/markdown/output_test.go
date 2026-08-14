@@ -162,6 +162,23 @@ var _ = Describe("Output", func() {
 			Expect(buf.String()).To(Equal("`abc`"))
 		})
 
+		It("can write raw text", func() {
+			err := writer.Write(content.NewRawText("**abc** [[def]]"))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal("**abc** [[def]]"))
+		})
+
+		It("writes raw text in a paragraph without escaping it", func() {
+			err := writer.Write(content.NewParagraph(
+				content.NewText("a "),
+				content.NewRawText("*b*"),
+			))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal("a *b*"))
+		})
+
 		It("can write code with backtick in it", func() {
 			err := writer.Write(content.NewCodeSpan("abc`def"))
 			Expect(err).ToNot(HaveOccurred())

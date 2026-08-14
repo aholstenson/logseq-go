@@ -381,6 +381,25 @@ var _ = Describe("Graph", func() {
 			Expect(filepath.Join(dir, "journals", "2025_06_16.md")).ToNot(BeAnExistingFile())
 		})
 
+		It("saves a page containing raw text", func() {
+			graph, err := logseq.Open(context.Background(), dir)
+			Expect(err).ToNot(HaveOccurred())
+			defer graph.Close()
+
+			tx := graph.NewTransaction()
+			page, err := tx.OpenPage("rawtext")
+			Expect(err).ToNot(HaveOccurred())
+
+			page.AddBlock(content.NewBlock(content.NewParagraph(
+				content.NewRawText("**pre-generated** [[markdown]]"),
+			)))
+			Expect(tx.Save()).To(Succeed())
+
+			data, err := os.ReadFile(filepath.Join(dir, "pages", "rawtext.md"))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(string(data)).To(Equal("- **pre-generated** [[markdown]]\n"))
+		})
+
 		It("detects concurrent modification", func() {
 			pagePath := filepath.Join(dir, "pages", "conflict.md")
 			Expect(os.WriteFile(pagePath, []byte("- original\n"), 0o644)).To(Succeed())

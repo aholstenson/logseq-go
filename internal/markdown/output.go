@@ -99,6 +99,9 @@ func (w *Output) Write(n content.Node) error {
 		return w.writeRaw(node.HTML)
 	case *content.Text:
 		return w.writeText(node)
+	case *content.RawText:
+		// Raw text is already Markdown, so it is written as it is.
+		return w.writeRaw(node.Value)
 	case *content.Emphasis:
 		return w.writeEmphasis(node)
 	case *content.Strong:
