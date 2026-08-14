@@ -56,6 +56,10 @@ func escapePotentialMarkdownRune(prev rune, r rune) bool {
 		return true
 	}
 
+	if prev == '^' && r == '^' {
+		return true
+	}
+
 	return false
 }
 
@@ -185,6 +189,8 @@ func (w *Output) Write(n content.Node) error {
 		return w.writeStrong(node)
 	case *content.Strikethrough:
 		return w.writeStrikethrough(node)
+	case *content.Highlight:
+		return w.writeHighlight(node)
 	case *content.CodeSpan:
 		return w.writeCodeSpan(node)
 	case *content.Link:
@@ -399,6 +405,25 @@ func (w *Output) writeStrikethrough(node *content.Strikethrough) error {
 	}
 
 	err = w.writeRaw("~~")
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (w *Output) writeHighlight(node *content.Highlight) error {
+	err := w.writeRaw("^^")
+	if err != nil {
+		return err
+	}
+
+	err = w.writeChildren(node)
+	if err != nil {
+		return err
+	}
+
+	err = w.writeRaw("^^")
 	if err != nil {
 		return err
 	}

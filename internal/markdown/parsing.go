@@ -48,6 +48,7 @@ func init() {
 			util.Prioritized(parser.NewRawHTMLParser(), 400),
 			util.Prioritized(parser.NewEmphasisParser(), 500),
 			util.Prioritized(extension.NewStrikethroughParser(), 501),
+			util.Prioritized(&highlightParser{}, 502),
 			util.Prioritized(extension.NewLinkifyParser(
 				extension.WithLinkifyEmailRegexp(neverMatch),
 				extension.WithLinkifyWWWRegexp(neverMatch),
@@ -187,6 +188,8 @@ func convert(src []byte, in ast.Node) (content.Node, error) {
 		return convertEmphasis(src, node)
 	case *east.Strikethrough:
 		return convertStrikethrough(src, node)
+	case *highlight:
+		return convertHighlight(src, node)
 	case *ast.CodeSpan:
 		return convertCodeSpan(src, node)
 	case *ast.Link:
@@ -552,6 +555,15 @@ func convertStrikethrough(src []byte, node *east.Strikethrough) (*content.Strike
 		return nil, err
 	}
 	return strikethrough, nil
+}
+
+func convertHighlight(src []byte, node *highlight) (*content.Highlight, error) {
+	highlight := content.NewHighlight()
+	err := convertChildren(src, node, highlight)
+	if err != nil {
+		return nil, err
+	}
+	return highlight, nil
 }
 
 func convertCodeSpan(src []byte, node *ast.CodeSpan) (*content.CodeSpan, error) {

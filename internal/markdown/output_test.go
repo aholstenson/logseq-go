@@ -191,6 +191,20 @@ var _ = Describe("Output", func() {
 			Expect(buf.String()).To(Equal("~~abc~\\~def~~"))
 		})
 
+		It("can write highlight", func() {
+			err := writer.Write(content.NewHighlight(content.NewText("abc")))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal("^^abc^^"))
+		})
+
+		It("can write highlight that contains ^^", func() {
+			err := writer.Write(content.NewHighlight(content.NewText("abc^^def")))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal("^^abc^\\^def^^"))
+		})
+
 		It("can write code", func() {
 			err := writer.Write(content.NewCodeSpan("abc"))
 			Expect(err).ToNot(HaveOccurred())

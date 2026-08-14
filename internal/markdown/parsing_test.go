@@ -226,6 +226,71 @@ var _ = Describe("Parsing", func() {
 			)))
 		})
 
+		It("can parse highlight", func() {
+			block, err := markdown.ParseString("This is ^^highlighted^^ text")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("This is "),
+					content.NewHighlight(content.NewText("highlighted")),
+					content.NewText(" text"),
+				),
+			)))
+		})
+
+		It("can parse highlight and strong", func() {
+			block, err := markdown.ParseString("This is ^^**highlighted and strong**^^ text")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("This is "),
+					content.NewHighlight(
+						content.NewStrong(
+							content.NewText("highlighted and strong"),
+						),
+					),
+					content.NewText(" text"),
+				),
+			)))
+		})
+
+		It("can parse highlight with ^ inline", func() {
+			block, err := markdown.ParseString("This is ^^high^lighted^^ text")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("This is "),
+					content.NewHighlight(content.NewText("high^lighted")),
+					content.NewText(" text"),
+				),
+			)))
+		})
+
+		It("keeps a single ^ as text", func() {
+			block, err := markdown.ParseString("This is 2^10 text")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("This is 2^10 text"),
+				),
+			)))
+		})
+
+		It("keeps an unmatched ^^ as text", func() {
+			block, err := markdown.ParseString("This is ^^ text")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("This is ^^ text"),
+				),
+			)))
+		})
+
 		It("can parse code", func() {
 			block, err := markdown.ParseString("This is `code` text")
 			Expect(err).ToNot(HaveOccurred())

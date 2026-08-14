@@ -180,6 +180,29 @@ func (s *Strikethrough) debug(p *debugPrinter) {
 
 var _ InlineNode = (*Strikethrough)(nil)
 
+// Highlight is text that Logseq marks out, written as `^^text^^`.
+type Highlight struct {
+	baseNodeWithChildren
+}
+
+func NewHighlight(children ...Node) *Highlight {
+	h := &Highlight{}
+	h.self = h
+	h.childValidator = allowOnlyInlineNodes
+	h.AddChildren(children...)
+	return h
+}
+
+func (h *Highlight) isInline() {}
+
+func (h *Highlight) debug(p *debugPrinter) {
+	p.StartType("Highlight")
+	p.Children(h)
+	p.EndType()
+}
+
+var _ InlineNode = (*Highlight)(nil)
+
 func NewParagraph(children ...Node) *Paragraph {
 	p := &Paragraph{}
 	p.self = p
