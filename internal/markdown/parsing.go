@@ -314,7 +314,13 @@ func convertTaskMarker(node *content.Paragraph) {
 		return
 	}
 
-	textNode.Value = textNode.Value[potentialMarkerIdx+1:]
+	if potentialMarkerIdx < 0 {
+		// The marker is the entire text, so there is nothing left of it.
+		textNode.Value = ""
+	} else {
+		textNode.Value = textNode.Value[potentialMarkerIdx+1:]
+	}
+
 	if textNode.Value == "" {
 		textNode.RemoveSelf()
 	}

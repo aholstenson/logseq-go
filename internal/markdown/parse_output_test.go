@@ -134,5 +134,17 @@ var _ = Describe("Parsing then outputting", func() {
 
 			Varies("Task with leading space", " TODO Task", "TODO Task")
 		})
+
+		Describe("Markers without text", func() {
+			FullyEqual("TODO on its own", "TODO")
+			FullyEqual("DONE on its own", "DONE")
+			FullyEqual("TODO with sub block", "- TODO\n\t- child")
+			Varies("TODO with trailing space", "TODO ", "TODO")
+
+			// The marker takes up the whole first line, so what follows it moves
+			// up to sit after the marker.
+			Varies("TODO with text on the next line", "TODO\nmore", "TODO more")
+			Varies("TODO followed by formatting", "TODO**bold**", "TODO **bold**")
+		})
 	})
 })
