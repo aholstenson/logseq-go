@@ -768,6 +768,17 @@ var _ = Describe("Parsing", func() {
 					),
 				)))
 			})
+
+			It("query without a query string is parsed as macro", func() {
+				block, err := markdown.ParseString("{{query}}")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewParagraph(
+						content.NewMacro("query"),
+					),
+				)))
+			})
 		})
 
 		Describe("Page embed", func() {

@@ -374,6 +374,12 @@ func convertLink(src []byte, node *ast.Link) (*content.Link, error) {
 func convertMacro(src []byte, node *macro) (content.Node, error) {
 	switch node.Name {
 	case "query":
+		// A query without a query string is not a query, keep it as a macro so
+		// it is written back the way it was found.
+		if len(node.Arguments) == 0 {
+			break
+		}
+
 		return content.NewQuery(node.Arguments[0]), nil
 	case "embed":
 		// Either a [[page]] or a ((block))
