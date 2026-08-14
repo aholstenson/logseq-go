@@ -133,6 +133,71 @@ var _ = Describe("Base nodes", func() {
 			Expect(node2.PreviousSibling()).To(Equal(node3))
 		})
 
+		It("can set children", func() {
+			parent := content.NewParagraph()
+			parent.AddChildren(
+				content.NewText("child"),
+				content.NewText("child2"),
+			)
+
+			node := content.NewText("replacement")
+			parent.SetChildren(node)
+
+			Expect(parent.Children()).To(HaveLen(1))
+			Expect(parent.Children()[0]).To(Equal(node))
+		})
+
+		It("detaches all children when setting children", func() {
+			parent := content.NewParagraph()
+			node := content.NewText("child")
+			node2 := content.NewText("child2")
+			node3 := content.NewText("child3")
+			parent.AddChildren(node, node2, node3)
+
+			parent.SetChildren(content.NewText("replacement"))
+
+			for _, removed := range []*content.Text{node, node2, node3} {
+				Expect(removed.Parent()).To(BeNil())
+				Expect(removed.NextSibling()).To(BeNil())
+				Expect(removed.PreviousSibling()).To(BeNil())
+			}
+		})
+
+		It("keeps children reachable when a replaced child is removed later", func() {
+			parent := content.NewParagraph()
+			node := content.NewText("child")
+			node2 := content.NewText("child2")
+			parent.AddChildren(node, node2)
+
+			replacement := content.NewText("replacement")
+			parent.SetChildren(replacement)
+
+			// Something still holding on to a replaced child removes it, which
+			// must not disturb the children the node has now.
+			node2.RemoveSelf()
+
+			added := content.NewText("added")
+			parent.AddChild(added)
+
+			Expect(parent.Children()).To(HaveLen(2))
+			Expect(parent.Children()[0]).To(Equal(replacement))
+			Expect(parent.Children()[1]).To(Equal(added))
+		})
+
+		It("can set children to one of the existing children", func() {
+			parent := content.NewParagraph()
+			node := content.NewText("child")
+			node2 := content.NewText("child2")
+			parent.AddChildren(node, node2)
+
+			parent.SetChildren(node2)
+
+			Expect(parent.Children()).To(HaveLen(1))
+			Expect(parent.Children()[0]).To(Equal(node2))
+			Expect(node.Parent()).To(BeNil())
+			Expect(node2.Parent()).To(Equal(parent))
+		})
+
 		It("can insert children before when first node", func() {
 			parent := content.NewParagraph()
 			node := content.NewText("child")

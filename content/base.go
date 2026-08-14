@@ -211,11 +211,16 @@ func (c *baseNodeWithChildren) LastChild() Node {
 }
 
 func (c *baseNodeWithChildren) SetChildren(nodes ...Node) {
-	// Remove all of the children
-	for child := c.firstChild; child != nil; child = child.NextSibling() {
+	// Remove all of the children, keeping hold of the next one before the links
+	// of the current one are cleared.
+	for child := c.firstChild; child != nil; {
+		next := child.NextSibling()
+
 		child.setParent(nil)
 		child.setPreviousSibling(nil)
 		child.setNextSibling(nil)
+
+		child = next
 	}
 
 	// Add the new children
