@@ -35,21 +35,11 @@ func NewList(typ ListType, items ...*ListItem) *List {
 	return list
 }
 
+// NewListFromMarker creates a new List with the type and marker that go with
+// the given marker. Markers that are not used by a list, and `-` which belongs
+// to blocks, become an unordered list using `*`.
 func NewListFromMarker(marker byte, items ...*ListItem) *List {
-	var list *List
-	switch marker {
-	case '*', '+':
-		list = NewUnorderedList(items...)
-	case '-':
-		list = NewUnorderedList(items...)
-		marker = '*'
-	case '.', ')':
-		list = NewOrderedList(items...)
-	default:
-		list = NewUnorderedList(items...)
-	}
-	list.Marker = marker
-	return list
+	return NewUnorderedList(items...).WithMarker(marker)
 }
 
 func NewUnorderedList(items ...*ListItem) *List {
