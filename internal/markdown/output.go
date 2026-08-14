@@ -331,28 +331,37 @@ func (w *Output) writeStrikethrough(node *content.Strikethrough) error {
 }
 
 func (w *Output) writeCodeSpan(node *content.CodeSpan) error {
-	// First find the longest sequence of backticks in the value so can use
-	// the correct marker.
-	longestSequence := 0
+	// The marker has to be longer than the longest run of backticks in the
+	// value, or it would end the code span early.
+	longestRun := 0
+	currentRun := 0
 	for i := 0; i < len(node.Value); i++ {
-		if node.Value[i] != '`' {
-			continue
-		}
-
-		if longestSequence == 0 {
-			longestSequence = 1
-		} else if node.Value[i-1] == '`' {
-			longestSequence++
+		if node.Value[i] == '`' {
+			currentRun++
+			if currentRun > longestRun {
+				longestRun = currentRun
+			}
+		} else {
+			currentRun = 0
 		}
 	}
-	marker := strings.Repeat("`", longestSequence+1)
+	marker := strings.Repeat("`", longestRun+1)
+
+	// A code span that starts or ends with a backtick needs to be padded with
+	// spaces to keep the backtick apart from the marker. The same padding is
+	// needed for a value surrounded by spaces, as a reader strips one space
+	// from each end when both are present.
+	value := node.Value
+	if needsCodeSpanPadding(value) {
+		value = " " + value + " "
+	}
 
 	err := w.writeRaw(marker)
 	if err != nil {
 		return err
 	}
 
-	err = w.writeRaw(node.Value)
+	err = w.writeRaw(value)
 	if err != nil {
 		return err
 	}
@@ -362,6 +371,22 @@ func (w *Output) writeCodeSpan(node *content.CodeSpan) error {
 		return err
 	}
 	return nil
+}
+
+// needsCodeSpanPadding checks if a code span value has to be written with a
+// space at each end to survive being read back.
+func needsCodeSpanPadding(value string) bool {
+	if strings.HasPrefix(value, "`") || strings.HasSuffix(value, "`") {
+		return true
+	}
+
+	// A value of only spaces is kept as is by a reader, and padding it would
+	// make it longer instead.
+	if strings.Trim(value, " ") == "" {
+		return false
+	}
+
+	return strings.HasPrefix(value, " ") && strings.HasSuffix(value, " ")
 }
 
 func (w *Output) writeLink(node *content.Link) error {

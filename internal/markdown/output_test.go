@@ -175,6 +175,41 @@ var _ = Describe("Output", func() {
 
 			Expect(buf.String()).To(Equal("```abc``def```"))
 		})
+
+		It("can write code with separate backticks in it", func() {
+			err := writer.Write(content.NewCodeSpan("a`b`c"))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal("``a`b`c``"))
+		})
+
+		It("pads code starting with a backtick", func() {
+			err := writer.Write(content.NewCodeSpan("`abc"))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal("`` `abc ``"))
+		})
+
+		It("pads code ending with a backtick", func() {
+			err := writer.Write(content.NewCodeSpan("abc`"))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal("`` abc` ``"))
+		})
+
+		It("pads code surrounded by spaces", func() {
+			err := writer.Write(content.NewCodeSpan(" abc "))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal("`  abc  `"))
+		})
+
+		It("does not pad code of only spaces", func() {
+			err := writer.Write(content.NewCodeSpan("  "))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal("`  `"))
+		})
 	})
 
 	Describe("Links", func() {

@@ -59,6 +59,15 @@ var _ = Describe("Parsing then outputting", func() {
 		FullyEqual("Code text", "`Basic` content")
 		FullyEqual("Code text maintains newline", "`Basic\ncontent`")
 		FullyEqual("Code text maintains spaces before 'hard' newline", "`Basic  \ncontent`")
+
+		FullyEqual("Code text containing a backtick", "``Basic ` content``")
+		FullyEqual("Code text starting with a backtick", "`` `Basic ``")
+		FullyEqual("Code text ending with a backtick", "`` Basic` ``")
+		FullyEqual("Code text of a single backtick", "`` ` ``")
+		// Padding is only kept where it is needed to read the value back.
+		Varies("Code text containing double backticks", "``` Basic ``content ```", "```Basic ``content```")
+		FullyEqual("Code text surrounded by spaces", "`  Basic  `")
+		FullyEqual("Code text of only spaces", "`  `")
 	})
 
 	Describe("Tags", func() {
