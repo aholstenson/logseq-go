@@ -123,14 +123,14 @@ var _ = Describe("Linked references", func() {
 		)).To(Succeed())
 
 		// Journals are referenced by their title, which the default format of
-		// the page title makes `Sun 15, Jun 2025` for this date.
+		// the page title makes `Jun 15, 2025` for this date.
 		graph = openGraphWithPages(dir, map[string]string{
-			"referrer.md": "- see [[Sun 15, Jun 2025]] for more\n",
+			"referrer.md": "- see [[Jun 15, 2025]] for more\n",
 		})
 
 		journal, err := graph.OpenJournal(time.Date(2025, 6, 15, 0, 0, 0, 0, time.Local))
 		Expect(err).ToNot(HaveOccurred())
-		Expect(journal.Title()).To(Equal("Sun 15, Jun 2025"))
+		Expect(journal.Title()).To(Equal("Jun 15, 2025"))
 
 		results, err := journal.LinkedReferences(ctx)
 		Expect(err).ToNot(HaveOccurred())

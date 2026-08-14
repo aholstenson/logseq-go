@@ -75,9 +75,15 @@ func Open(ctx context.Context, directory string, opts ...Option) (*Graph, error)
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
 	}
 
+	// This library reads and writes Markdown, so a graph in another format
+	// can not be handled without silently mangling it.
+	if config.PreferredFormat != utils.PreferredFormatMarkdown {
+		return nil, fmt.Errorf("only Markdown graphs are supported, graph uses: %s", config.PreferredFormat)
+	}
+
 	// Parse the journal file name format.
-	journalNameFormat := utils.ConvertDateFormat(config.Journal.FileNameFormat)
-	journalTitleFormat := utils.ConvertDateFormat(config.Journal.PageTitleFormat)
+	journalNameFormat := utils.ConvertDateFormat(config.JournalFileNameFormat)
+	journalTitleFormat := utils.ConvertDateFormat(config.JournalPageTitleFormat)
 
 	var index indexing.Index
 	if options.index {
@@ -220,7 +226,7 @@ func (g *Graph) pageTitleForAlias(ctx context.Context, alias string) (string, er
 }
 
 func (g *Graph) pagePath(title string) (string, error) {
-	path, err := utils.TitleToFilename(g.config.File.NameFormat, title)
+	path, err := utils.TitleToFilename(g.config.FileNameFormat, title)
 	if err != nil {
 		return "", err
 	}
@@ -273,7 +279,7 @@ func (g *Graph) openViaPath(path string, source pageSource) (Page, error) {
 
 		return openOrCreatePage(source, path, PageTypeJournal, title, date, "")
 	} else if dir == filepath.Join(g.directory, g.config.PagesDir) {
-		title, err := utils.FilenameToTitle(g.config.File.NameFormat, name)
+		title, err := utils.FilenameToTitle(g.config.FileNameFormat, name)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get title from filename: %w", err)
 		}
@@ -331,17 +337,27 @@ func (g *Graph) createWalker(ctx context.Context, listener func(event OpenEvent)
 			return fmt.Errorf("failed to walk journals directory: %w", err)
 		}
 
+		subPath, err := filepath.Rel(g.directory, path)
+		if err != nil {
+			return fmt.Errorf("failed to get relative path: %w", err)
+		}
+
+		if g.config.IsHidden(subPath) {
+			// Files and directories hidden via the config are not part of the
+			// graph as far as Logseq is concerned.
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
+
+			return nil
+		}
+
 		if info.IsDir() {
 			return nil
 		}
 
 		if filepath.Ext(path) != ".md" {
 			return nil
-		}
-
-		subPath, err := filepath.Rel(g.directory, path)
-		if err != nil {
-			return fmt.Errorf("failed to get relative path: %w", err)
 		}
 
 		lastModified, err := g.index.GetLastModified(ctx, subPath)
@@ -443,6 +459,11 @@ func (g *Graph) watchForChanges() {
 
 				if filepath.Ext(event.Name) != ".md" {
 					// Only handle Markdown files
+					continue
+				}
+
+				if subPath, err := filepath.Rel(g.directory, event.Name); err == nil && g.config.IsHidden(subPath) {
+					// Hidden files are not part of the graph
 					continue
 				}
 
@@ -583,7 +604,7 @@ func (g *Graph) createPageDeletedEvent(path string) ChangeEvent {
 			Title: date.Format(g.journalTitleFormat),
 		}
 	} else if dir == filepath.Join(g.directory, g.config.PagesDir) {
-		title, err := utils.FilenameToTitle(g.config.File.NameFormat, name)
+		title, err := utils.FilenameToTitle(g.config.FileNameFormat, name)
 		if err != nil {
 			return nil
 		}
@@ -749,7 +770,7 @@ func (g *Graph) searchBlocks(ctx context.Context, opts []SearchOption, source pa
 
 			pageTitle = pageDate.Format(g.journalTitleFormat)
 		} else {
-			pageTitle, err = utils.FilenameToTitle(g.config.File.NameFormat, name)
+			pageTitle, err = utils.FilenameToTitle(g.config.FileNameFormat, name)
 			if err != nil {
 				// TODO: This page is not in the expected format
 			}

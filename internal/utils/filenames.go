@@ -15,6 +15,23 @@ const (
 	FilenameFormatTripleLowbar FilenameFormat = "triple-lowbar"
 )
 
+// UnmarshalEDN reads the format, which Logseq writes as a keyword such as
+// `:triple-lowbar`, but which may also be written as a string.
+func (f *FilenameFormat) UnmarshalEDN(data []byte) error {
+	name, err := ednName(data)
+	if err != nil {
+		return fmt.Errorf("failed to read file name format: %w", err)
+	}
+
+	if name == "" {
+		*f = FilenameFormatTripleLowbar
+	} else {
+		*f = FilenameFormat(name)
+	}
+
+	return nil
+}
+
 func TitleToFilename(format FilenameFormat, title string) (string, error) {
 	switch format {
 	case FilenameFormatTripleLowbar, "":
