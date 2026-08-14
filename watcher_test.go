@@ -126,7 +126,7 @@ var _ = Describe("Watcher", func() {
 		Expect(updated.Page).ToNot(BeNil())
 		Expect(updated.Page.Type()).To(Equal(logseq.PageTypeJournal))
 		Expect(updated.Page.Date()).To(Equal(
-			time.Date(2025, 6, 15, 0, 0, 0, 0, time.UTC),
+			time.Date(2025, 6, 15, 0, 0, 0, 0, time.Local),
 		))
 	})
 
@@ -148,7 +148,7 @@ var _ = Describe("Watcher", func() {
 		deleted := event.(*logseq.PageDeleted)
 		Expect(deleted.Type).To(Equal(logseq.PageTypeJournal))
 		Expect(deleted.Date).To(Equal(
-			time.Date(2025, 6, 15, 0, 0, 0, 0, time.UTC),
+			time.Date(2025, 6, 15, 0, 0, 0, 0, time.Local),
 		))
 	})
 

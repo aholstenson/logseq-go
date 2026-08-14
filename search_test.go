@@ -11,6 +11,16 @@ import (
 	. "github.com/onsi/gomega"
 )
 
+// withTimeZone switches the local time zone for the duration of the spec, so
+// behavior that depends on which side of UTC the zone is on can be tested.
+func withTimeZone(location *time.Location) {
+	previous := time.Local
+	time.Local = location
+	DeferCleanup(func() {
+		time.Local = previous
+	})
+}
+
 func openGraphWithPages(dir string, pages map[string]string) *logseq.Graph {
 	for name, content := range pages {
 		Expect(os.WriteFile(
@@ -118,7 +128,40 @@ var _ = Describe("Search", func() {
 			Expect(results.Size()).To(Equal(1))
 			Expect(results.Results()[0].Type()).To(Equal(logseq.PageTypeJournal))
 			Expect(results.Results()[0].Date()).To(Equal(
-				time.Date(2025, 6, 15, 0, 0, 0, 0, time.UTC),
+				time.Date(2025, 6, 15, 0, 0, 0, 0, time.Local),
+			))
+		})
+
+		It("opens the journal a result came from west of UTC", func() {
+			// A journal covers a calendar day in the local zone, so opening a
+			// result has to land on the same day the file was found under no
+			// matter which side of UTC the zone is on.
+			withTimeZone(time.FixedZone("UTC-5", -5*60*60))
+
+			Expect(os.WriteFile(
+				filepath.Join(dir, "journals", "2025_06_15.md"),
+				[]byte("- journal entry xyzzy\n"),
+				0o644,
+			)).To(Succeed())
+
+			graph = openGraphWithPages(dir, map[string]string{})
+
+			results, err := graph.SearchPages(ctx,
+				logseq.WithQuery(logseq.ContentMatches("xyzzy")),
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(results.Size()).To(Equal(1))
+
+			result := results.Results()[0]
+			Expect(result.Date()).To(Equal(
+				time.Date(2025, 6, 15, 0, 0, 0, 0, time.Local),
+			))
+
+			page, err := result.Open()
+			Expect(err).ToNot(HaveOccurred())
+			Expect(page.IsNew()).To(BeFalse())
+			Expect(page.Date()).To(Equal(
+				time.Date(2025, 6, 15, 0, 0, 0, 0, time.Local),
 			))
 		})
 	})
@@ -210,7 +253,7 @@ var _ = Describe("Search", func() {
 			result := results.Results()[0]
 			Expect(result.PageType()).To(Equal(logseq.PageTypeJournal))
 			Expect(result.PageDate()).To(Equal(
-				time.Date(2025, 3, 20, 0, 0, 0, 0, time.UTC),
+				time.Date(2025, 3, 20, 0, 0, 0, 0, time.Local),
 			))
 		})
 

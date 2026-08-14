@@ -115,10 +115,18 @@ func (g *Graph) NewTransaction() *Transaction {
 	return newTransaction(g)
 }
 
+// journalDate normalizes a time into the date of a journal, which is midnight
+// on the local calendar day the time falls on. Journals cover a calendar day,
+// so this is how their dates are represented throughout the graph, letting a
+// date survive a trip through the index and back.
+func journalDate(t time.Time) time.Time {
+	t = t.Local()
+	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
+}
+
 // Journal returns a read-only version of the journal page for the given date.
 func (g *Graph) OpenJournal(date time.Time) (Page, error) {
-	date = date.Local()
-	date = time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, date.Location())
+	date = journalDate(date)
 
 	path, err := g.journalPath(date)
 	if err != nil {
@@ -169,7 +177,7 @@ func (g *Graph) openViaPath(path string) (Page, error) {
 	dir := filepath.Dir(path)
 
 	if dir == filepath.Join(g.directory, g.config.JournalsDir) {
-		date, err := time.Parse(g.journalNameFormat, name)
+		date, err := time.ParseInLocation(g.journalNameFormat, name, time.Local)
 		if err != nil {
 			// Ignore files that don't match the journal name format
 			return nil, nil
@@ -476,7 +484,7 @@ func (g *Graph) createPageDeletedEvent(path string) ChangeEvent {
 
 	dir := filepath.Dir(path)
 	if dir == filepath.Join(g.directory, g.config.JournalsDir) {
-		date, err := time.Parse(g.journalNameFormat, name)
+		date, err := time.ParseInLocation(g.journalNameFormat, name, time.Local)
 		if err != nil {
 			// Ignore files that don't match the journal name format
 			return nil
@@ -540,13 +548,14 @@ func (g *Graph) searchPages(ctx context.Context, opts []SearchOption, source pag
 
 	return newSearchResults(results, func(page *indexing.Page) PageResult {
 		if page.Type == indexing.PageTypeJournal {
+			date := journalDate(page.Date)
 			return &pageResultImpl{
 				docType: PageTypeJournal,
-				title:   page.Date.Format(g.journalTitleFormat),
-				date:    page.Date,
+				title:   date.Format(g.journalTitleFormat),
+				date:    date,
 
 				opener: func() (Page, error) {
-					return source.OpenJournal(page.Date)
+					return source.OpenJournal(date)
 				},
 			}
 		} else {
@@ -611,7 +620,7 @@ func (g *Graph) searchBlocks(ctx context.Context, opts []SearchOption, source pa
 		if dir == g.config.JournalsDir {
 			pageType = PageTypeJournal
 
-			pageDate, err = time.Parse(g.journalNameFormat, name)
+			pageDate, err = time.ParseInLocation(g.journalNameFormat, name, time.Local)
 			if err != nil {
 				// TODO: This is an edge case where the format of journals has changed since indexing
 			}
