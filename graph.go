@@ -38,6 +38,10 @@ type Graph struct {
 	index         indexing.Index
 	changeWatcher *fsnotify.Watcher
 
+	// changeHandlers tracks the goroutines that debounce and index file
+	// changes, so they can be waited for before the index is closed.
+	changeHandlers sync.WaitGroup
+
 	mu       sync.Mutex
 	watchers []*Watcher
 }
@@ -191,6 +195,10 @@ func (g *Graph) Close() error {
 		g.changeWatcher.Close()
 	}
 
+	// Changes are indexed as they come in, so wait for that to stop before
+	// closing the index out from under it.
+	g.changeHandlers.Wait()
+
 	if g.index != nil {
 		return g.index.Close()
 	}
@@ -314,10 +322,18 @@ func (g *Graph) watchForChanges() {
 	}
 
 	changes := make(chan string)
+	// done is closed when the watcher has stopped, which lets debounce timers
+	// that fire around that point give up instead of sending on a channel that
+	// no longer has a receiver.
+	done := make(chan struct{})
 	changeTimers := make(map[string]*time.Timer)
 	var mu sync.Mutex
 
+	g.changeHandlers.Add(2)
+
 	go func() {
+		defer g.changeHandlers.Done()
+
 	_outer:
 		for {
 			select {
@@ -349,7 +365,10 @@ func (g *Graph) watchForChanges() {
 					delete(changeTimers, path)
 					mu.Unlock()
 
-					changes <- path
+					select {
+					case changes <- path:
+					case <-done:
+					}
 				})
 				mu.Unlock()
 			case _, ok := <-g.changeWatcher.Errors:
@@ -361,18 +380,29 @@ func (g *Graph) watchForChanges() {
 			}
 		}
 
-		// When the watcher is closed remove all of the current timers
+		// When the watcher is closed remove all of the current timers. Timers
+		// that already fired are released via done instead of being stopped.
+		close(done)
+
 		mu.Lock()
 		defer mu.Unlock()
 		for _, timer := range changeTimers {
 			timer.Stop()
 		}
-		close(changes)
 	}()
 
 	go func() {
+		defer g.changeHandlers.Done()
+
 		ctx := context.Background()
-		for path := range changes {
+		for {
+			var path string
+			select {
+			case path = <-changes:
+			case <-done:
+				return
+			}
+
 			// Figure out if the page still exists
 			exists := true
 			_, err := os.Stat(path)
@@ -432,6 +462,7 @@ func (g *Graph) watchForChanges() {
 					select {
 					case watcher.changes <- event:
 					case <-watcher.done:
+					case <-done:
 					}
 				}
 			}

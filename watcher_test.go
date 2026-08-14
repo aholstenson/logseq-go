@@ -2,6 +2,7 @@ package logseq_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -194,5 +195,33 @@ var _ = Describe("Watcher", func() {
 
 		Expect(event1).To(BeAssignableToTypeOf(&logseq.PageUpdated{}))
 		Expect(event2).To(BeAssignableToTypeOf(&logseq.PageUpdated{}))
+	})
+})
+
+var _ = Describe("Change watching shutdown", func() {
+	It("does not panic when the graph is closed while changes are debounced", func() {
+		// Changes are debounced for a second before they are indexed, so each
+		// round closes the graph right around the point where the timers for a
+		// batch of changed files fire.
+		for i := 0; i < 4; i++ {
+			dir := setupGraph()
+
+			graph, err := logseq.Open(context.Background(), dir, logseq.WithInMemoryIndex())
+			Expect(err).ToNot(HaveOccurred())
+
+			for j := 0; j < 10; j++ {
+				Expect(os.WriteFile(
+					filepath.Join(dir, "pages", fmt.Sprintf("debounced-%d.md", j)),
+					[]byte("- hello\n"),
+					0o644,
+				)).To(Succeed())
+			}
+
+			time.Sleep(time.Duration(995+i*3) * time.Millisecond)
+			Expect(graph.Close()).To(Succeed())
+		}
+
+		// Give timers that fired during the last close a chance to run.
+		time.Sleep(100 * time.Millisecond)
 	})
 })
