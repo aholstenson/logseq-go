@@ -90,6 +90,43 @@ var _ = Describe("Graph", func() {
 			}
 			Expect(found).To(BeTrue(), "expected PageIndexed event for pages/listened.md")
 		})
+
+		It("ignores Markdown files in subdirectories", func() {
+			Expect(os.MkdirAll(filepath.Join(dir, "pages", "sub"), 0o755)).To(Succeed())
+			Expect(os.WriteFile(
+				filepath.Join(dir, "pages", "sub", "nested.md"),
+				[]byte("- content of the nested file\n"),
+				0o644,
+			)).To(Succeed())
+			Expect(os.MkdirAll(filepath.Join(dir, "journals", "sub"), 0o755)).To(Succeed())
+			Expect(os.WriteFile(
+				filepath.Join(dir, "journals", "sub", "2024_01_01.md"),
+				[]byte("- content of the nested journal\n"),
+				0o644,
+			)).To(Succeed())
+
+			var events []logseq.OpenEvent
+			graph, err := logseq.Open(context.Background(), dir,
+				logseq.WithInMemoryIndex(),
+				logseq.WithListener(func(event logseq.OpenEvent) {
+					events = append(events, event)
+				}),
+			)
+			Expect(err).ToNot(HaveOccurred())
+			defer graph.Close()
+
+			for _, e := range events {
+				if indexed, ok := e.(*logseq.PageIndexed); ok {
+					Expect(indexed.SubPath).ToNot(ContainSubstring("sub"))
+				}
+			}
+
+			results, err := graph.SearchPages(context.Background(),
+				logseq.WithQuery(logseq.ContentMatches("nested")),
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(results.Size()).To(Equal(0))
+		})
 	})
 
 	Describe("OpenPage", func() {

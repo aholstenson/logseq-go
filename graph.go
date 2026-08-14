@@ -259,10 +259,14 @@ func (g *Graph) removePageFile(path string) error {
 	return nil
 }
 
+// openViaPath opens the page stored at the given path. A nil page is returned
+// for files that are not part of the graph: files that are not Markdown, files
+// outside the pages and journals directories, such as in a subdirectory of
+// them, and journals whose name does not match the configured format.
 func (g *Graph) openViaPath(path string, source pageSource) (Page, error) {
 	name := filepath.Base(path)
 	if filepath.Ext(name) != ".md" {
-		return nil, fmt.Errorf("not a Markdown file")
+		return nil, nil
 	}
 
 	name = name[:len(name)-3]
@@ -287,7 +291,7 @@ func (g *Graph) openViaPath(path string, source pageSource) (Page, error) {
 		return openOrCreatePage(source, path, PageTypeDedicated, title, time.Time{}, "")
 	}
 
-	return nil, fmt.Errorf("not a page or journal")
+	return nil, nil
 }
 
 func (g *Graph) Close() error {
@@ -368,9 +372,14 @@ func (g *Graph) createWalker(ctx context.Context, listener func(event OpenEvent)
 			return nil
 		}
 
-		_, err = g.indexDocument(ctx, path)
+		page, err := g.indexDocument(ctx, path)
 		if err != nil {
 			return fmt.Errorf("failed to index document: %w", err)
+		}
+
+		if page == nil {
+			// The file is not part of the graph, so nothing was indexed.
+			return nil
 		}
 
 		if listener != nil {
