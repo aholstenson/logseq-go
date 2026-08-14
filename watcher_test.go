@@ -205,6 +205,34 @@ var _ = Describe("Watcher lifecycle", func() {
 		dir = setupGraph()
 	})
 
+	It("can be closed more than once", func() {
+		graph, err := logseq.Open(context.Background(), dir, logseq.WithInMemoryIndex())
+		Expect(err).ToNot(HaveOccurred())
+		defer graph.Close()
+
+		watcher := graph.Watch()
+		Expect(watcher.Close()).To(Succeed())
+		Expect(watcher.Close()).To(Succeed())
+
+		Expect(watcher.Done()).To(BeClosed())
+	})
+
+	It("closes done when the watcher is closed", func() {
+		graph, err := logseq.Open(context.Background(), dir, logseq.WithInMemoryIndex())
+		Expect(err).ToNot(HaveOccurred())
+		defer graph.Close()
+
+		watcher := graph.Watch()
+		other := graph.Watch()
+		defer other.Close()
+
+		Expect(watcher.Done()).ToNot(BeClosed())
+		Expect(watcher.Close()).To(Succeed())
+
+		Expect(watcher.Done()).To(BeClosed())
+		Expect(other.Done()).ToNot(BeClosed())
+	})
+
 	It("keeps indexing changes after a watcher is closed", func() {
 		graph, err := logseq.Open(context.Background(), dir, logseq.WithInMemoryIndex())
 		Expect(err).ToNot(HaveOccurred())
