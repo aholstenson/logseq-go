@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/aholstenson/logseq-go/content"
 )
@@ -226,6 +227,8 @@ func (w *Output) Write(n content.Node) error {
 		return w.writeParagraph(node)
 	case *content.List:
 		return w.writeList(node)
+	case *content.Table:
+		return w.writeTable(node)
 	case *content.Blockquote:
 		return w.writeBlockquote(node)
 	case *content.CodeBlock:
@@ -860,6 +863,173 @@ func (w *Output) writeList(node *content.List) error {
 
 	w.endBlock()
 	return nil
+}
+
+// writeTable writes a table in the GitHub Flavored Markdown syntax, padding
+// the cells so that the pipes of every row line up in a text editor.
+func (w *Output) writeTable(node *content.Table) error {
+	rows, err := w.tableRows(node)
+	if err != nil {
+		return err
+	}
+
+	if len(rows) == 0 {
+		return fmt.Errorf("table has no rows")
+	}
+
+	widths := tableColumnWidths(rows)
+	for len(widths) < len(node.Alignments) {
+		// A column that the table sets the alignment of, but that no row has a
+		// cell for, is still written out.
+		widths = append(widths, 3)
+	}
+
+	err = w.startBlock(node, "")
+	if err != nil {
+		return err
+	}
+
+	// The header names the columns and is followed by the row that sets how
+	// the text of each column lines up.
+	err = w.writeRaw(tableRow(rows[0], widths))
+	if err != nil {
+		return err
+	}
+
+	err = w.writeRaw("\n" + tableDelimiterRow(node, widths))
+	if err != nil {
+		return err
+	}
+
+	for _, row := range rows[1:] {
+		err = w.writeRaw("\n" + tableRow(row, widths))
+		if err != nil {
+			return err
+		}
+	}
+
+	w.endBlock()
+	return nil
+}
+
+// tableRows writes out the cells of every row, so that the width of each
+// column is known before any of it is written.
+func (w *Output) tableRows(node *content.Table) ([][]string, error) {
+	rows := make([][]string, 0)
+	for child := node.FirstChild(); child != nil; child = child.NextSibling() {
+		row, ok := child.(*content.TableRow)
+		if !ok {
+			return nil, fmt.Errorf("unsupported table child: %T", child)
+		}
+
+		cells := make([]string, 0)
+		for cellNode := row.FirstChild(); cellNode != nil; cellNode = cellNode.NextSibling() {
+			cell, ok := cellNode.(*content.TableCell)
+			if !ok {
+				return nil, fmt.Errorf("unsupported table row child: %T", cellNode)
+			}
+
+			value, err := w.tableCell(cell)
+			if err != nil {
+				return nil, err
+			}
+
+			cells = append(cells, value)
+		}
+
+		rows = append(rows, cells)
+	}
+
+	return rows, nil
+}
+
+// tableCell writes the content of a cell to the text that goes between the
+// pipes of a row. A row is a single line, so line breaks become spaces, and
+// the pipes in the content are escaped to keep them out of the shape of the
+// table.
+func (w *Output) tableCell(node *content.TableCell) (string, error) {
+	out := strings.Builder{}
+	cellWriter := &Output{
+		out:  newWriter(&out),
+		opts: w.opts,
+	}
+
+	err := cellWriter.writeChildren(node)
+	if err != nil {
+		return "", err
+	}
+
+	value := out.String()
+	value = strings.ReplaceAll(value, "\\\n", " ")
+	value = strings.ReplaceAll(value, "\n", " ")
+	return strings.ReplaceAll(value, "|", "\\|"), nil
+}
+
+// tableColumnWidths measures how wide each column has to be for the content of
+// every cell in it to fit.
+func tableColumnWidths(rows [][]string) []int {
+	widths := make([]int, 0)
+	for _, cells := range rows {
+		for i, cell := range cells {
+			// Three is the shortest a column can be, as that is what the row
+			// that sets the alignment of a centered column needs.
+			for i >= len(widths) {
+				widths = append(widths, 3)
+			}
+
+			if width := utf8.RuneCountInString(cell); width > widths[i] {
+				widths[i] = width
+			}
+		}
+	}
+
+	return widths
+}
+
+// tableRow writes one row of a table, padding every cell to the width of its
+// column. Rows that are missing cells get empty ones, as a row that is shorter
+// than the header is read back with the columns it does not have left empty.
+func tableRow(cells []string, widths []int) string {
+	row := strings.Builder{}
+	for i, width := range widths {
+		cell := ""
+		if i < len(cells) {
+			cell = cells[i]
+		}
+
+		row.WriteString("| ")
+		row.WriteString(cell)
+		row.WriteString(strings.Repeat(" ", width-utf8.RuneCountInString(cell)))
+		row.WriteString(" ")
+	}
+
+	row.WriteString("|")
+	return row.String()
+}
+
+// tableDelimiterRow writes the row below the header, which sets how the text
+// of each column lines up.
+func tableDelimiterRow(node *content.Table, widths []int) string {
+	row := strings.Builder{}
+	for i, width := range widths {
+		row.WriteString("| ")
+
+		switch node.AlignmentOf(i) {
+		case content.TableAlignmentLeft:
+			row.WriteString(":" + strings.Repeat("-", width-1))
+		case content.TableAlignmentRight:
+			row.WriteString(strings.Repeat("-", width-1) + ":")
+		case content.TableAlignmentCenter:
+			row.WriteString(":" + strings.Repeat("-", width-2) + ":")
+		default:
+			row.WriteString(strings.Repeat("-", width))
+		}
+
+		row.WriteString(" ")
+	}
+
+	row.WriteString("|")
+	return row.String()
 }
 
 func (w *Output) writeBlockquote(node *content.Blockquote) error {

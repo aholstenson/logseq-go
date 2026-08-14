@@ -124,6 +124,26 @@ var _ = Describe("Parsing then outputting", func() {
 		FullyEqual("Code block interrupting paragraph", "Paragraph\n```go\nfunc main() {\n\tfmt.Println(\"Hello world\")\n}\n```")
 	})
 
+	Describe("Tables", func() {
+		FullyEqual("Table", "| Name | Value |\n| ---- | ----- |\n| a    | 1     |")
+		FullyEqual("Table with only a header", "| Name |\n| ---- |")
+		FullyEqual("Table with alignments", "| a   | b   | c   | d   |\n| :-- | --: | :-: | --- |")
+		FullyEqual("Table with formatting in a cell", "| Name               |\n| ------------------ |\n| **a** and [[Page]] |")
+		FullyEqual("Table with an escaped pipe in a cell", "| Name   |\n| ------ |\n| a \\| b |")
+		FullyEqual("Table after a paragraph", "Content\n\n| a   |\n| --- |")
+		FullyEqual("Table in a block", "- | a   |\n  | --- |")
+
+		// The cells are padded to the width of the column they are in, so a
+		// table that is written any other way lines up on the way out.
+		Varies("Table without padding", "|Name|Value|\n|-|-|\n|a|1|", "| Name | Value |\n| ---- | ----- |\n| a    | 1     |")
+		Varies("Table with extra padding", "| a      |\n| ------ |", "| a   |\n| --- |")
+
+		// A row is read with the columns the header has, so cells that no
+		// column belongs to are dropped and missing ones are filled in.
+		Varies("Table with a row that is too long", "| a   |\n| --- |\n| b   | c |", "| a   |\n| --- |\n| b   |")
+		Varies("Table with a row that is too short", "| a   | b   |\n| --- | --- |\n| c   |", "| a   | b   |\n| --- | --- |\n| c   |     |")
+	})
+
 	Describe("Macros", func() {
 		FullyEqual("Macro with no arguments", "{{poem}}")
 		FullyEqual("Macro with one argument", "{{poem red}}")

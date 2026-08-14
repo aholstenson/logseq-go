@@ -588,6 +588,8 @@ func generatePreview(nodes content.NodeList) string {
 			return plainText(n.Children())
 		case *content.CodeBlock:
 			return n.Code
+		case *content.Table:
+			return plainText(n.Children())
 		}
 	}
 
@@ -625,6 +627,12 @@ func plainText0(nodes content.NodeList, builder *strings.Builder) {
 			}
 
 			builder.WriteString(n.Code)
+		case *content.TableRow:
+			plainText0(n.Children(), builder)
+			builder.WriteRune('\n')
+		case *content.TableCell:
+			plainText0(n.Children(), builder)
+			builder.WriteRune(' ')
 		case *content.Properties:
 			// Skip properties
 		case content.HasChildren:

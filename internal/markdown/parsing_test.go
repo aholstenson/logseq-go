@@ -1399,6 +1399,124 @@ var _ = Describe("Parsing", func() {
 		})
 	})
 
+	Describe("Tables", func() {
+		It("can parse a table with a header and a row", func() {
+			block, err := markdown.ParseString("| Name | Value |\n| --- | --- |\n| a | 1 |")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewTable(
+					content.NewTableRow(
+						content.NewTableCell(content.NewText("Name")),
+						content.NewTableCell(content.NewText("Value")),
+					),
+					content.NewTableRow(
+						content.NewTableCell(content.NewText("a")),
+						content.NewTableCell(content.NewText("1")),
+					),
+				).WithAlignments(content.TableAlignmentNone, content.TableAlignmentNone),
+			)))
+		})
+
+		It("can parse a table with only a header", func() {
+			block, err := markdown.ParseString("| Name |\n| --- |")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewTable(
+					content.NewTableRow(
+						content.NewTableCell(content.NewText("Name")),
+					),
+				).WithAlignments(content.TableAlignmentNone),
+			)))
+		})
+
+		It("can parse the alignment of the columns", func() {
+			block, err := markdown.ParseString("| a | b | c | d |\n| :-- | --: | :-: | --- |")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewTable(
+					content.NewTableRow(
+						content.NewTableCell(content.NewText("a")),
+						content.NewTableCell(content.NewText("b")),
+						content.NewTableCell(content.NewText("c")),
+						content.NewTableCell(content.NewText("d")),
+					),
+				).WithAlignments(
+					content.TableAlignmentLeft,
+					content.TableAlignmentRight,
+					content.TableAlignmentCenter,
+					content.TableAlignmentNone,
+				),
+			)))
+		})
+
+		It("can parse formatting in a cell", func() {
+			block, err := markdown.ParseString("| Name |\n| --- |\n| **a** and [[Page]] |")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewTable(
+					content.NewTableRow(
+						content.NewTableCell(content.NewText("Name")),
+					),
+					content.NewTableRow(
+						content.NewTableCell(
+							content.NewStrong(content.NewText("a")),
+							content.NewText(" and "),
+							content.NewPageLink("Page"),
+						),
+					),
+				).WithAlignments(content.TableAlignmentNone),
+			)))
+		})
+
+		It("can parse an escaped pipe in a cell", func() {
+			block, err := markdown.ParseString("| Name |\n| --- |\n| a \\| b |")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewTable(
+					content.NewTableRow(
+						content.NewTableCell(content.NewText("Name")),
+					),
+					content.NewTableRow(
+						content.NewTableCell(content.NewText("a | b")),
+					),
+				).WithAlignments(content.TableAlignmentNone),
+			)))
+		})
+
+		It("can parse a table after a paragraph", func() {
+			block, err := markdown.ParseString("Text\n\n| Name |\n| --- |")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("Text"),
+				),
+				content.NewTable(
+					content.NewTableRow(
+						content.NewTableCell(content.NewText("Name")),
+					),
+				).WithAlignments(content.TableAlignmentNone),
+			)))
+		})
+
+		It("keeps a lone dash as an empty block instead of a table", func() {
+			block, err := markdown.ParseString("Test\n-\n")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("Test"),
+				),
+				content.NewBlock(),
+			)))
+		})
+	})
+
 	Describe("Thematic breaks", func() {
 		It("can parse", func() {
 			block, err := markdown.ParseString("Foo\n\n---\n\nBar\n")

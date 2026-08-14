@@ -56,8 +56,10 @@ func init() {
 		),
 		parser.WithParagraphTransformers(
 			util.Prioritized(parser.LinkReferenceParagraphTransformer, 100),
+			util.Prioritized(newTableParagraphTransformer(extension.NewTableParagraphTransformer()), 200),
 		),
 		parser.WithASTTransformers(
+			util.Prioritized(extension.NewTableASTTransformer(), 0),
 			util.Prioritized(defaultPropertiesASTTransformer, 200),
 		),
 	)
@@ -216,6 +218,8 @@ func convert(src []byte, in ast.Node) (content.Node, error) {
 		return convertBlockquote(src, node)
 	case *ast.List:
 		return convertList(src, node)
+	case *east.Table:
+		return convertTable(src, node)
 	case *ast.RawHTML:
 		return convertRawHTML(src, node)
 	case *ast.HTMLBlock:
@@ -638,6 +642,57 @@ func convertListItem(src []byte, node ast.Node) (*content.ListItem, error) {
 		return nil, err
 	}
 	return item, nil
+}
+
+func convertTable(src []byte, node *east.Table) (*content.Table, error) {
+	table := content.NewTable()
+	for _, alignment := range node.Alignments {
+		table.Alignments = append(table.Alignments, tableAlignmentFor(alignment))
+	}
+
+	// The header of the table is its own type in Goldmark, but both it and the
+	// rows below it are a row of cells.
+	for child := node.FirstChild(); child != nil; child = child.NextSibling() {
+		row, err := convertTableRow(src, child)
+		if err != nil {
+			return nil, err
+		}
+		table.AddChild(row)
+	}
+
+	updatePreviousLine(node, table)
+
+	return table, nil
+}
+
+func convertTableRow(src []byte, node ast.Node) (*content.TableRow, error) {
+	row := content.NewTableRow()
+	for child := node.FirstChild(); child != nil; child = child.NextSibling() {
+		if _, ok := child.(*east.TableCell); !ok {
+			return nil, fmt.Errorf("Could not convert node: %T", child)
+		}
+
+		cell := content.NewTableCell()
+		err := convertChildren(src, child, cell)
+		if err != nil {
+			return nil, err
+		}
+		row.AddChild(cell)
+	}
+	return row, nil
+}
+
+func tableAlignmentFor(alignment east.Alignment) content.TableAlignment {
+	switch alignment {
+	case east.AlignLeft:
+		return content.TableAlignmentLeft
+	case east.AlignRight:
+		return content.TableAlignmentRight
+	case east.AlignCenter:
+		return content.TableAlignmentCenter
+	}
+
+	return content.TableAlignmentNone
 }
 
 func convertRawHTML(src []byte, node *ast.RawHTML) (*content.RawHTML, error) {

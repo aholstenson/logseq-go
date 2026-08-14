@@ -17,6 +17,7 @@ when pages are modified. Please open issues if you find any bugs.
   - Blocks
   - Formatting via headings, paragraphs, lists, code blocks, etc.
   - Highlights via `^^Example^^`
+  - Tables in the GitHub Flavored Markdown syntax
   - Page links via `[[Example]]`
   - Tags via `#Example` and `#[[Example with space]]`
   - Macros via `{{macro param1 param2}}`

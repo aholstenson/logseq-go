@@ -788,6 +788,149 @@ var _ = Describe("Output", func() {
 		})
 	})
 
+	Describe("Tables", func() {
+		It("can write a table with a header and a row", func() {
+			err := writer.Write(content.NewTable(
+				content.NewTableRow(
+					content.NewTableCell(content.NewText("Name")),
+					content.NewTableCell(content.NewText("Value")),
+				),
+				content.NewTableRow(
+					content.NewTableCell(content.NewText("a")),
+					content.NewTableCell(content.NewText("1")),
+				),
+			))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal(
+				"| Name | Value |\n" +
+					"| ---- | ----- |\n" +
+					"| a    | 1     |",
+			))
+		})
+
+		It("can write the alignment of the columns", func() {
+			err := writer.Write(content.NewTable(
+				content.NewTableRow(
+					content.NewTableCell(content.NewText("a")),
+					content.NewTableCell(content.NewText("b")),
+					content.NewTableCell(content.NewText("c")),
+					content.NewTableCell(content.NewText("d")),
+				),
+			).WithAlignments(
+				content.TableAlignmentLeft,
+				content.TableAlignmentRight,
+				content.TableAlignmentCenter,
+				content.TableAlignmentNone,
+			))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal(
+				"| a   | b   | c   | d   |\n" +
+					"| :-- | --: | :-: | --- |",
+			))
+		})
+
+		It("can write formatting in a cell", func() {
+			err := writer.Write(content.NewTable(
+				content.NewTableRow(
+					content.NewTableCell(content.NewText("Name")),
+				),
+				content.NewTableRow(
+					content.NewTableCell(
+						content.NewStrong(content.NewText("a")),
+						content.NewText(" and "),
+						content.NewPageLink("Page"),
+					),
+				),
+			))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal(
+				"| Name               |\n" +
+					"| ------------------ |\n" +
+					"| **a** and [[Page]] |",
+			))
+		})
+
+		It("escapes a pipe in a cell", func() {
+			err := writer.Write(content.NewTable(
+				content.NewTableRow(
+					content.NewTableCell(content.NewText("Name")),
+				),
+				content.NewTableRow(
+					content.NewTableCell(content.NewText("a | b")),
+				),
+			))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal(
+				"| Name   |\n" +
+					"| ------ |\n" +
+					"| a \\| b |",
+			))
+		})
+
+		It("turns a line break in a cell into a space", func() {
+			err := writer.Write(content.NewTable(
+				content.NewTableRow(
+					content.NewTableCell(
+						content.NewText("a").WithSoftLineBreak(),
+						content.NewText("b"),
+					),
+				),
+			))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal(
+				"| a b |\n" +
+					"| --- |",
+			))
+		})
+
+		It("fills in the cells a row is missing", func() {
+			err := writer.Write(content.NewTable(
+				content.NewTableRow(
+					content.NewTableCell(content.NewText("a")),
+					content.NewTableCell(content.NewText("b")),
+				),
+				content.NewTableRow(
+					content.NewTableCell(content.NewText("c")),
+				),
+			))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal(
+				"| a   | b   |\n" +
+					"| --- | --- |\n" +
+					"| c   |     |",
+			))
+		})
+
+		It("can write a table in a block", func() {
+			err := writer.Write(content.NewBlock(
+				content.NewBlock(
+					content.NewTable(
+						content.NewTableRow(
+							content.NewTableCell(content.NewText("a")),
+						),
+					),
+				),
+			))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal(
+				"- | a   |\n" +
+					"  | --- |",
+			))
+		})
+
+		It("fails to write a table without rows", func() {
+			err := writer.Write(content.NewTable())
+			Expect(err).To(HaveOccurred())
+		})
+	})
+
 	Describe("Thematic breaks", func() {
 		It("can write a thematic break", func() {
 			err := writer.Write(content.NewThematicBreak())
