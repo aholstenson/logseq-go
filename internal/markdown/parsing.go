@@ -35,10 +35,12 @@ func init() {
 			util.Prioritized(&logbookParser{}, 898),
 			util.Prioritized(&beginEndParser{}, 899),
 			util.Prioritized(parser.NewHTMLBlockParser(), 900),
+			util.Prioritized(&footnoteDefinitionParser{}, 999),
 			util.Prioritized(parser.NewParagraphParser(), 1000),
 		),
 		parser.WithInlineParsers(
 			util.Prioritized(parser.NewCodeSpanParser(), 100),
+			util.Prioritized(&footnoteRefParser{}, 194),
 			util.Prioritized(&mathParser{}, 195),
 			util.Prioritized(&priorityParser{}, 196),
 			util.Prioritized(&macroParser{}, 197),
@@ -194,6 +196,10 @@ func convert(src []byte, in ast.Node) (content.Node, error) {
 		return convertStrikethrough(src, node)
 	case *highlight:
 		return convertHighlight(src, node)
+	case *footnoteRef:
+		return content.NewFootnoteRef(node.Label), nil
+	case *footnoteDefinition:
+		return convertFootnoteDefinition(src, node)
 	case *math:
 		return content.NewMath(node.Value).WithDisplayed(node.Displayed), nil
 	case *mathBlock:
@@ -611,6 +617,18 @@ func convertCodeBlock(src []byte, node *ast.CodeBlock) (*content.CodeBlock, erro
 
 	updatePreviousLine(node, code)
 	return code, nil
+}
+
+func convertFootnoteDefinition(src []byte, node *footnoteDefinition) (*content.FootnoteDefinition, error) {
+	definition := content.NewFootnoteDefinition(unescapeString([]byte(node.Label)))
+	err := convertChildren(src, node, definition)
+	if err != nil {
+		return nil, err
+	}
+
+	updatePreviousLine(node, definition)
+
+	return definition, nil
 }
 
 func convertMathBlock(src []byte, node *mathBlock) (*content.MathBlock, error) {

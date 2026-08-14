@@ -1399,6 +1399,117 @@ var _ = Describe("Parsing", func() {
 		})
 	})
 
+	Describe("Footnotes", func() {
+		It("can parse a footnote reference", func() {
+			block, err := markdown.ParseString("Text with a footnote[^1] in it")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("Text with a footnote"),
+					content.NewFootnoteRef("1"),
+					content.NewText(" in it"),
+				),
+			)))
+		})
+
+		It("can parse a footnote reference with a named label", func() {
+			block, err := markdown.ParseString("Text[^note]")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("Text"),
+					content.NewFootnoteRef("note"),
+				),
+			)))
+		})
+
+		It("can parse a footnote definition", func() {
+			block, err := markdown.ParseString("[^1]: The footnote")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewFootnoteDefinition("1",
+					content.NewText("The footnote"),
+				),
+			)))
+		})
+
+		It("can parse a footnote definition with formatting", func() {
+			block, err := markdown.ParseString("[^1]: The **footnote** with [[Page]]")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewFootnoteDefinition("1",
+					content.NewText("The "),
+					content.NewStrong(content.NewText("footnote")),
+					content.NewText(" with "),
+					content.NewPageLink("Page"),
+				),
+			)))
+		})
+
+		It("keeps a definition where it was written", func() {
+			block, err := markdown.ParseString("Text[^1]\n\n[^1]: The footnote\n\nMore text")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("Text"),
+					content.NewFootnoteRef("1"),
+				),
+				content.NewFootnoteDefinition("1",
+					content.NewText("The footnote"),
+				),
+				content.NewParagraph(
+					content.NewText("More text"),
+				),
+			)))
+		})
+
+		It("can parse a footnote in a sub block", func() {
+			block, err := markdown.ParseString("- Text[^1]\n  [^1]: The footnote")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewBlock(
+					content.NewParagraph(
+						content.NewText("Text"),
+						content.NewFootnoteRef("1"),
+					),
+					content.NewFootnoteDefinition("1",
+						content.NewText("The footnote"),
+					).WithPreviousLineType(content.PreviousLineTypeNonBlank),
+				),
+			)))
+		})
+
+		It("keeps a link with a caret as a link", func() {
+			block, err := markdown.ParseString("[^1](https://example.com)")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewLink("https://example.com",
+						content.NewText("^1"),
+					),
+				),
+			)))
+		})
+
+		It("keeps brackets with a space in them as text", func() {
+			block, err := markdown.ParseString("Text [^not a label] more")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("Text [^not a label] more"),
+				),
+			)))
+		})
+	})
+
 	Describe("Math", func() {
 		It("can parse inline math", func() {
 			block, err := markdown.ParseString("The formula $E = mc^2$ is famous")

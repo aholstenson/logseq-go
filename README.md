@@ -19,6 +19,7 @@ when pages are modified. Please open issues if you find any bugs.
   - Highlights via `^^Example^^`
   - Tables in the GitHub Flavored Markdown syntax
   - LaTeX via `$formula$` and math blocks
+  - Footnotes via `[^1]` and `[^1]: The footnote`
   - Page links via `[[Example]]`
   - Tags via `#Example` and `#[[Example with space]]`
   - Macros via `{{macro param1 param2}}`

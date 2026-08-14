@@ -22,9 +22,9 @@ func EscapeNone(str string) string {
 }
 
 // literalBracketsRegexp matches bracketed syntax that Logseq only recognizes
-// when the brackets are left alone: priorities such as `[#A]` and footnote
-// references such as `[^1]`. Escaping those would turn them into plain text.
-var literalBracketsRegexp = regexp.MustCompile(`\[[#^][^\[\]\s]+\]`)
+// when the brackets are left alone, which is the priority of a task such as
+// `[#A]`. Escaping those would turn them into plain text.
+var literalBracketsRegexp = regexp.MustCompile(`\[#[^\[\]\s]+\]`)
 
 // EscapePotentialMarkdown escapes characters in text that would otherwise be
 // read back as formatting.
@@ -113,6 +113,14 @@ func EscapeLinkTitle(str string) string {
 func EscapeWikiLink(str string) string {
 	return escapeRunes(str, func(prev rune, r rune) bool {
 		return r == ']'
+	})
+}
+
+// EscapeFootnoteLabel escapes the label of a footnote, which is read up to the
+// first closing bracket in it.
+func EscapeFootnoteLabel(str string) string {
+	return escapeRunes(str, func(prev rune, r rune) bool {
+		return r == ']' || r == '['
 	})
 }
 
@@ -226,6 +234,10 @@ func (w *Output) Write(n content.Node) error {
 		return w.writeStrikethrough(node)
 	case *content.Highlight:
 		return w.writeHighlight(node)
+	case *content.FootnoteRef:
+		return w.writeFootnoteRef(node)
+	case *content.FootnoteDefinition:
+		return w.writeFootnoteDefinition(node)
 	case *content.Math:
 		return w.writeMath(node)
 	case *content.MathBlock:
@@ -469,6 +481,36 @@ func (w *Output) writeHighlight(node *content.Highlight) error {
 		return err
 	}
 
+	return nil
+}
+
+func (w *Output) writeFootnoteRef(node *content.FootnoteRef) error {
+	return w.writeRaw("[^" + EscapeFootnoteLabel(node.Label) + "]")
+}
+
+func (w *Output) writeFootnoteDefinition(node *content.FootnoteDefinition) error {
+	err := w.startBlock(node, "")
+	if err != nil {
+		return err
+	}
+
+	err = w.writeRaw("[^" + EscapeFootnoteLabel(node.Label) + "]: ")
+	if err != nil {
+		return err
+	}
+
+	// The content of a footnote carries on over the lines that are indented
+	// under the definition.
+	w.out.PushIndentation("    ")
+
+	err = w.writeChildren(node)
+	if err != nil {
+		return err
+	}
+
+	w.out.PopIndentation()
+
+	w.endBlock()
 	return nil
 }
 

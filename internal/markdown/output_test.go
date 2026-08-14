@@ -62,11 +62,11 @@ var _ = Describe("Output", func() {
 			Expect(buf.String()).To(Equal("abc [#A] def"))
 		})
 
-		It("keeps brackets of a footnote reference unescaped", func() {
+		It("escapes brackets that would be read back as a footnote reference", func() {
 			err := writer.Write(content.NewText("abc [^1] def"))
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(buf.String()).To(Equal("abc [^1] def"))
+			Expect(buf.String()).To(Equal("abc \\[^1\\] def"))
 		})
 
 		It("escapes brackets that would be read back as a link", func() {
@@ -77,10 +77,10 @@ var _ = Describe("Output", func() {
 		})
 
 		It("escapes around brackets that are kept unescaped", func() {
-			err := writer.Write(content.NewText("*a* [#A] *b* [^1] *c*"))
+			err := writer.Write(content.NewText("*a* [#A] *b*"))
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(buf.String()).To(Equal("\\*a\\* [#A] \\*b\\* [^1] \\*c\\*"))
+			Expect(buf.String()).To(Equal("\\*a\\* [#A] \\*b\\*"))
 		})
 
 		It("can write multiple text nodes", func() {
@@ -785,6 +785,67 @@ var _ = Describe("Output", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			Expect(buf.String()).To(Equal("abc\n\n<p>Testing</p>"))
+		})
+	})
+
+	Describe("Footnotes", func() {
+		It("can write a footnote reference", func() {
+			err := writer.Write(content.NewFootnoteRef("1"))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal("[^1]"))
+		})
+
+		It("escapes the brackets in a label", func() {
+			err := writer.Write(content.NewFootnoteRef("a]b"))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal("[^a\\]b]"))
+		})
+
+		It("can write a footnote definition", func() {
+			err := writer.Write(content.NewFootnoteDefinition("1",
+				content.NewText("The footnote"),
+			))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal("[^1]: The footnote"))
+		})
+
+		It("indents the lines a footnote carries on over", func() {
+			err := writer.Write(content.NewFootnoteDefinition("1",
+				content.NewText("The").WithSoftLineBreak(),
+				content.NewText("footnote"),
+			))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal("[^1]: The\n    footnote"))
+		})
+
+		It("can write a footnote definition after a paragraph", func() {
+			err := writer.Write(content.NewParagraph(content.NewText("abc")))
+			Expect(err).ToNot(HaveOccurred())
+
+			err = writer.Write(content.NewFootnoteDefinition("1",
+				content.NewText("The footnote"),
+			))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal("abc\n\n[^1]: The footnote"))
+		})
+
+		It("can write a footnote definition in a block", func() {
+			err := writer.Write(content.NewBlock(
+				content.NewBlock(
+					content.NewParagraph(content.NewText("abc")),
+					content.NewFootnoteDefinition("1",
+						content.NewText("The footnote"),
+					).WithPreviousLineType(content.PreviousLineTypeNonBlank),
+				),
+			))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal("- abc\n  [^1]: The footnote"))
 		})
 	})
 

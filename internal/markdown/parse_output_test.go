@@ -124,6 +124,19 @@ var _ = Describe("Parsing then outputting", func() {
 		FullyEqual("Code block interrupting paragraph", "Paragraph\n```go\nfunc main() {\n\tfmt.Println(\"Hello world\")\n}\n```")
 	})
 
+	Describe("Footnotes", func() {
+		FullyEqual("Footnote reference", "Task with a footnote[^1] in it")
+		FullyEqual("Footnote reference with a named label", "Text[^note]")
+		FullyEqual("Footnote definition", "[^1]: The footnote")
+		FullyEqual("Footnote definition with formatting", "[^1]: The **footnote** with [[Page]]")
+		FullyEqual("Footnote definition after a paragraph", "Text[^1]\n\n[^1]: The footnote")
+		FullyEqual("Footnote definition in a block", "- Text[^1]\n  [^1]: The footnote")
+		FullyEqual("Footnote definition over several lines", "[^1]: The\n    footnote")
+
+		FullyEqual("Link with a caret stays a link", "[^1](https://example.com)")
+		FullyEqual("Brackets with a space stay text", "Text \\[^not a label\\] more")
+	})
+
 	Describe("Math", func() {
 		FullyEqual("Inline math", "The formula $E = mc^2$ is famous")
 		FullyEqual("Displayed math within a line", "The formula $$E = mc^2$$ is famous")
@@ -282,11 +295,6 @@ var _ = Describe("Parsing then outputting", func() {
 				"TODO Task\n:LOGBOOK:\nCLOCK: [2023-06-26 Mon 17:25]--[2023-06-26 Mon 17:27] =>  00:02\n:END:",
 				withoutSeconds,
 			)
-		})
-
-		Describe("Footnotes", func() {
-			FullyEqual("Footnote reference", "Task with a footnote[^1] in it")
-			FullyEqual("Footnote definition", "[^1]: The footnote")
 		})
 
 		Describe("Scheduled and deadline", func() {
