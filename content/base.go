@@ -109,7 +109,8 @@ type HasChildren interface {
 
 	// AddChild adds a child to this node. The child will be added to the end
 	// of the list of children. Nodes can only have one parent, if the node
-	// already has a parent it will be removed from that parent.
+	// already has a parent it will be removed from that parent. Nodes that are
+	// not allowed as a child of this node are ignored.
 	AddChild(node Node)
 
 	// AddChildren adds multiple children to this node. The children will be
@@ -119,7 +120,8 @@ type HasChildren interface {
 
 	// PrependChild adds a child to the start of this node. Nodes can only
 	// have one parent, if the node already has a parent it will be removed
-	// from that parent.
+	// from that parent. Nodes that are not allowed as a child of this node are
+	// ignored.
 	PrependChild(node Node)
 
 	// PrependChildren adds multiple children to the start of this node. Nodes
@@ -138,17 +140,17 @@ type HasChildren interface {
 
 	// ReplaceChild replaces a child of this node with another node. Returns
 	// true if the child was replaced, false if the old node was not a child
-	// of this node.
+	// of this node or the new node is not allowed as a child.
 	ReplaceChild(oldNode Node, newNode Node) bool
 
 	// InsertChildBefore inserts a node before another node. Returns true if
 	// the node was inserted, false if the before node was not a child of
-	// this node.
+	// this node or the node is not allowed as a child.
 	InsertChildBefore(node Node, before Node) bool
 
-	// InsertChildBefore inserts a node before another node. Returns true if
-	// the node was inserted, false if the before node was not a child of
-	// this node.
+	// InsertChildAfter inserts a node after another node. Returns true if
+	// the node was inserted, false if the after node was not a child of
+	// this node or the node is not allowed as a child.
 	InsertChildAfter(node Node, after Node) bool
 }
 
@@ -231,9 +233,16 @@ func (c *baseNodeWithChildren) SetChildren(nodes ...Node) {
 	}
 }
 
+// allowsChild checks if a node is allowed as a child of this node. Nodes that
+// are not allowed are not added, keeping the tree in a shape that can be
+// written back out.
+func (c *baseNodeWithChildren) allowsChild(node Node) bool {
+	return c.childValidator == nil || c.childValidator(node)
+}
+
 func (c *baseNodeWithChildren) AddChild(node Node) {
 	// TODO: Should this return an error instead?
-	if c.childValidator != nil && !c.childValidator(node) {
+	if !c.allowsChild(node) {
 		return
 	}
 
@@ -263,6 +272,10 @@ func (c *baseNodeWithChildren) AddChildren(nodes ...Node) {
 }
 
 func (c *baseNodeWithChildren) PrependChild(node Node) {
+	if !c.allowsChild(node) {
+		return
+	}
+
 	// If the node is attached somewhere else, remove it
 	if node.Parent() != nil {
 		node.Parent().RemoveChild(node)
@@ -319,7 +332,7 @@ func (c *baseNodeWithChildren) RemoveChildren(nodes ...Node) {
 }
 
 func (c *baseNodeWithChildren) ReplaceChild(oldNode Node, newNode Node) bool {
-	if oldNode.Parent() != c.self {
+	if oldNode.Parent() != c.self || !c.allowsChild(newNode) {
 		return false
 	}
 
@@ -352,7 +365,7 @@ func (c *baseNodeWithChildren) ReplaceChild(oldNode Node, newNode Node) bool {
 }
 
 func (c *baseNodeWithChildren) InsertChildBefore(node Node, before Node) bool {
-	if before.Parent() != c.self {
+	if before.Parent() != c.self || !c.allowsChild(node) {
 		return false
 	}
 
@@ -378,7 +391,7 @@ func (c *baseNodeWithChildren) InsertChildBefore(node Node, before Node) bool {
 }
 
 func (c *baseNodeWithChildren) InsertChildAfter(node Node, after Node) bool {
-	if after.Parent() != c.self {
+	if after.Parent() != c.self || !c.allowsChild(node) {
 		return false
 	}
 

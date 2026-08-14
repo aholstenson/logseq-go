@@ -133,6 +133,73 @@ var _ = Describe("Base nodes", func() {
 			Expect(node2.PreviousSibling()).To(Equal(node3))
 		})
 
+		It("does not add children that are not allowed", func() {
+			parent := content.NewParagraph()
+			parent.AddChild(content.NewHeading(1))
+
+			Expect(parent.Children()).To(BeEmpty())
+		})
+
+		It("does not prepend children that are not allowed", func() {
+			parent := content.NewParagraph()
+			node := content.NewText("child")
+			parent.AddChild(node)
+
+			parent.PrependChild(content.NewHeading(1))
+
+			Expect(parent.Children()).To(HaveLen(1))
+			Expect(parent.Children()[0]).To(Equal(node))
+		})
+
+		It("does not insert children before that are not allowed", func() {
+			parent := content.NewParagraph()
+			node := content.NewText("child")
+			parent.AddChild(node)
+
+			Expect(parent.InsertChildBefore(content.NewHeading(1), node)).To(BeFalse())
+			Expect(parent.Children()).To(HaveLen(1))
+			Expect(parent.Children()[0]).To(Equal(node))
+		})
+
+		It("does not insert children after that are not allowed", func() {
+			parent := content.NewParagraph()
+			node := content.NewText("child")
+			parent.AddChild(node)
+
+			Expect(parent.InsertChildAfter(content.NewHeading(1), node)).To(BeFalse())
+			Expect(parent.Children()).To(HaveLen(1))
+			Expect(parent.Children()[0]).To(Equal(node))
+		})
+
+		It("does not replace children with ones that are not allowed", func() {
+			parent := content.NewParagraph()
+			node := content.NewText("child")
+			parent.AddChild(node)
+
+			Expect(parent.ReplaceChild(node, content.NewHeading(1))).To(BeFalse())
+			Expect(parent.Children()).To(HaveLen(1))
+			Expect(parent.Children()[0]).To(Equal(node))
+			Expect(node.Parent()).To(Equal(parent))
+		})
+
+		It("keeps a node it rejected free of a parent", func() {
+			parent := content.NewParagraph()
+			node := content.NewText("child")
+			parent.AddChild(node)
+
+			other := content.NewParagraph()
+			rejected := content.NewText("rejected")
+			other.AddChild(rejected)
+
+			// A paragraph is not allowed inside a paragraph, so the node it is
+			// holding has to stay where it is.
+			parent.PrependChild(other)
+
+			Expect(parent.Children()).To(HaveLen(1))
+			Expect(other.Children()).To(HaveLen(1))
+			Expect(rejected.Parent()).To(Equal(other))
+		})
+
 		It("can set children", func() {
 			parent := content.NewParagraph()
 			parent.AddChildren(
