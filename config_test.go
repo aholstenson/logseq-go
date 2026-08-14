@@ -80,6 +80,29 @@ var _ = Describe("Config", func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(page.Title()).To(Equal("2025-06-15"))
 		})
+
+		It("writes an ordinal day in the journal page title", func() {
+			graph := openWithConfig(`{}`)
+
+			page, err := graph.OpenJournal(time.Date(2025, 6, 15, 0, 0, 0, 0, time.Local))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(page.Title()).To(Equal("Jun 15th, 2025"))
+		})
+
+		It("reads a journal file name with an ordinal day", func() {
+			Expect(os.WriteFile(
+				filepath.Join(dir, "journals", "2025_06_15th.md"),
+				[]byte("- journal entry\n"),
+				0o644,
+			)).To(Succeed())
+
+			graph := openWithConfig(`{:journal/file-name-format "yyyy_MM_do"}`)
+
+			page, err := graph.OpenJournal(time.Date(2025, 6, 15, 0, 0, 0, 0, time.Local))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(page.IsNew()).To(BeFalse())
+			Expect(page.Blocks()).To(HaveLen(1))
+		})
 	})
 
 	Describe("Hidden files", func() {

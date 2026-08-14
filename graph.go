@@ -37,8 +37,8 @@ type Graph struct {
 
 	config *utils.GraphConfig
 
-	journalNameFormat  string
-	journalTitleFormat string
+	journalNameFormat  *utils.DateFormat
+	journalTitleFormat *utils.DateFormat
 
 	index         indexing.Index
 	changeWatcher *fsnotify.Watcher
@@ -82,8 +82,8 @@ func Open(ctx context.Context, directory string, opts ...Option) (*Graph, error)
 	}
 
 	// Parse the journal file name format.
-	journalNameFormat := utils.ConvertDateFormat(config.JournalFileNameFormat)
-	journalTitleFormat := utils.ConvertDateFormat(config.JournalPageTitleFormat)
+	journalNameFormat := utils.NewDateFormat(config.JournalFileNameFormat)
+	journalTitleFormat := utils.NewDateFormat(config.JournalPageTitleFormat)
 
 	var index indexing.Index
 	if options.index {
@@ -153,13 +153,13 @@ func (g *Graph) openJournal(date time.Time, source pageSource) (Page, error) {
 		templatePath = filepath.Join(g.directory, g.config.DefaultTemplates.Journals)
 	}
 
-	title := date.Format(g.journalTitleFormat)
+	title := g.journalTitleFormat.Format(date)
 
 	return openOrCreatePage(source, path, PageTypeJournal, title, date, templatePath)
 }
 
 func (g *Graph) journalPath(date time.Time) (string, error) {
-	filename := date.Format(g.journalNameFormat) + ".md"
+	filename := g.journalNameFormat.Format(date) + ".md"
 	return filepath.Join(g.directory, g.config.JournalsDir, filename), nil
 }
 
@@ -269,13 +269,13 @@ func (g *Graph) openViaPath(path string, source pageSource) (Page, error) {
 	dir := filepath.Dir(path)
 
 	if dir == filepath.Join(g.directory, g.config.JournalsDir) {
-		date, err := time.ParseInLocation(g.journalNameFormat, name, time.Local)
+		date, err := g.journalNameFormat.Parse(name)
 		if err != nil {
 			// Ignore files that don't match the journal name format
 			return nil, nil
 		}
 
-		title := date.Format(g.journalTitleFormat)
+		title := g.journalTitleFormat.Format(date)
 
 		return openOrCreatePage(source, path, PageTypeJournal, title, date, "")
 	} else if dir == filepath.Join(g.directory, g.config.PagesDir) {
@@ -592,7 +592,7 @@ func (g *Graph) createPageDeletedEvent(path string) ChangeEvent {
 
 	dir := filepath.Dir(path)
 	if dir == filepath.Join(g.directory, g.config.JournalsDir) {
-		date, err := time.ParseInLocation(g.journalNameFormat, name, time.Local)
+		date, err := g.journalNameFormat.Parse(name)
 		if err != nil {
 			// Ignore files that don't match the journal name format
 			return nil
@@ -601,7 +601,7 @@ func (g *Graph) createPageDeletedEvent(path string) ChangeEvent {
 		return &PageDeleted{
 			Type:  PageTypeJournal,
 			Date:  date,
-			Title: date.Format(g.journalTitleFormat),
+			Title: g.journalTitleFormat.Format(date),
 		}
 	} else if dir == filepath.Join(g.directory, g.config.PagesDir) {
 		title, err := utils.FilenameToTitle(g.config.FileNameFormat, name)
@@ -659,7 +659,7 @@ func (g *Graph) searchPages(ctx context.Context, opts []SearchOption, source pag
 			date := journalDate(page.Date)
 			return &pageResultImpl{
 				docType: PageTypeJournal,
-				title:   date.Format(g.journalTitleFormat),
+				title:   g.journalTitleFormat.Format(date),
 				date:    date,
 
 				opener: func() (Page, error) {
@@ -763,12 +763,12 @@ func (g *Graph) searchBlocks(ctx context.Context, opts []SearchOption, source pa
 		if dir == g.config.JournalsDir {
 			pageType = PageTypeJournal
 
-			pageDate, err = time.ParseInLocation(g.journalNameFormat, name, time.Local)
+			pageDate, err = g.journalNameFormat.Parse(name)
 			if err != nil {
 				// TODO: This is an edge case where the format of journals has changed since indexing
 			}
 
-			pageTitle = pageDate.Format(g.journalTitleFormat)
+			pageTitle = g.journalTitleFormat.Format(pageDate)
 		} else {
 			pageTitle, err = utils.FilenameToTitle(g.config.FileNameFormat, name)
 			if err != nil {
