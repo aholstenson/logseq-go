@@ -31,6 +31,8 @@ var literalBracketsRegexp = regexp.MustCompile(`\[[#^][^\[\]\s]+\]`)
 func EscapePotentialMarkdown(str string) string {
 	out := strings.Builder{}
 
+	str = escapeMath(str)
+
 	end := 0
 	for _, match := range literalBracketsRegexp.FindAllStringIndex(str, -1) {
 		if match[1] < len(str) && (str[match[1]] == '(' || str[match[1]] == '[') {
@@ -45,6 +47,38 @@ func EscapePotentialMarkdown(str string) string {
 	}
 
 	out.WriteString(escapeRunes(str[end:], escapePotentialMarkdownRune))
+	return out.String()
+}
+
+// escapeMath escapes the dollar signs of the parts of a text that would be
+// read back as a LaTeX formula, so that text such as `$x$` stays text. The
+// dollar signs within a formula are escaped as well, as leaving one of them
+// alone would let it pair up with something later in the text.
+func escapeMath(str string) string {
+	if !strings.Contains(str, "$") {
+		return str
+	}
+
+	out := strings.Builder{}
+	src := []byte(str)
+	for i := 0; i < len(src); {
+		if src[i] != '$' {
+			out.WriteByte(src[i])
+			i++
+			continue
+		}
+
+		_, length, _, ok := mathAt(src[i:])
+		if !ok {
+			out.WriteByte('$')
+			i++
+			continue
+		}
+
+		out.WriteString(strings.ReplaceAll(string(src[i:i+length]), "$", `\$`))
+		i += length
+	}
+
 	return out.String()
 }
 
@@ -192,6 +226,10 @@ func (w *Output) Write(n content.Node) error {
 		return w.writeStrikethrough(node)
 	case *content.Highlight:
 		return w.writeHighlight(node)
+	case *content.Math:
+		return w.writeMath(node)
+	case *content.MathBlock:
+		return w.writeMathBlock(node)
 	case *content.CodeSpan:
 		return w.writeCodeSpan(node)
 	case *content.Link:
@@ -431,6 +469,58 @@ func (w *Output) writeHighlight(node *content.Highlight) error {
 		return err
 	}
 
+	return nil
+}
+
+func (w *Output) writeMath(node *content.Math) error {
+	marker := "$"
+	if node.Displayed {
+		marker = "$$"
+	}
+
+	err := w.writeRaw(marker)
+	if err != nil {
+		return err
+	}
+
+	err = w.writeRaw(node.Value)
+	if err != nil {
+		return err
+	}
+
+	return w.writeRaw(marker)
+}
+
+func (w *Output) writeMathBlock(node *content.MathBlock) error {
+	err := w.startBlock(node, "")
+	if err != nil {
+		return err
+	}
+
+	err = w.writeRaw("$$\n")
+	if err != nil {
+		return err
+	}
+
+	err = w.writeRaw(node.Value)
+	if err != nil {
+		return err
+	}
+
+	// The line that ends the block needs a line of its own.
+	if !strings.HasSuffix(node.Value, "\n") {
+		err = w.writeRaw("\n")
+		if err != nil {
+			return err
+		}
+	}
+
+	err = w.writeRaw("$$")
+	if err != nil {
+		return err
+	}
+
+	w.endBlock()
 	return nil
 }
 

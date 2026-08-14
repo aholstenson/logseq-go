@@ -788,6 +788,68 @@ var _ = Describe("Output", func() {
 		})
 	})
 
+	Describe("Math", func() {
+		It("can write inline math", func() {
+			err := writer.Write(content.NewMath("E = mc^2"))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal("$E = mc^2$"))
+		})
+
+		It("can write displayed math", func() {
+			err := writer.Write(content.NewDisplayedMath("E = mc^2"))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal("$$E = mc^2$$"))
+		})
+
+		It("can write a math block", func() {
+			err := writer.Write(content.NewMathBlock("E = mc^2\n"))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal("$$\nE = mc^2\n$$"))
+		})
+
+		It("adds the line break a math block is missing", func() {
+			err := writer.Write(content.NewMathBlock("E = mc^2"))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal("$$\nE = mc^2\n$$"))
+		})
+
+		It("can write a math block in a block", func() {
+			err := writer.Write(content.NewBlock(
+				content.NewBlock(
+					content.NewMathBlock("E = mc^2\n"),
+				),
+			))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal("- $$\n  E = mc^2\n  $$"))
+		})
+
+		It("escapes text that would be read back as math", func() {
+			err := writer.Write(content.NewText("Not math: $x$"))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal("Not math: \\$x\\$"))
+		})
+
+		It("escapes every dollar sign of displayed math in text", func() {
+			err := writer.Write(content.NewText("Not math: $$x$$"))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal("Not math: \\$\\$x\\$\\$"))
+		})
+
+		It("leaves the dollar signs of amounts alone", func() {
+			err := writer.Write(content.NewText("It costs $5 and $10"))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal("It costs $5 and $10"))
+		})
+	})
+
 	Describe("Tables", func() {
 		It("can write a table with a header and a row", func() {
 			err := writer.Write(content.NewTable(

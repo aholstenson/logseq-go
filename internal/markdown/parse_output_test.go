@@ -124,6 +124,19 @@ var _ = Describe("Parsing then outputting", func() {
 		FullyEqual("Code block interrupting paragraph", "Paragraph\n```go\nfunc main() {\n\tfmt.Println(\"Hello world\")\n}\n```")
 	})
 
+	Describe("Math", func() {
+		FullyEqual("Inline math", "The formula $E = mc^2$ is famous")
+		FullyEqual("Displayed math within a line", "The formula $$E = mc^2$$ is famous")
+		FullyEqual("Math block", "$$\nE = mc^2\n$$")
+		FullyEqual("Math block with several lines", "$$\na = b\nc = d\n$$")
+		FullyEqual("Math block after a paragraph", "Content\n\n$$\nE = mc^2\n$$")
+		FullyEqual("Math block in a block", "- Formula\n  $$\n  E = mc^2\n  $$")
+
+		FullyEqual("Amounts are not math", "It costs $5 and $10")
+		FullyEqual("Dollar sign followed by a space is not math", "Costs $ 5 or $ 10")
+		FullyEqual("Escaped math stays text", "Not math: \\$x\\$")
+	})
+
 	Describe("Tables", func() {
 		FullyEqual("Table", "| Name | Value |\n| ---- | ----- |\n| a    | 1     |")
 		FullyEqual("Table with only a header", "| Name |\n| ---- |")

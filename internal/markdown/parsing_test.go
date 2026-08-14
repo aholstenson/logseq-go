@@ -1399,6 +1399,112 @@ var _ = Describe("Parsing", func() {
 		})
 	})
 
+	Describe("Math", func() {
+		It("can parse inline math", func() {
+			block, err := markdown.ParseString("The formula $E = mc^2$ is famous")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("The formula "),
+					content.NewMath("E = mc^2"),
+					content.NewText(" is famous"),
+				),
+			)))
+		})
+
+		It("can parse displayed math within a line", func() {
+			block, err := markdown.ParseString("The formula $$E = mc^2$$ is famous")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("The formula "),
+					content.NewDisplayedMath("E = mc^2"),
+					content.NewText(" is famous"),
+				),
+			)))
+		})
+
+		It("can parse a math block", func() {
+			block, err := markdown.ParseString("$$\nE = mc^2\n$$")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewMathBlock("E = mc^2\n"),
+			)))
+		})
+
+		It("can parse a math block with several lines", func() {
+			block, err := markdown.ParseString("$$\na = b\nc = d\n$$")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewMathBlock("a = b\nc = d\n"),
+			)))
+		})
+
+		It("can parse a math block in a sub block", func() {
+			block, err := markdown.ParseString("- Formula\n  $$\n  E = mc^2\n  $$")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewBlock(
+					content.NewParagraph(
+						content.NewText("Formula"),
+					),
+					content.NewMathBlock("E = mc^2\n").
+						WithPreviousLineType(content.PreviousLineTypeNonBlank),
+				),
+			)))
+		})
+
+		It("keeps amounts in a sentence as text", func() {
+			block, err := markdown.ParseString("It costs $5 and $10")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("It costs $5 and $10"),
+				),
+			)))
+		})
+
+		It("keeps a dollar sign followed by a space as text", func() {
+			block, err := markdown.ParseString("Costs $ 5 or $ 10")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("Costs $ 5 or $ 10"),
+				),
+			)))
+		})
+
+		It("does not carry a formula past the line it starts on", func() {
+			block, err := markdown.ParseString("Costs $5\nand $10 more")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("Costs $5").WithSoftLineBreak(),
+					content.NewText("and $10 more"),
+				),
+			)))
+		})
+
+		It("keeps an escaped dollar sign as text", func() {
+			block, err := markdown.ParseString("Not math: \\$x\\$")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("Not math: $x$"),
+				),
+			)))
+		})
+	})
+
 	Describe("Tables", func() {
 		It("can parse a table with a header and a row", func() {
 			block, err := markdown.ParseString("| Name | Value |\n| --- | --- |\n| a | 1 |")

@@ -30,6 +30,7 @@ func init() {
 			util.Prioritized(parser.NewATXHeadingParser(), 600),
 			util.Prioritized(parser.NewFencedCodeBlockParser(), 700),
 			util.Prioritized(parser.NewBlockquoteParser(), 800),
+			util.Prioritized(&mathBlockParser{}, 896),
 			util.Prioritized(&taskDateParser{}, 897),
 			util.Prioritized(&logbookParser{}, 898),
 			util.Prioritized(&beginEndParser{}, 899),
@@ -38,6 +39,7 @@ func init() {
 		),
 		parser.WithInlineParsers(
 			util.Prioritized(parser.NewCodeSpanParser(), 100),
+			util.Prioritized(&mathParser{}, 195),
 			util.Prioritized(&priorityParser{}, 196),
 			util.Prioritized(&macroParser{}, 197),
 			util.Prioritized(&blockRefParser{}, 198),
@@ -192,6 +194,10 @@ func convert(src []byte, in ast.Node) (content.Node, error) {
 		return convertStrikethrough(src, node)
 	case *highlight:
 		return convertHighlight(src, node)
+	case *math:
+		return content.NewMath(node.Value).WithDisplayed(node.Displayed), nil
+	case *mathBlock:
+		return convertMathBlock(src, node)
 	case *ast.CodeSpan:
 		return convertCodeSpan(src, node)
 	case *ast.Link:
@@ -260,7 +266,7 @@ func convertChildren(src []byte, node ast.Node, target content.HasChildren) erro
 		if pText, pOk := previousChild.(*ast.Text); pOk {
 			if text, ok := child.(*ast.Text); ok && canMergeTextNodes(pText, text) {
 				previousNode := target.LastChild().(*content.Text)
-				previousNode.Value += string(text.Segment.Value(src))
+				previousNode.Value += unescapeString(text.Segment.Value(src))
 				previousChild = child
 
 				previousNode.HardLineBreak = text.HardLineBreak()
@@ -605,6 +611,22 @@ func convertCodeBlock(src []byte, node *ast.CodeBlock) (*content.CodeBlock, erro
 
 	updatePreviousLine(node, code)
 	return code, nil
+}
+
+func convertMathBlock(src []byte, node *mathBlock) (*content.MathBlock, error) {
+	// The lines of the formula are raw data, so they are put back together
+	// into the LaTeX between the lines that mark the block out.
+	valueBuf := bytes.Buffer{}
+	for i := 0; i < node.Lines().Len(); i++ {
+		line := node.Lines().At(i)
+		_, _ = valueBuf.Write(line.Value(src))
+	}
+
+	value := content.NewMathBlock(valueBuf.String())
+
+	updatePreviousLine(node, value)
+
+	return value, nil
 }
 
 func convertBlockquote(src []byte, node *ast.Blockquote) (*content.Blockquote, error) {
