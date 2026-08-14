@@ -5,6 +5,7 @@ import (
 	"io"
 	"regexp"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/aholstenson/logseq-go/content"
@@ -1070,34 +1071,16 @@ func (w *Output) writeBeginEnd(node content.BlockNode, variant string, value str
 }
 
 func (w *Output) writeTaskMarker(node *content.TaskMarker) error {
-	var err error
-	switch node.Status {
-	case content.TaskStatusNone:
+	if node.Status == content.TaskStatusNone {
 		return nil
-	case content.TaskStatusTodo:
-		err = w.writeRaw("TODO")
-	case content.TaskStatusDoing:
-		err = w.writeRaw("DOING")
-	case content.TaskStatusDone:
-		err = w.writeRaw("DONE")
-	case content.TaskStatusLater:
-		err = w.writeRaw("LATER")
-	case content.TaskStatusNow:
-		err = w.writeRaw("NOW")
-	case content.TaskStatusCancelled:
-		err = w.writeRaw("CANCELLED")
-	case content.TaskStatusCanceled:
-		err = w.writeRaw("CANCELED")
-	case content.TaskStatusInProgress:
-		err = w.writeRaw("IN-PROGRESS")
-	case content.TaskStatusWait:
-		err = w.writeRaw("WAIT")
-	case content.TaskStatusWaiting:
-		err = w.writeRaw("WAITING")
-	default:
+	}
+
+	marker := node.Status.String()
+	if marker == "" {
 		return fmt.Errorf("unsupported task status: %d", node.Status)
 	}
 
+	err := w.writeRaw(marker)
 	if err != nil {
 		return err
 	}
@@ -1189,6 +1172,49 @@ func (w *Output) writeTaskDate(node *content.TaskDate) error {
 	return nil
 }
 
+// logbookClock formats a clock entry, deriving the duration from the two
+// times so it always matches them.
+func logbookClock(node *content.LogbookEntryClock) (string, error) {
+	value := "CLOCK: [" + node.Start.Format(logbookTimeLayout) + "]"
+	if node.IsRunning() {
+		return value, nil
+	}
+
+	duration := node.Duration()
+	if duration < 0 {
+		return "", fmt.Errorf("logbook clock ends before it starts: %s", value)
+	}
+
+	return fmt.Sprintf(
+		"%s--[%s] =>  %02d:%02d:%02d",
+		value,
+		node.End.Format(logbookTimeLayout),
+		int(duration/time.Hour),
+		int(duration/time.Minute)%60,
+		int(duration/time.Second)%60,
+	), nil
+}
+
+func logbookStateChange(node *content.LogbookEntryStateChange) (string, error) {
+	to := node.To.String()
+	if to == "" {
+		return "", fmt.Errorf("unsupported task status: %d", node.To)
+	}
+
+	value := `* State "` + to + `"`
+
+	if node.From != content.TaskStatusNone {
+		from := node.From.String()
+		if from == "" {
+			return "", fmt.Errorf("unsupported task status: %d", node.From)
+		}
+
+		value += ` from "` + from + `"`
+	}
+
+	return value + " [" + node.Time.Format(logbookTimeLayout) + "]", nil
+}
+
 func (w *Output) writeLogbook(node *content.Logbook) error {
 	err := w.startBlock(node, "")
 	if err != nil {
@@ -1201,21 +1227,32 @@ func (w *Output) writeLogbook(node *content.Logbook) error {
 	}
 
 	for _, entry := range node.Children() {
+		var value string
 		switch e := entry.(type) {
 		case *content.LogbookEntryRaw:
-			err = w.writeRaw(e.Value)
+			value = e.Value
+		case *content.LogbookEntryClock:
+			value, err = logbookClock(e)
+		case *content.LogbookEntryStateChange:
+			value, err = logbookStateChange(e)
+		default:
+			return fmt.Errorf("unsupported logbook entry: %T", entry)
+		}
+
+		if err != nil {
+			return err
+		}
+
+		err = w.writeRaw(value)
+		if err != nil {
+			return err
+		}
+
+		if !strings.HasSuffix(value, "\n") {
+			err = w.writeRaw("\n")
 			if err != nil {
 				return err
 			}
-
-			if !strings.HasSuffix(e.Value, "\n") {
-				err = w.writeRaw("\n")
-				if err != nil {
-					return err
-				}
-			}
-		default:
-			return fmt.Errorf("unsupported logbook entry: %T", entry)
 		}
 	}
 

@@ -172,6 +172,28 @@ var _ = Describe("Parsing then outputting", func() {
 			FullyEqual("Priority not followed by a space", "Task [#A]more")
 		})
 
+		Describe("Logbooks", func() {
+			FullyEqual("Clock", "TODO Task\n:LOGBOOK:\nCLOCK: [2023-06-26 Mon 17:25:56]--[2023-06-26 Mon 17:25:58] =>  00:00:02\n:END:")
+			FullyEqual("Clock that is still running", "TODO Task\n:LOGBOOK:\nCLOCK: [2023-06-26 Mon 17:25:56]\n:END:")
+			FullyEqual("Clock spanning more than a day", "TODO Task\n:LOGBOOK:\nCLOCK: [2023-06-26 Mon 09:00:00]--[2023-06-27 Tue 11:30:45] =>  26:30:45\n:END:")
+			FullyEqual("State change", "TODO Task\n:LOGBOOK:\n* State \"DONE\" from \"TODO\" [2023-06-26 Mon 17:25:56]\n:END:")
+			FullyEqual("State change without a previous status", "TODO Task\n:LOGBOOK:\n* State \"DONE\" [2023-06-26 Mon 17:25:56]\n:END:")
+			FullyEqual("State change followed by a clock", "TODO Task\n:LOGBOOK:\n* State \"DONE\" from \"TODO\" [2023-06-26 Mon 17:25:56]\nCLOCK: [2023-06-26 Mon 17:25:56]--[2023-06-26 Mon 17:25:58] =>  00:00:02\n:END:")
+
+			// The day name is regenerated from the date, so a wrong one is
+			// corrected on the way out.
+			Varies(
+				"Clock with the wrong day name",
+				"TODO Task\n:LOGBOOK:\nCLOCK: [2023-06-26 Fri 17:25:56]\n:END:",
+				"TODO Task\n:LOGBOOK:\nCLOCK: [2023-06-26 Mon 17:25:56]\n:END:",
+			)
+
+			// Entries that are not modelled are kept as they were found.
+			FullyEqual("Unknown entry", "TODO Task\n:LOGBOOK:\nsomething else\n:END:")
+			FullyEqual("Clock without seconds", "TODO Task\n:LOGBOOK:\nCLOCK: [2023-06-26 Mon 17:25]\n:END:")
+			FullyEqual("State change with an unknown status", "TODO Task\n:LOGBOOK:\n* State \"SOMEDAY\" [2023-06-26 Mon 17:25:56]\n:END:")
+		})
+
 		Describe("Footnotes", func() {
 			FullyEqual("Footnote reference", "Task with a footnote[^1] in it")
 			FullyEqual("Footnote definition", "[^1]: The footnote")

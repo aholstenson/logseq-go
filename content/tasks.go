@@ -32,6 +32,35 @@ const (
 	TaskStatusWaiting
 )
 
+// String returns the marker Logseq writes for this status, or an empty string
+// for TaskStatusNone and statuses this library does not know.
+func (t TaskStatus) String() string {
+	switch t {
+	case TaskStatusTodo:
+		return "TODO"
+	case TaskStatusDoing:
+		return "DOING"
+	case TaskStatusDone:
+		return "DONE"
+	case TaskStatusLater:
+		return "LATER"
+	case TaskStatusNow:
+		return "NOW"
+	case TaskStatusCancelled:
+		return "CANCELLED"
+	case TaskStatusCanceled:
+		return "CANCELED"
+	case TaskStatusInProgress:
+		return "IN-PROGRESS"
+	case TaskStatusWait:
+		return "WAIT"
+	case TaskStatusWaiting:
+		return "WAITING"
+	}
+
+	return ""
+}
+
 type TaskMarker struct {
 	baseNode
 
@@ -509,6 +538,134 @@ func (t *LogbookEntryRaw) debug(p *debugPrinter) {
 }
 
 func (t *LogbookEntryRaw) isLogbookEntry() {}
+
+// LogbookEntryClock is a time tracking entry, written by Logseq when the clock
+// on a task is started and stopped:
+//
+//	CLOCK: [2023-06-26 Mon 17:25:56]--[2023-06-26 Mon 17:25:58] =>  00:00:02
+//
+// The duration at the end is derived from Start and End when the entry is
+// written, so it can never drift from the times it sums up.
+type LogbookEntryClock struct {
+	baseNode
+
+	// Start is when the clock was started.
+	Start time.Time
+
+	// End is when the clock was stopped. The zero time means the clock is
+	// still running, which Logseq writes without the end and the duration.
+	End time.Time
+}
+
+// NewLogbookEntryClock creates a clock entry that ran between two times. Pass
+// the zero time as the end for a clock that is still running.
+func NewLogbookEntryClock(start time.Time, end time.Time) *LogbookEntryClock {
+	return &LogbookEntryClock{
+		Start: truncateToSecond(start),
+		End:   truncateToSecond(end),
+	}
+}
+
+// WithStart sets when the clock was started.
+func (t *LogbookEntryClock) WithStart(start time.Time) *LogbookEntryClock {
+	t.Start = truncateToSecond(start)
+	return t
+}
+
+// WithEnd sets when the clock was stopped. Passing the zero time makes the
+// clock running again.
+func (t *LogbookEntryClock) WithEnd(end time.Time) *LogbookEntryClock {
+	t.End = truncateToSecond(end)
+	return t
+}
+
+// IsRunning returns true if the clock has not been stopped.
+func (t *LogbookEntryClock) IsRunning() bool {
+	return t.End.IsZero()
+}
+
+// Duration is how long the clock ran, which is zero while it is running.
+func (t *LogbookEntryClock) Duration() time.Duration {
+	if t.IsRunning() {
+		return 0
+	}
+
+	return t.End.Sub(t.Start)
+}
+
+func (t *LogbookEntryClock) debug(p *debugPrinter) {
+	p.StartType("LogbookEntryClock")
+	p.Field("start", t.Start.Format("2006-01-02 15:04:05"))
+	if !t.IsRunning() {
+		p.Field("end", t.End.Format("2006-01-02 15:04:05"))
+	}
+	p.EndType()
+}
+
+func (t *LogbookEntryClock) isLogbookEntry() {}
+
+// LogbookEntryStateChange records that a task changed status, which Logseq
+// writes when a repeating task is completed. The entry is written as
+// `* State "DONE" from "TODO" [2023-06-26 Mon 17:25:56]`.
+type LogbookEntryStateChange struct {
+	baseNode
+
+	// From is the status the task had. TaskStatusNone leaves the `from` part
+	// out of the entry.
+	From TaskStatus
+
+	// To is the status the task changed to.
+	To TaskStatus
+
+	// Time is when the change happened.
+	Time time.Time
+}
+
+func NewLogbookEntryStateChange(from TaskStatus, to TaskStatus, at time.Time) *LogbookEntryStateChange {
+	return &LogbookEntryStateChange{
+		From: from,
+		To:   to,
+		Time: truncateToSecond(at),
+	}
+}
+
+// WithFrom sets the status the task had.
+func (t *LogbookEntryStateChange) WithFrom(from TaskStatus) *LogbookEntryStateChange {
+	t.From = from
+	return t
+}
+
+// WithTo sets the status the task changed to.
+func (t *LogbookEntryStateChange) WithTo(to TaskStatus) *LogbookEntryStateChange {
+	t.To = to
+	return t
+}
+
+// WithTime sets when the change happened.
+func (t *LogbookEntryStateChange) WithTime(at time.Time) *LogbookEntryStateChange {
+	t.Time = truncateToSecond(at)
+	return t
+}
+
+func (t *LogbookEntryStateChange) debug(p *debugPrinter) {
+	p.StartType("LogbookEntryStateChange")
+	if t.From != TaskStatusNone {
+		p.Field("from", t.From.String())
+	}
+	p.Field("to", t.To.String())
+	p.Field("time", t.Time.Format("2006-01-02 15:04:05"))
+	p.EndType()
+}
+
+func (t *LogbookEntryStateChange) isLogbookEntry() {}
+
+func truncateToSecond(at time.Time) time.Time {
+	if at.IsZero() {
+		return at
+	}
+
+	return time.Date(at.Year(), at.Month(), at.Day(), at.Hour(), at.Minute(), at.Second(), 0, at.Location())
+}
 
 func allowOnlyLogbookEntries(n Node) bool {
 	_, ok := n.(LogbookEntry)

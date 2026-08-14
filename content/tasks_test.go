@@ -29,6 +29,36 @@ var _ = Describe("Tasks", func() {
 		})
 	})
 
+	Describe("Logbook clocks", func() {
+		start := time.Date(2023, time.June, 26, 17, 25, 56, 0, time.Local)
+
+		It("is running when it has no end", func() {
+			clock := content.NewLogbookEntryClock(start, time.Time{})
+
+			Expect(clock.IsRunning()).To(BeTrue())
+			Expect(clock.Duration()).To(BeZero())
+		})
+
+		It("has a duration when it has an end", func() {
+			clock := content.NewLogbookEntryClock(start, start.Add(90*time.Second))
+
+			Expect(clock.IsRunning()).To(BeFalse())
+			Expect(clock.Duration()).To(Equal(90 * time.Second))
+		})
+
+		It("drops anything smaller than a second", func() {
+			clock := content.NewLogbookEntryClock(start.Add(500*time.Millisecond), time.Time{})
+
+			Expect(clock.Start).To(Equal(start))
+		})
+
+		It("becomes running again without an end", func() {
+			clock := content.NewLogbookEntryClock(start, start.Add(time.Minute)).WithEnd(time.Time{})
+
+			Expect(clock.IsRunning()).To(BeTrue())
+		})
+	})
+
 	Describe("Dates on blocks", func() {
 		It("has no dates on an empty block", func() {
 			block := content.NewBlock()

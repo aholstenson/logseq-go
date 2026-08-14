@@ -611,7 +611,7 @@ func convertLogbook(src []byte, node *logbook) (content.Node, error) {
 	for i := 0; i < node.Lines().Len(); i++ {
 		line := node.Lines().At(i)
 		value := strings.TrimSuffix(string(line.Value(src)), "\n")
-		logbook.AddChild(content.NewLogbookEntryRaw(value))
+		logbook.AddChild(parseLogbookEntry(value))
 	}
 
 	updatePreviousLine(node, logbook)
