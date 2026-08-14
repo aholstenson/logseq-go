@@ -38,6 +38,13 @@ for _, block := range page.Blocks() {
 }
 ```
 
+Blocks that have an id, which is what block references such as `((id))` point
+at, can be opened directly in a graph that has indexing enabled:
+
+```go
+block, page, err := graph.OpenBlock(ctx, "65a1b2c3-d4e5-6789-abcd-ef0123456789")
+```
+
 Content can also be opened for writing, by creating a transaction:
 
 ```go

@@ -150,9 +150,12 @@ func (p *pageImpl) Properties() *content.Properties {
 		return properties
 	}
 
-	// The page has no properties yet, create them in the pre-block so they are
-	// written the way Logseq writes them: before the first bullet of the page.
-	return p.preBlock().Properties()
+	// The page has no properties yet, create them at the start of the pre-block
+	// so they are written the way Logseq writes them: as the first lines of the
+	// page, before the first bullet.
+	properties := content.NewProperties()
+	p.preBlock().PrependChild(properties)
+	return properties
 }
 
 // findProperties locates the properties of the page, returning nil if the page
@@ -161,9 +164,7 @@ func (p *pageImpl) findProperties() *content.Properties {
 	// Logseq treats properties in the first block of a page as properties of
 	// the page, whether that block is the pre-block or a bullet.
 	if first, ok := p.root.FirstChild().(*content.Block); ok {
-		if properties, ok := first.FirstChild().(*content.Properties); ok {
-			return properties
-		}
+		return first.FindProperties()
 	}
 
 	return nil

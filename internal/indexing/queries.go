@@ -94,6 +94,13 @@ func TitlePartiallyMatches(text string) Query {
 	}
 }
 
+func BlockIDEquals(id string) Query {
+	return &fieldEquals{
+		field: "id",
+		value: id,
+	}
+}
+
 func ContentMatches(text string) Query {
 	return &fieldMatches{
 		field: "content",

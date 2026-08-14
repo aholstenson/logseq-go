@@ -383,8 +383,11 @@ func (i *BlugeIndex) blockToDocument(page *Page, id string, block *content.Block
 		blugeDoc.AddField(bluge.NewKeywordField("id", id).StoreValue())
 	}
 
-	props := block.Properties()
-	i.transferProperties(blugeDoc, props)
+	// Look up the properties without creating them, as indexing should not
+	// modify the block.
+	if props := block.FindProperties(); props != nil {
+		i.transferProperties(blugeDoc, props)
+	}
 	i.transferRefs(blugeDoc, "pages", block)
 	i.transferLinks(blugeDoc, block)
 

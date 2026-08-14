@@ -260,6 +260,13 @@ func (t *Transaction) SearchBlocks(ctx context.Context, options ...SearchOption)
 	return t.graph.searchBlocks(ctx, options, t)
 }
 
+// OpenBlock opens the block with the given id, opening the page it belongs to
+// as part of this transaction so that changes to the block are saved with it.
+// See Graph.OpenBlock for the details of how blocks are found.
+func (t *Transaction) OpenBlock(ctx context.Context, id string) (*content.Block, Page, error) {
+	return t.graph.openBlock(ctx, id, t)
+}
+
 // AddJournalBlock adds a block to the journal page for the given date.
 func (t *Transaction) AddJournalBlock(time time.Time, block *content.Block) error {
 	// Change the timezone to the local one

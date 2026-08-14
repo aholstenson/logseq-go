@@ -32,6 +32,12 @@ func ContentMatches(text string) Query {
 	return indexing.ContentMatches(text)
 }
 
+// BlockIDEquals matches the block with the given id, which is the identifier
+// that block references such as `((id))` point at.
+func BlockIDEquals(id string) Query {
+	return indexing.BlockIDEquals(id)
+}
+
 func PropertyMatches(property, text string) Query {
 	return indexing.PropertyMatches(property, text)
 }

@@ -87,26 +87,57 @@ func (b *Block) WithID() *Block {
 }
 
 // Properties gets the properties node for this block. This follows the Logseq
-// implementation where properties at the start of the block are the ones that
-// are indexed.
+// implementation where the properties that belong to a block are the ones that
+// appear before any of its sub blocks.
 //
 // If such properties do not exist, they are created to allow for easy
-// manipulation of properties.
+// manipulation of properties. Use FindProperties to look up properties without
+// changing the block.
 func (b *Block) Properties() *Properties {
 	if b.properties == nil {
-		// There are no properties right now, find or create them
-		firstChild := b.FirstChild()
-		if properties, ok := firstChild.(*Properties); ok {
-			b.properties = properties
+		b.properties = b.FindProperties()
+	}
+
+	if b.properties == nil {
+		properties := NewProperties()
+
+		// Logseq writes the properties of a block on the lines that follow the
+		// line its content starts on, so they go after the first thing in the
+		// block that is not a block of its own.
+		first := b.FirstChild()
+		if first == nil {
+			b.AddChild(properties)
+		} else if _, ok := first.(*Block); ok {
+			b.InsertChildBefore(properties, first)
+		} else {
+			b.InsertChildAfter(properties, first)
 		}
 
-		if b.properties == nil {
-			b.properties = NewProperties()
-			b.PrependChild(b.properties)
-		}
+		b.properties = properties
 	}
 
 	return b.properties
+}
+
+// FindProperties gets the properties node for this block, returning nil if the
+// block does not have any. Unlike Properties this never changes the block.
+func (b *Block) FindProperties() *Properties {
+	if b.properties != nil {
+		return b.properties
+	}
+
+	for node := b.FirstChild(); node != nil; node = node.NextSibling() {
+		switch n := node.(type) {
+		case *Properties:
+			return n
+		case *Block:
+			// Anything after a sub block belongs to that part of the outline
+			// and not to this block.
+			return nil
+		}
+	}
+
+	return nil
 }
 
 func (n *Block) debug(p *debugPrinter) {

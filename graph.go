@@ -597,6 +597,41 @@ func (g *Graph) searchPages(ctx context.Context, opts []SearchOption, source pag
 	}), nil
 }
 
+// OpenBlock opens the block with the given id, which is the identifier that
+// block references such as `((id))` point at. The page the block belongs to is
+// returned as well, as the block is part of it.
+//
+// Blocks are found via the index, so this requires the graph to have been
+// opened with indexing enabled. If no block with the id is found, or the block
+// no longer exists on the page it was indexed on, ErrBlockNotFound is returned.
+func (g *Graph) OpenBlock(ctx context.Context, id string) (*content.Block, Page, error) {
+	return g.openBlock(ctx, id, g)
+}
+
+func (g *Graph) openBlock(ctx context.Context, id string, source pageSource) (*content.Block, Page, error) {
+	if g.index == nil {
+		return nil, nil, fmt.Errorf("indexing is not enabled")
+	}
+
+	if id == "" {
+		return nil, nil, ErrBlockNotFound
+	}
+
+	results, err := g.searchBlocks(ctx, []SearchOption{
+		WithQuery(BlockIDEquals(id)),
+		WithMaxHits(1),
+	}, source)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if results.Size() == 0 {
+		return nil, nil, ErrBlockNotFound
+	}
+
+	return results.Results()[0].Open()
+}
+
 // SearchBlocks searches for blocks in the graph.
 func (g *Graph) SearchBlocks(ctx context.Context, opts ...SearchOption) (SearchResults[BlockResult], error) {
 	return g.searchBlocks(ctx, opts, g)
