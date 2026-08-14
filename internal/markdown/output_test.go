@@ -783,6 +783,53 @@ var _ = Describe("Output", func() {
 
 			Expect(buf.String()).To(Equal("- abc\n- def\n  continued"))
 		})
+
+		It("can write a pre-block without a bullet", func() {
+			err := writer.Write(content.NewBlock(
+				content.NewPreBlock(
+					content.NewProperties(
+						content.NewProperty("key", content.NewText("value")),
+					),
+					content.NewParagraph(content.NewText("abc")),
+				),
+				content.NewBlock(content.NewParagraph(content.NewText("block 1"))),
+			))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal("key:: value\nabc\n- block 1"))
+		})
+
+		It("can write a pre-block as the only block", func() {
+			err := writer.Write(content.NewBlock(
+				content.NewPreBlock(content.NewParagraph(content.NewText("abc"))),
+			))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal("abc"))
+		})
+
+		It("writes a pre-block that is not first as a bullet", func() {
+			// The bullet-less form only parses back the same way at the start
+			// of a page, so anywhere else the block keeps its bullet.
+			err := writer.Write(content.NewBlock(
+				content.NewBlock(content.NewParagraph(content.NewText("block 1"))),
+				content.NewPreBlock(content.NewParagraph(content.NewText("abc"))),
+			))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal("- block 1\n- abc"))
+		})
+
+		It("writes a nested pre-block as a bullet", func() {
+			err := writer.Write(content.NewBlock(
+				content.NewBlock(
+					content.NewPreBlock(content.NewParagraph(content.NewText("abc"))),
+				),
+			))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal("- \n\t- abc"))
+		})
 	})
 
 	Describe("Properties", func() {

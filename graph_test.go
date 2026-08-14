@@ -20,6 +20,19 @@ var _ = Describe("Graph", func() {
 		dir = setupGraph()
 	})
 
+	// saveUnchanged opens a page and saves it again without touching it,
+	// returning the contents the page ended up with on disk.
+	saveUnchanged := func(graph *logseq.Graph, path string, title string) string {
+		tx := graph.NewTransaction()
+		_, err := tx.OpenPage(title)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(tx.Save()).To(Succeed())
+
+		data, err := os.ReadFile(path)
+		Expect(err).ToNot(HaveOccurred())
+		return string(data)
+	}
+
 	Describe("Open", func() {
 		It("opens a graph with minimal config", func() {
 			graph, err := logseq.Open(context.Background(), dir)
@@ -125,7 +138,14 @@ var _ = Describe("Graph", func() {
 
 			page, err := graph.OpenPage("intro")
 			Expect(err).ToNot(HaveOccurred())
-			Expect(page.Blocks()).To(HaveLen(2))
+
+			// The content before the first bullet is the pre-block of the page,
+			// so it becomes the first of three blocks instead of a parent of
+			// the bullets.
+			blocks := page.Blocks()
+			Expect(blocks).To(HaveLen(3))
+			Expect(blocks[0].IsPreBlock()).To(BeTrue())
+			Expect(blocks[1].IsPreBlock()).To(BeFalse())
 		})
 
 		It("opens a page with special characters in the title", func() {
@@ -377,19 +397,6 @@ var _ = Describe("Graph", func() {
 	})
 
 	Describe("Page properties", func() {
-		// saveUnchanged opens a page and saves it again without touching it,
-		// returning the contents the page ended up with on disk.
-		saveUnchanged := func(graph *logseq.Graph, path string, title string) string {
-			tx := graph.NewTransaction()
-			_, err := tx.OpenPage(title)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(tx.Save()).To(Succeed())
-
-			data, err := os.ReadFile(path)
-			Expect(err).ToNot(HaveOccurred())
-			return string(data)
-		}
-
 		It("keeps blocks at the top level when properties are not in a bullet", func() {
 			Expect(os.WriteFile(
 				filepath.Join(dir, "pages", "props.md"),
@@ -403,7 +410,12 @@ var _ = Describe("Graph", func() {
 
 			page, err := graph.OpenPage("props")
 			Expect(err).ToNot(HaveOccurred())
-			Expect(page.Blocks()).To(HaveLen(3))
+
+			// The properties live in the pre-block, which is the first of the
+			// four blocks of the page.
+			blocks := page.Blocks()
+			Expect(blocks).To(HaveLen(4))
+			Expect(blocks[0].IsPreBlock()).To(BeTrue())
 			Expect(page.Properties().Get("icon")).To(EqualsNodes(content.NewText("🔀")))
 		})
 
@@ -459,6 +471,164 @@ var _ = Describe("Graph", func() {
 			Expect(os.WriteFile(
 				filepath.Join(dir, "pages", "props.md"),
 				[]byte("status:: done\n- Block 1\n"),
+				0o644,
+			)).To(Succeed())
+
+			graph, err := logseq.Open(context.Background(), dir, logseq.WithInMemoryIndex())
+			Expect(err).ToNot(HaveOccurred())
+			defer graph.Close()
+
+			results, err := graph.SearchPages(context.Background(),
+				logseq.WithQuery(logseq.PropertyEquals("status", "done")),
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(results.Size()).To(Equal(1))
+		})
+	})
+
+	Describe("Pre-block", func() {
+		It("round-trips properties followed by prose", func() {
+			path := filepath.Join(dir, "pages", "pre.md")
+			source := "icon:: 🔀\nJust prose\n"
+			Expect(os.WriteFile(path, []byte(source), 0o644)).To(Succeed())
+
+			graph, err := logseq.Open(context.Background(), dir)
+			Expect(err).ToNot(HaveOccurred())
+			defer graph.Close()
+
+			Expect(saveUnchanged(graph, path, "pre")).To(Equal(source))
+		})
+
+		It("round-trips a page of only prose", func() {
+			path := filepath.Join(dir, "pages", "pre.md")
+			source := "Just prose\n\nAnd a second paragraph\n"
+			Expect(os.WriteFile(path, []byte(source), 0o644)).To(Succeed())
+
+			graph, err := logseq.Open(context.Background(), dir)
+			Expect(err).ToNot(HaveOccurred())
+			defer graph.Close()
+
+			Expect(saveUnchanged(graph, path, "pre")).To(Equal(source))
+		})
+
+		It("round-trips prose followed by bullets", func() {
+			path := filepath.Join(dir, "pages", "pre.md")
+			source := "icon:: 🔀\nJust prose\n- Block 1\n\t- Child\n- Block 2\n"
+			Expect(os.WriteFile(path, []byte(source), 0o644)).To(Succeed())
+
+			graph, err := logseq.Open(context.Background(), dir)
+			Expect(err).ToNot(HaveOccurred())
+			defer graph.Close()
+
+			Expect(saveUnchanged(graph, path, "pre")).To(Equal(source))
+		})
+
+		It("exposes the content of a page without bullets as a block", func() {
+			Expect(os.WriteFile(
+				filepath.Join(dir, "pages", "pre.md"),
+				[]byte("icon:: 🔀\nJust prose\n"),
+				0o644,
+			)).To(Succeed())
+
+			graph, err := logseq.Open(context.Background(), dir)
+			Expect(err).ToNot(HaveOccurred())
+			defer graph.Close()
+
+			page, err := graph.OpenPage("pre")
+			Expect(err).ToNot(HaveOccurred())
+
+			blocks := page.Blocks()
+			Expect(blocks).To(HaveLen(1))
+			Expect(blocks[0].IsPreBlock()).To(BeTrue())
+		})
+
+		It("adds new blocks as bullets after the pre-block", func() {
+			path := filepath.Join(dir, "pages", "pre.md")
+			Expect(os.WriteFile(path, []byte("Just prose\n"), 0o644)).To(Succeed())
+
+			graph, err := logseq.Open(context.Background(), dir)
+			Expect(err).ToNot(HaveOccurred())
+			defer graph.Close()
+
+			tx := graph.NewTransaction()
+			page, err := tx.OpenPage("pre")
+			Expect(err).ToNot(HaveOccurred())
+			page.AddBlock(content.NewBlock(content.NewParagraph(content.NewText("Added"))))
+			Expect(tx.Save()).To(Succeed())
+
+			data, err := os.ReadFile(path)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(string(data)).To(Equal("Just prose\n- Added\n"))
+		})
+
+		It("prepends blocks after the pre-block", func() {
+			path := filepath.Join(dir, "pages", "pre.md")
+			Expect(os.WriteFile(path, []byte("Just prose\n- Block 1\n"), 0o644)).To(Succeed())
+
+			graph, err := logseq.Open(context.Background(), dir)
+			Expect(err).ToNot(HaveOccurred())
+			defer graph.Close()
+
+			tx := graph.NewTransaction()
+			page, err := tx.OpenPage("pre")
+			Expect(err).ToNot(HaveOccurred())
+			page.PrependBlock(content.NewBlock(content.NewParagraph(content.NewText("First"))))
+			Expect(tx.Save()).To(Succeed())
+
+			data, err := os.ReadFile(path)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(string(data)).To(Equal("Just prose\n- First\n- Block 1\n"))
+		})
+
+		It("puts new properties in the existing pre-block", func() {
+			path := filepath.Join(dir, "pages", "pre.md")
+			Expect(os.WriteFile(path, []byte("Just prose\n- Block 1\n"), 0o644)).To(Succeed())
+
+			graph, err := logseq.Open(context.Background(), dir)
+			Expect(err).ToNot(HaveOccurred())
+			defer graph.Close()
+
+			tx := graph.NewTransaction()
+			page, err := tx.OpenPage("pre")
+			Expect(err).ToNot(HaveOccurred())
+			page.Properties().Set("icon", content.NewText("🔀"))
+			Expect(page.Blocks()).To(HaveLen(2))
+			Expect(tx.Save()).To(Succeed())
+
+			data, err := os.ReadFile(path)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(string(data)).To(Equal("icon:: 🔀\nJust prose\n- Block 1\n"))
+		})
+
+		It("indexes a page without bullets", func() {
+			Expect(os.WriteFile(
+				filepath.Join(dir, "pages", "pre.md"),
+				[]byte("status:: done\nJust prose\n"),
+				0o644,
+			)).To(Succeed())
+
+			graph, err := logseq.Open(context.Background(), dir, logseq.WithInMemoryIndex())
+			Expect(err).ToNot(HaveOccurred())
+			defer graph.Close()
+
+			pages, err := graph.SearchPages(context.Background(),
+				logseq.WithQuery(logseq.ContentMatches("prose")),
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(pages.Size()).To(Equal(1))
+
+			blocks, err := graph.SearchBlocks(context.Background(),
+				logseq.WithQuery(logseq.ContentMatches("prose")),
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(blocks.Size()).To(Equal(1))
+			Expect(blocks.Results()[0].Preview()).To(Equal("Just prose"))
+		})
+
+		It("indexes properties of a page without bullets", func() {
+			Expect(os.WriteFile(
+				filepath.Join(dir, "pages", "pre.md"),
+				[]byte("status:: done\nJust prose\n"),
 				0o644,
 			)).To(Succeed())
 

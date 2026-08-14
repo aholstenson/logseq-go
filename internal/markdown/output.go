@@ -837,7 +837,7 @@ func (w *Output) writeBlock(node *content.Block) error {
 	w.endBlock()
 
 	hasParentBlock := false
-	if _, ok := node.Parent().(*content.Block); ok {
+	if _, ok := node.Parent().(*content.Block); ok && !writesWithoutBullet(node) {
 		hasParentBlock = true
 	}
 
@@ -869,6 +869,25 @@ func (w *Output) writeBlock(node *content.Block) error {
 		i := 0
 		for _, child := range blocks {
 			i++
+
+			if writesWithoutBullet(child) {
+				// The pre-block is the content before the first bullet of the
+				// page, so it is written as is with no marker to indent under.
+				err := w.Write(child)
+				if err != nil {
+					return err
+				}
+
+				if child.NextSibling() != nil {
+					err = w.writeRaw("\n")
+					if err != nil {
+						return err
+					}
+				}
+
+				continue
+			}
+
 			err := w.out.WriteString("- ")
 			if err != nil {
 				return err
@@ -900,6 +919,18 @@ func (w *Output) writeBlock(node *content.Block) error {
 	}
 
 	return nil
+}
+
+// writesWithoutBullet checks if a block is a pre-block in a position where the
+// bullet-less form parses back into the same structure, which is as the first
+// block of a page.
+func writesWithoutBullet(node *content.Block) bool {
+	if !node.IsPreBlock() || node.PreviousSibling() != nil {
+		return false
+	}
+
+	parent, ok := node.Parent().(*content.Block)
+	return ok && parent.Parent() == nil
 }
 
 func (w *Output) writeProperties(node *content.Properties) error {

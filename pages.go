@@ -34,10 +34,13 @@ type Page interface {
 	// check if the page was loaded from disk or not.
 	LastModified() time.Time
 
-	// Properties returns the properties for the page.
+	// Properties returns the properties for the page. Properties belong to the
+	// first block of the page, which is the pre-block if the page has one.
 	Properties() *content.Properties
 
-	// Blocks returns the blocks for the page.
+	// Blocks returns the blocks for the page. If the page has content before
+	// its first bullet, such as page properties, that content is the first
+	// block and reports true from Block.IsPreBlock.
 	Blocks() content.BlockList
 
 	// AddBlock adds a block to the page.
@@ -46,7 +49,8 @@ type Page interface {
 	// RemoveBlock removes a block from the page.
 	RemoveBlock(block *content.Block)
 
-	// PrependBlock adds a block to the start of the page.
+	// PrependBlock adds a block to the start of the page, after the pre-block
+	// if the page has one.
 	PrependBlock(block *content.Block)
 
 	// InsertBlockAfter inserts a block after another block.
@@ -137,28 +141,36 @@ func (p *pageImpl) Properties() *content.Properties {
 		return properties
 	}
 
-	// The page has no properties yet, create them as content of the root
-	// block so they are written the way Logseq writes them: before the first
-	// bullet of the page.
-	return p.root.Properties()
+	// The page has no properties yet, create them in the pre-block so they are
+	// written the way Logseq writes them: before the first bullet of the page.
+	return p.preBlock().Properties()
 }
 
 // findProperties locates the properties of the page, returning nil if the page
 // does not have any.
 func (p *pageImpl) findProperties() *content.Properties {
-	switch first := p.root.FirstChild().(type) {
-	case *content.Properties:
-		// Properties before the first bullet, which is how Logseq writes them.
-		return first
-	case *content.Block:
-		// Properties in the first block of the page are also treated as page
-		// properties by Logseq.
+	// Logseq treats properties in the first block of a page as properties of
+	// the page, whether that block is the pre-block or a bullet.
+	if first, ok := p.root.FirstChild().(*content.Block); ok {
 		if properties, ok := first.FirstChild().(*content.Properties); ok {
 			return properties
 		}
 	}
 
 	return nil
+}
+
+// preBlock returns the block holding the content before the first bullet of
+// the page, adding an empty one to the start of the page if it does not have
+// one yet.
+func (p *pageImpl) preBlock() *content.Block {
+	if first, ok := p.root.FirstChild().(*content.Block); ok && first.IsPreBlock() {
+		return first
+	}
+
+	preBlock := content.NewPreBlock()
+	p.root.PrependChild(preBlock)
+	return preBlock
 }
 
 func (p *pageImpl) Blocks() content.BlockList {
@@ -174,6 +186,13 @@ func (p *pageImpl) RemoveBlock(block *content.Block) {
 }
 
 func (p *pageImpl) PrependBlock(block *content.Block) {
+	if first, ok := p.root.FirstChild().(*content.Block); ok && first.IsPreBlock() {
+		// The pre-block holds the content before the first bullet, so the new
+		// block goes after it to keep it at the start of the page.
+		p.root.InsertChildAfter(block, first)
+		return
+	}
+
 	p.root.PrependChild(block)
 }
 
@@ -196,28 +215,27 @@ func loadRootBlock(path string) (*content.Block, error) {
 		return nil, fmt.Errorf("failed to parse markdown: %w", err)
 	}
 
-	// Content that appears before the first bullet stays as content of the
-	// root block, which is where Logseq puts page properties. Keeping it there
-	// makes it round-trip in the same shape instead of turning the rest of the
-	// page into children of it.
-	//
-	// A page without any bullets has no blocks to work with though, so in that
-	// case the content becomes the single block of the page.
-	if len(block.Blocks()) == 0 && hasContentOtherThanProperties(block) {
-		block = content.NewBlock(block)
+	// Content that appears before the first bullet becomes the pre-block of the
+	// page, matching how Logseq models it. It stays the first block of the page
+	// and is written back without a bullet, so page properties and any prose
+	// around them round-trip in the same shape.
+	var leading []content.Node
+	for node := block.FirstChild(); node != nil; node = node.NextSibling() {
+		if _, ok := node.(*content.Block); ok {
+			break
+		}
+
+		leading = append(leading, node)
+	}
+
+	if len(leading) > 0 {
+		preBlock := content.NewPreBlock()
+		for _, node := range leading {
+			preBlock.AddChild(node)
+		}
+
+		block.PrependChild(preBlock)
 	}
 
 	return block, nil
-}
-
-// hasContentOtherThanProperties checks if a block has content that is not
-// properties.
-func hasContentOtherThanProperties(block *content.Block) bool {
-	for _, node := range block.Content() {
-		if _, ok := node.(*content.Properties); !ok {
-			return true
-		}
-	}
-
-	return false
 }

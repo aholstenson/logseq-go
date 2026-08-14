@@ -248,11 +248,26 @@ func (i *BlugeIndex) pageToDocument(doc *Page) (*bluge.Document, error) {
 		i.transferRefs(blugeDoc, "pages", doc.Properties)
 	}
 
-	if len(doc.Blocks) > 0 {
-		i.transferRefs(blugeDoc, "pages", doc.Blocks[0])
+	// References in the block a page opens with are references of the page
+	// itself. The pre-block holding the content before the first bullet is part
+	// of that opening, so it is taken together with the first bullet.
+	for _, block := range doc.Blocks {
+		i.transferRefs(blugeDoc, "pages", block)
 
-		preview := generatePreview(doc.Blocks[0].Children())
-		blugeDoc.AddField(bluge.NewKeywordField("preview", preview).StoreValue())
+		if !block.IsPreBlock() {
+			break
+		}
+	}
+
+	// The preview is the first thing a reader would see on the page, so skip
+	// past blocks that render as nothing, such as a pre-block of only
+	// properties.
+	for _, block := range doc.Blocks {
+		preview := generatePreview(block.Children())
+		if preview != "" {
+			blugeDoc.AddField(bluge.NewKeywordField("preview", preview).StoreValue())
+			break
+		}
 	}
 
 	var fullText strings.Builder

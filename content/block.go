@@ -8,6 +8,7 @@ type Block struct {
 	baseNodeWithChildren
 
 	properties *Properties
+	preBlock   bool
 }
 
 func NewBlock(children ...Node) *Block {
@@ -18,6 +19,24 @@ func NewBlock(children ...Node) *Block {
 		block.AddChild(child)
 	}
 	return block
+}
+
+// NewPreBlock creates a block that holds the content before the first bullet
+// of a page, which is what Logseq calls a pre-block. Page properties live
+// there, and the block is written without a bullet marker.
+//
+// A pre-block is only written that way when it is the first block of a page,
+// as that is the only place the bullet-less form parses back the same way.
+func NewPreBlock(children ...Node) *Block {
+	block := NewBlock(children...)
+	block.preBlock = true
+	return block
+}
+
+// IsPreBlock returns true if this block holds the content before the first
+// bullet of a page. See NewPreBlock for details.
+func (b *Block) IsPreBlock() bool {
+	return b.preBlock
 }
 
 // Content gets the content part of this block, which is all children that
