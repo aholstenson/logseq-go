@@ -30,6 +30,7 @@ func init() {
 			util.Prioritized(parser.NewATXHeadingParser(), 600),
 			util.Prioritized(parser.NewFencedCodeBlockParser(), 700),
 			util.Prioritized(parser.NewBlockquoteParser(), 800),
+			util.Prioritized(&taskDateParser{}, 897),
 			util.Prioritized(&logbookParser{}, 898),
 			util.Prioritized(&beginEndParser{}, 899),
 			util.Prioritized(parser.NewHTMLBlockParser(), 900),
@@ -131,6 +132,8 @@ func convert(src []byte, in ast.Node) (content.Node, error) {
 		return convertProperties(src, node)
 	case *logbook:
 		return convertLogbook(src, node)
+	case *taskDate:
+		return convertTaskDate(node)
 	}
 
 	return nil, fmt.Errorf("Could not convert node: %T", in)
@@ -572,20 +575,7 @@ func convertProperties(src []byte, node *properties) (*content.Properties, error
 		properties.AddChild(prop)
 	}
 
-	if node.HasBlankPreviousLines() {
-		// The default behavior of properties is to combine with the previous
-		// line so keep explicit blank line info
-		properties.SetPreviousLineType(content.PreviousLineTypeBlank)
-	} else {
-		// Parsing didn't indicate blank lines before the node, but we might
-		// be the first node on this level in which case we set the type to
-		// automatic
-		if node.PreviousSibling() == nil {
-			properties.SetPreviousLineType(content.PreviousLineTypeAutomatic)
-		} else {
-			properties.SetPreviousLineType(content.PreviousLineTypeNonBlank)
-		}
-	}
+	updatePreviousLineKeepingBlank(node, properties)
 
 	return properties, nil
 }
@@ -618,6 +608,20 @@ func convertLogbook(src []byte, node *logbook) (content.Node, error) {
 	return logbook, nil
 }
 
+func convertTaskDate(node *taskDate) (content.Node, error) {
+	var date *content.TaskDate
+	if node.HasTime {
+		date = content.NewTaskDateWithTime(node.DateType, node.Date)
+	} else {
+		date = content.NewTaskDate(node.DateType, node.Date)
+	}
+	date.Repeater = node.Repeater
+
+	updatePreviousLineKeepingBlank(node, date)
+
+	return date, nil
+}
+
 // updatePreviousLine updates the PreviousLineType of the target based on the
 // node. This takes the information Goldmark parsed out and transfers it to
 // our nodes.
@@ -633,5 +637,21 @@ func updatePreviousLine(node ast.Node, target content.PreviousLineAware) {
 		} else {
 			target.SetPreviousLineType(content.PreviousLineTypeNonBlank)
 		}
+	}
+}
+
+// updatePreviousLineKeepingBlank is updatePreviousLine for nodes that combine
+// with the previous line by default. For those a blank line before the node
+// has to be recorded explicitly, as the automatic behavior would drop it.
+func updatePreviousLineKeepingBlank(node ast.Node, target content.PreviousLineAware) {
+	if node.HasBlankPreviousLines() {
+		target.SetPreviousLineType(content.PreviousLineTypeBlank)
+	} else if node.PreviousSibling() == nil {
+		// Parsing didn't indicate blank lines before the node, but we might
+		// be the first node on this level in which case we set the type to
+		// automatic
+		target.SetPreviousLineType(content.PreviousLineTypeAutomatic)
+	} else {
+		target.SetPreviousLineType(content.PreviousLineTypeNonBlank)
 	}
 }

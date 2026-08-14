@@ -156,6 +156,8 @@ func (w *Output) Write(n content.Node) error {
 		return w.writeBeginEnd(node, "QUERY", node.Query)
 	case *content.TaskMarker:
 		return w.writeTaskMarker(node)
+	case *content.TaskDate:
+		return w.writeTaskDate(node)
 	case *content.Logbook:
 		return w.writeLogbook(node)
 	default:
@@ -1076,6 +1078,54 @@ func (w *Output) writeTaskMarker(node *content.TaskMarker) error {
 		}
 	}
 
+	return nil
+}
+
+func (w *Output) writeTaskDate(node *content.TaskDate) error {
+	var keyword string
+	switch node.Type {
+	case content.TaskDateTypeScheduled:
+		keyword = "SCHEDULED"
+	case content.TaskDateTypeDeadline:
+		keyword = "DEADLINE"
+	default:
+		return fmt.Errorf("unsupported task date type: %d", node.Type)
+	}
+
+	value := strings.Builder{}
+	value.WriteString(keyword)
+	value.WriteString(": <")
+	value.WriteString(node.Date.Format("2006-01-02 Mon"))
+
+	if node.HasTime {
+		value.WriteString(node.Date.Format(" 15:04"))
+	}
+
+	if node.Repeater != nil {
+		repeater := node.Repeater.String()
+		if repeater == "" {
+			return fmt.Errorf("unsupported repeater: %+v", *node.Repeater)
+		}
+
+		value.WriteString(" ")
+		value.WriteString(repeater)
+	}
+
+	value.WriteString(">")
+
+	// Task dates belong to the line above them, so they never get a blank line
+	// of their own when the previous line type is automatic.
+	err := w.startBlockWithAutomaticBehavior(node, "", false)
+	if err != nil {
+		return err
+	}
+
+	err = w.writeRaw(value.String())
+	if err != nil {
+		return err
+	}
+
+	w.endBlock()
 	return nil
 }
 

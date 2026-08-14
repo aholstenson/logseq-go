@@ -1,6 +1,8 @@
 package markdown_test
 
 import (
+	"time"
+
 	"github.com/aholstenson/logseq-go/content"
 	"github.com/aholstenson/logseq-go/internal/markdown"
 	"github.com/aholstenson/logseq-go/internal/tests"
@@ -2155,6 +2157,147 @@ var _ = Describe("Parsing", func() {
 					content.NewParagraph(
 						content.NewTaskMarker(content.TaskStatusWaiting),
 						content.NewText("Task"),
+					),
+				)))
+			})
+		})
+
+		Describe("Scheduled and deadline", func() {
+			It("can parse SCHEDULED", func() {
+				block, err := markdown.ParseString("TODO Task\nSCHEDULED: <2024-01-15 Mon>")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewParagraph(
+						content.NewTaskMarker(content.TaskStatusTodo),
+						content.NewText("Task"),
+					),
+					content.NewScheduled(time.Date(2024, time.January, 15, 0, 0, 0, 0, time.Local)).
+						WithPreviousLineType(content.PreviousLineTypeNonBlank),
+				)))
+			})
+
+			It("can parse DEADLINE", func() {
+				block, err := markdown.ParseString("TODO Task\nDEADLINE: <2024-01-15 Mon>")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewParagraph(
+						content.NewTaskMarker(content.TaskStatusTodo),
+						content.NewText("Task"),
+					),
+					content.NewDeadline(time.Date(2024, time.January, 15, 0, 0, 0, 0, time.Local)).
+						WithPreviousLineType(content.PreviousLineTypeNonBlank),
+				)))
+			})
+
+			It("can parse a date with a time of day", func() {
+				block, err := markdown.ParseString("TODO Task\nSCHEDULED: <2024-01-15 Mon 09:30>")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewParagraph(
+						content.NewTaskMarker(content.TaskStatusTodo),
+						content.NewText("Task"),
+					),
+					content.NewScheduledWithTime(time.Date(2024, time.January, 15, 9, 30, 0, 0, time.Local)).
+						WithPreviousLineType(content.PreviousLineTypeNonBlank),
+				)))
+			})
+
+			It("can parse a date with a repeater", func() {
+				block, err := markdown.ParseString("TODO Task\nSCHEDULED: <2024-01-15 Mon .+3d>")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewParagraph(
+						content.NewTaskMarker(content.TaskStatusTodo),
+						content.NewText("Task"),
+					),
+					content.NewScheduled(time.Date(2024, time.January, 15, 0, 0, 0, 0, time.Local)).
+						WithRepeater(content.NewRepeater(content.RepeaterTypeRestart, 3, content.RepeaterUnitDay)).
+						WithPreviousLineType(content.PreviousLineTypeNonBlank),
+				)))
+			})
+
+			It("can parse a date with a time of day and a repeater", func() {
+				block, err := markdown.ParseString("TODO Task\nDEADLINE: <2024-01-15 Mon 09:30 ++1w>")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewParagraph(
+						content.NewTaskMarker(content.TaskStatusTodo),
+						content.NewText("Task"),
+					),
+					content.NewDeadlineWithTime(time.Date(2024, time.January, 15, 9, 30, 0, 0, time.Local)).
+						WithRepeater(content.NewRepeater(content.RepeaterTypeCatchUp, 1, content.RepeaterUnitWeek)).
+						WithPreviousLineType(content.PreviousLineTypeNonBlank),
+				)))
+			})
+
+			It("can parse both a scheduled date and a deadline", func() {
+				block, err := markdown.ParseString("TODO Task\nSCHEDULED: <2024-01-15 Mon>\nDEADLINE: <2024-01-20 Sat>")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewParagraph(
+						content.NewTaskMarker(content.TaskStatusTodo),
+						content.NewText("Task"),
+					),
+					content.NewScheduled(time.Date(2024, time.January, 15, 0, 0, 0, 0, time.Local)).
+						WithPreviousLineType(content.PreviousLineTypeNonBlank),
+					content.NewDeadline(time.Date(2024, time.January, 20, 0, 0, 0, 0, time.Local)).
+						WithPreviousLineType(content.PreviousLineTypeNonBlank),
+				)))
+			})
+
+			It("keeps a blank line before the date", func() {
+				block, err := markdown.ParseString("TODO Task\n\nSCHEDULED: <2024-01-15 Mon>")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewParagraph(
+						content.NewTaskMarker(content.TaskStatusTodo),
+						content.NewText("Task"),
+					),
+					content.NewScheduled(time.Date(2024, time.January, 15, 0, 0, 0, 0, time.Local)).
+						WithPreviousLineType(content.PreviousLineTypeBlank),
+				)))
+			})
+
+			It("keeps a date with an unsupported time range as text", func() {
+				block, err := markdown.ParseString("TODO Task\nSCHEDULED: <2024-01-15 Mon 10:00-11:00>")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewParagraph(
+						content.NewTaskMarker(content.TaskStatusTodo),
+						content.NewText("Task").WithSoftLineBreak(),
+						content.NewText("SCHEDULED: <2024-01-15 Mon 10:00-11:00>"),
+					),
+				)))
+			})
+
+			It("keeps a date that does not exist as text", func() {
+				block, err := markdown.ParseString("TODO Task\nSCHEDULED: <2024-02-31 Sat>")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewParagraph(
+						content.NewTaskMarker(content.TaskStatusTodo),
+						content.NewText("Task").WithSoftLineBreak(),
+						content.NewText("SCHEDULED: <2024-02-31 Sat>"),
+					),
+				)))
+			})
+
+			It("keeps text that only looks like a date as text", func() {
+				block, err := markdown.ParseString("SCHEDULED: tomorrow")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewParagraph(
+						content.NewText("SCHEDULED: tomorrow"),
 					),
 				)))
 			})

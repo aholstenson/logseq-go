@@ -2,6 +2,7 @@ package markdown_test
 
 import (
 	"strings"
+	"time"
 
 	"github.com/aholstenson/logseq-go/content"
 	"github.com/aholstenson/logseq-go/internal/markdown"
@@ -1097,6 +1098,95 @@ var _ = Describe("Output", func() {
 				Expect(err).ToNot(HaveOccurred())
 
 				Expect(buf.String()).To(Equal("WAITING Task"))
+			})
+		})
+
+		Describe("Scheduled and deadline", func() {
+			It("can write SCHEDULED", func() {
+				err := writer.Write(content.NewScheduled(
+					time.Date(2024, time.January, 15, 0, 0, 0, 0, time.Local),
+				))
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(buf.String()).To(Equal("SCHEDULED: <2024-01-15 Mon>"))
+			})
+
+			It("can write DEADLINE", func() {
+				err := writer.Write(content.NewDeadline(
+					time.Date(2024, time.January, 15, 0, 0, 0, 0, time.Local),
+				))
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(buf.String()).To(Equal("DEADLINE: <2024-01-15 Mon>"))
+			})
+
+			It("drops the time of day when the date does not have one", func() {
+				err := writer.Write(content.NewScheduled(
+					time.Date(2024, time.January, 15, 9, 30, 0, 0, time.Local),
+				))
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(buf.String()).To(Equal("SCHEDULED: <2024-01-15 Mon>"))
+			})
+
+			It("can write a date with a time of day", func() {
+				err := writer.Write(content.NewScheduledWithTime(
+					time.Date(2024, time.January, 15, 9, 30, 0, 0, time.Local),
+				))
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(buf.String()).To(Equal("SCHEDULED: <2024-01-15 Mon 09:30>"))
+			})
+
+			It("can write all of the repeater types", func() {
+				date := time.Date(2024, time.January, 15, 0, 0, 0, 0, time.Local)
+
+				for repeaterType, expected := range map[content.RepeaterType]string{
+					content.RepeaterTypeCumulate: "+2d",
+					content.RepeaterTypeCatchUp:  "++2d",
+					content.RepeaterTypeRestart:  ".+2d",
+				} {
+					out := &strings.Builder{}
+					err := markdown.NewWriter(out).Write(content.NewScheduled(date).WithRepeater(
+						content.NewRepeater(repeaterType, 2, content.RepeaterUnitDay),
+					))
+					Expect(err).ToNot(HaveOccurred())
+
+					Expect(out.String()).To(Equal("SCHEDULED: <2024-01-15 Mon " + expected + ">"))
+				}
+			})
+
+			It("can write all of the repeater units", func() {
+				date := time.Date(2024, time.January, 15, 0, 0, 0, 0, time.Local)
+
+				for unit, expected := range map[content.RepeaterUnit]string{
+					content.RepeaterUnitHour:  ".+1h",
+					content.RepeaterUnitDay:   ".+1d",
+					content.RepeaterUnitWeek:  ".+1w",
+					content.RepeaterUnitMonth: ".+1m",
+					content.RepeaterUnitYear:  ".+1y",
+				} {
+					out := &strings.Builder{}
+					err := markdown.NewWriter(out).Write(content.NewScheduled(date).WithRepeater(
+						content.NewRepeater(content.RepeaterTypeRestart, 1, unit),
+					))
+					Expect(err).ToNot(HaveOccurred())
+
+					Expect(out.String()).To(Equal("SCHEDULED: <2024-01-15 Mon " + expected + ">"))
+				}
+			})
+
+			It("writes the date on the line after the task", func() {
+				err := writer.Write(content.NewBlock(
+					content.NewParagraph(
+						content.NewTaskMarker(content.TaskStatusTodo),
+						content.NewText("Task"),
+					),
+					content.NewScheduled(time.Date(2024, time.January, 15, 0, 0, 0, 0, time.Local)),
+				))
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(buf.String()).To(Equal("TODO Task\nSCHEDULED: <2024-01-15 Mon>"))
 			})
 		})
 

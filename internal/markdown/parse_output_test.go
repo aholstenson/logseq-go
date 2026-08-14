@@ -155,5 +155,25 @@ var _ = Describe("Parsing then outputting", func() {
 			Varies("TODO with text on the next line", "TODO\nmore", "TODO more")
 			Varies("TODO followed by formatting", "TODO**bold**", "TODO **bold**")
 		})
+
+		Describe("Scheduled and deadline", func() {
+			FullyEqual("Scheduled", "TODO Task\nSCHEDULED: <2024-01-15 Mon>")
+			FullyEqual("Deadline", "TODO Task\nDEADLINE: <2024-01-15 Mon>")
+			FullyEqual("Scheduled with time", "TODO Task\nSCHEDULED: <2024-01-15 Mon 09:30>")
+			FullyEqual("Scheduled with repeater", "TODO Task\nSCHEDULED: <2024-01-15 Mon .+3d>")
+			FullyEqual("Scheduled with time and repeater", "TODO Task\nSCHEDULED: <2024-01-15 Mon 09:30 ++1w>")
+			FullyEqual("Scheduled and deadline", "TODO Task\nSCHEDULED: <2024-01-15 Mon>\nDEADLINE: <2024-01-20 Sat>")
+			FullyEqual("Scheduled followed by logbook", "TODO Task\nSCHEDULED: <2024-01-15 Mon>\n:LOGBOOK:\nCLOCK: [2023-06-26 Mon 17:25:56]\n:END:")
+			FullyEqual("Scheduled in sub blocks", "- TODO Task\n  SCHEDULED: <2024-01-15 Mon>\n- TODO Other")
+			FullyEqual("Scheduled after a blank line", "TODO Task\n\nSCHEDULED: <2024-01-15 Mon>")
+
+			// The day name is regenerated from the date, so a wrong one is
+			// corrected on the way out.
+			Varies("Scheduled with the wrong day name", "TODO Task\nSCHEDULED: <2024-01-15 Fri>", "TODO Task\nSCHEDULED: <2024-01-15 Mon>")
+
+			// Syntax that is not modelled stays as text so nothing is lost.
+			FullyEqual("Scheduled with a time range", "TODO Task\nSCHEDULED: <2024-01-15 Mon 10:00-11:00>")
+			FullyEqual("Scheduled with a plain date", "TODO Task\nSCHEDULED: 2024-01-15")
+		})
 	})
 })
