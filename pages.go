@@ -1,6 +1,7 @@
 package logseq
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -52,6 +53,19 @@ type Page interface {
 	// block and reports true from Block.IsPreBlock.
 	Blocks() content.BlockList
 
+	// LinkedReferences finds the blocks in the graph that reference this page,
+	// which is what Logseq shows as the linked references of a page. Blocks
+	// reference a page via `[[Title]]`, `#Title`, `{{embed [[Title]]}}` or a
+	// property such as `related:: [[Title]]`, and blocks on the page itself are
+	// included if they do.
+	//
+	// Search options such as WithMaxHits and FromHit can be used to page through
+	// the references, and WithQuery narrows them down further.
+	//
+	// References are found via the index, so this requires the graph to have
+	// been opened with indexing enabled.
+	LinkedReferences(ctx context.Context, opts ...SearchOption) (SearchResults[BlockResult], error)
+
 	// AddBlock adds a block to the page.
 	AddBlock(block *content.Block)
 
@@ -70,6 +84,11 @@ type Page interface {
 }
 
 type pageImpl struct {
+	// source is where the page was opened from, used to look up other content
+	// in the graph. Pages opened in a transaction get the transaction, so that
+	// pages reached from this one become part of it as well.
+	source pageSource
+
 	path         string
 	isNew        bool
 	lastModified time.Time
@@ -81,7 +100,7 @@ type pageImpl struct {
 	root *content.Block
 }
 
-func openOrCreatePage(path string, pageType PageType, title string, date time.Time, templatePath string) (*pageImpl, error) {
+func openOrCreatePage(source pageSource, path string, pageType PageType, title string, date time.Time, templatePath string) (*pageImpl, error) {
 	// Get the last modified time for the file
 	info, err := os.Stat(path)
 	var root *content.Block
@@ -113,6 +132,8 @@ func openOrCreatePage(path string, pageType PageType, title string, date time.Ti
 	}
 
 	return &pageImpl{
+		source: source,
+
 		path:         path,
 		isNew:        info == nil,
 		lastModified: lastModified,
@@ -185,6 +206,14 @@ func (p *pageImpl) preBlock() *content.Block {
 
 func (p *pageImpl) Blocks() content.BlockList {
 	return p.root.Blocks()
+}
+
+func (p *pageImpl) LinkedReferences(ctx context.Context, opts ...SearchOption) (SearchResults[BlockResult], error) {
+	options := make([]SearchOption, 0, len(opts)+1)
+	options = append(options, WithQuery(References(p.title)))
+	options = append(options, opts...)
+
+	return p.source.SearchBlocks(ctx, options...)
 }
 
 func (p *pageImpl) AddBlock(block *content.Block) {

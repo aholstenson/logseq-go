@@ -14,13 +14,16 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
-// pageSource is an interface that is used to open pages and journals. Used
-// to delegate operations to the graph but allow for transactions to be used
-// for opening pages.
+// pageSource is an interface that is used to open pages and journals, and to
+// find the blocks that relate to them. Used to delegate operations to the graph
+// but allow for transactions to be used for opening pages, so that pages
+// reached from other pages become part of the same transaction.
 type pageSource interface {
 	OpenJournal(date time.Time) (Page, error)
 
 	OpenPage(title string) (Page, error)
+
+	SearchBlocks(ctx context.Context, opts ...SearchOption) (SearchResults[BlockResult], error)
 }
 
 // Graph represents a Logseq graph. In Logseq a graph is a directory that
@@ -126,6 +129,10 @@ func journalDate(t time.Time) time.Time {
 
 // Journal returns a read-only version of the journal page for the given date.
 func (g *Graph) OpenJournal(date time.Time) (Page, error) {
+	return g.openJournal(date, g)
+}
+
+func (g *Graph) openJournal(date time.Time, source pageSource) (Page, error) {
 	date = journalDate(date)
 
 	path, err := g.journalPath(date)
@@ -140,7 +147,7 @@ func (g *Graph) OpenJournal(date time.Time) (Page, error) {
 
 	title := date.Format(g.journalTitleFormat)
 
-	return openOrCreatePage(path, PageTypeJournal, title, date, templatePath)
+	return openOrCreatePage(source, path, PageTypeJournal, title, date, templatePath)
 }
 
 func (g *Graph) journalPath(date time.Time) (string, error) {
@@ -150,12 +157,16 @@ func (g *Graph) journalPath(date time.Time) (string, error) {
 
 // Page returns a read-only version of a page for the given path.
 func (g *Graph) OpenPage(title string) (Page, error) {
+	return g.openPage(title, g)
+}
+
+func (g *Graph) openPage(title string, source pageSource) (Page, error) {
 	path, err := g.pagePath(title)
 	if err != nil {
 		return nil, err
 	}
 
-	return openOrCreatePage(path, PageTypeDedicated, title, time.Time{}, "")
+	return openOrCreatePage(source, path, PageTypeDedicated, title, time.Time{}, "")
 }
 
 func (g *Graph) pagePath(title string) (string, error) {
@@ -192,7 +203,7 @@ func (g *Graph) removePageFile(path string) error {
 	return nil
 }
 
-func (g *Graph) openViaPath(path string) (Page, error) {
+func (g *Graph) openViaPath(path string, source pageSource) (Page, error) {
 	name := filepath.Base(path)
 	if filepath.Ext(name) != ".md" {
 		return nil, fmt.Errorf("not a Markdown file")
@@ -210,14 +221,14 @@ func (g *Graph) openViaPath(path string) (Page, error) {
 
 		title := date.Format(g.journalTitleFormat)
 
-		return openOrCreatePage(path, PageTypeJournal, title, date, "")
+		return openOrCreatePage(source, path, PageTypeJournal, title, date, "")
 	} else if dir == filepath.Join(g.directory, g.config.PagesDir) {
 		title, err := utils.FilenameToTitle(g.config.File.NameFormat, name)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get title from filename: %w", err)
 		}
 
-		return openOrCreatePage(path, PageTypeDedicated, title, time.Time{}, "")
+		return openOrCreatePage(source, path, PageTypeDedicated, title, time.Time{}, "")
 	}
 
 	return nil, fmt.Errorf("not a page or journal")
@@ -306,7 +317,7 @@ func (g *Graph) createWalker(ctx context.Context, listener func(event OpenEvent)
 }
 
 func (g *Graph) indexDocument(ctx context.Context, docPath string) (Page, error) {
-	page, err := g.openViaPath(docPath)
+	page, err := g.openViaPath(docPath, g)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open page: %w", err)
 	}
@@ -467,7 +478,7 @@ func (g *Graph) watchForChanges() {
 				g.index.Sync()
 			} else if exists {
 				// No indexing, open the page directly
-				page, err = g.openViaPath(path)
+				page, err = g.openViaPath(path, g)
 				if err != nil {
 					// TODO: Log error
 				}

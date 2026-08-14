@@ -42,7 +42,7 @@ func (t *Transaction) OpenJournal(date time.Time) (Page, error) {
 		return page, nil
 	}
 
-	page, err = t.graph.OpenJournal(date)
+	page, err = t.graph.openJournal(date, t)
 	if err != nil {
 		return nil, err
 	}
@@ -62,7 +62,7 @@ func (t *Transaction) OpenPage(title string) (Page, error) {
 		return page, nil
 	}
 
-	page, err = t.graph.OpenPage(title)
+	page, err = t.graph.openPage(title, t)
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +79,7 @@ func (t *Transaction) openViaPath(path string) (*pageImpl, error) {
 	page, ok := t.openedPages[path]
 	if !ok {
 		var err error
-		page, err = t.graph.openViaPath(path)
+		page, err = t.graph.openViaPath(path, t)
 		if err != nil {
 			return nil, err
 		}
@@ -182,7 +182,7 @@ func (t *Transaction) RenamePage(ctx context.Context, from string, to string) er
 
 		// The page keeps its content but is written to the file of the new
 		// title, leaving the old file to be removed.
-		renamed, err = openOrCreatePage(toPath, PageTypeDedicated, to, time.Time{}, "")
+		renamed, err = openOrCreatePage(t, toPath, PageTypeDedicated, to, time.Time{}, "")
 		if err != nil {
 			return err
 		}

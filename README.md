@@ -11,6 +11,7 @@ when pages are modified. Please open issues if you find any bugs.
 - Read and write journals and pages
 - Rename and delete pages, with references to a renamed page updated across the
   graph
+- Search, linked references and lookup of blocks by their id
 - Rich content model
   - Blocks
   - Formatting via headings, paragraphs, lists, code blocks, etc.
@@ -34,6 +35,18 @@ journalPage, err := graph.OpenJournal(time.Now())
 page, err := graph.OpenPage("Example")
 
 for _, block := range page.Blocks() {
+  // ...
+}
+```
+
+The blocks that reference a page, what Logseq shows as its linked references,
+are available from the page itself:
+
+```go
+references, err := page.LinkedReferences(ctx)
+
+for _, reference := range references.Results() {
+  block, referencingPage, err := reference.Open()
   // ...
 }
 ```
