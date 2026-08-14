@@ -79,6 +79,64 @@ func (t *TaskMarker) debug(p *debugPrinter) {
 
 func (t *TaskMarker) isInline() {}
 
+// Priority is how urgent a task is.
+type Priority int
+
+const (
+	// PriorityNone is used when a task does not have a priority.
+	PriorityNone Priority = iota
+	// PriorityA is the highest priority, written as `[#A]`.
+	PriorityA
+	// PriorityB is the middle priority, written as `[#B]`.
+	PriorityB
+	// PriorityC is the lowest priority, written as `[#C]`.
+	PriorityC
+)
+
+// TaskPriority is the priority of a task. Logseq puts it at the start of the
+// content of a block, after the task marker if there is one:
+//
+//	TODO [#A] Water the plants
+//
+// Brackets used this way elsewhere in a block are not a priority to Logseq and
+// are kept as text instead.
+type TaskPriority struct {
+	baseNode
+
+	Priority Priority
+}
+
+func NewTaskPriority(priority Priority) *TaskPriority {
+	return &TaskPriority{
+		Priority: priority,
+	}
+}
+
+// WithPriority sets the priority.
+func (t *TaskPriority) WithPriority(priority Priority) *TaskPriority {
+	t.Priority = priority
+	return t
+}
+
+func (t *TaskPriority) debug(p *debugPrinter) {
+	p.StartType("TaskPriority")
+	switch t.Priority {
+	case PriorityNone:
+		p.Field("priority", "none")
+	case PriorityA:
+		p.Field("priority", "a")
+	case PriorityB:
+		p.Field("priority", "b")
+	case PriorityC:
+		p.Field("priority", "c")
+	}
+	p.EndType()
+}
+
+func (t *TaskPriority) isInline() {}
+
+var _ InlineNode = (*TaskPriority)(nil)
+
 // TaskDateType is the type of a date that is attached to a task.
 type TaskDateType int
 

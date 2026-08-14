@@ -38,6 +38,7 @@ func init() {
 		),
 		parser.WithInlineParsers(
 			util.Prioritized(parser.NewCodeSpanParser(), 100),
+			util.Prioritized(&priorityParser{}, 196),
 			util.Prioritized(&macroParser{}, 197),
 			util.Prioritized(&blockRefParser{}, 198),
 			util.Prioritized(&pageLinkParser{}, 199),
@@ -108,6 +109,8 @@ func convert(src []byte, in ast.Node) (content.Node, error) {
 		return content.NewPageLink(node.Page), nil
 	case *blockRef:
 		return content.NewBlockRef(node.ID), nil
+	case *priority:
+		return content.NewTaskPriority(node.Priority), nil
 	case *macro:
 		return convertMacro(src, node)
 	case *ast.FencedCodeBlock:
@@ -291,29 +294,8 @@ func convertTaskMarker(node *content.Paragraph) {
 		potentialMarker = textNode.Value[:potentialMarkerIdx]
 	}
 
-	var taskStatus content.TaskStatus
-	switch potentialMarker {
-	case "TODO":
-		taskStatus = content.TaskStatusTodo
-	case "DONE":
-		taskStatus = content.TaskStatusDone
-	case "DOING":
-		taskStatus = content.TaskStatusDoing
-	case "LATER":
-		taskStatus = content.TaskStatusLater
-	case "NOW":
-		taskStatus = content.TaskStatusNow
-	case "CANCELLED":
-		taskStatus = content.TaskStatusCancelled
-	case "CANCELED":
-		taskStatus = content.TaskStatusCanceled
-	case "IN-PROGRESS":
-		taskStatus = content.TaskStatusInProgress
-	case "WAIT":
-		taskStatus = content.TaskStatusWait
-	case "WAITING":
-		taskStatus = content.TaskStatusWaiting
-	default:
+	taskStatus := taskStatusFor(potentialMarker)
+	if taskStatus == content.TaskStatusNone {
 		return
 	}
 
@@ -329,6 +311,35 @@ func convertTaskMarker(node *content.Paragraph) {
 	}
 
 	node.PrependChild(content.NewTaskMarker(taskStatus))
+}
+
+// taskStatusFor maps a task marker to its status, returning TaskStatusNone if
+// the word is not a marker.
+func taskStatusFor(marker string) content.TaskStatus {
+	switch marker {
+	case "TODO":
+		return content.TaskStatusTodo
+	case "DONE":
+		return content.TaskStatusDone
+	case "DOING":
+		return content.TaskStatusDoing
+	case "LATER":
+		return content.TaskStatusLater
+	case "NOW":
+		return content.TaskStatusNow
+	case "CANCELLED":
+		return content.TaskStatusCancelled
+	case "CANCELED":
+		return content.TaskStatusCanceled
+	case "IN-PROGRESS":
+		return content.TaskStatusInProgress
+	case "WAIT":
+		return content.TaskStatusWait
+	case "WAITING":
+		return content.TaskStatusWaiting
+	}
+
+	return content.TaskStatusNone
 }
 
 func convertParagraph(src []byte, node *ast.Paragraph) (*content.Paragraph, error) {

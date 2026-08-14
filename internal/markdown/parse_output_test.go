@@ -156,6 +156,27 @@ var _ = Describe("Parsing then outputting", func() {
 			Varies("TODO followed by formatting", "TODO**bold**", "TODO **bold**")
 		})
 
+		Describe("Priorities", func() {
+			FullyEqual("Priority A", "TODO [#A] Task")
+			FullyEqual("Priority B", "TODO [#B] Task")
+			FullyEqual("Priority C", "TODO [#C] Task")
+			FullyEqual("Priority without a marker", "[#A] Task")
+			FullyEqual("Priority without content after it", "TODO [#A]")
+			FullyEqual("Priority in sub blocks", "- TODO [#A] Task\n- TODO [#B] Other")
+			FullyEqual("Priority followed by a tag and a page link", "TODO [#A] #tag and [[page]]")
+			FullyEqual("Priority with a scheduled date", "TODO [#A] Task\nSCHEDULED: <2024-01-15 Mon>")
+
+			// Brackets that Logseq does not read as a priority stay as text.
+			FullyEqual("Priority that is not at the start", "Task [#A] more")
+			FullyEqual("Unknown priority", "TODO [#D] Task")
+			FullyEqual("Priority not followed by a space", "Task [#A]more")
+		})
+
+		Describe("Footnotes", func() {
+			FullyEqual("Footnote reference", "Task with a footnote[^1] in it")
+			FullyEqual("Footnote definition", "[^1]: The footnote")
+		})
+
 		Describe("Scheduled and deadline", func() {
 			FullyEqual("Scheduled", "TODO Task\nSCHEDULED: <2024-01-15 Mon>")
 			FullyEqual("Deadline", "TODO Task\nDEADLINE: <2024-01-15 Mon>")

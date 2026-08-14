@@ -48,6 +48,41 @@ var _ = Describe("Output", func() {
 			Expect(buf.String()).To(Equal("abc\\*"))
 		})
 
+		It("can write text with brackets that should be escaped", func() {
+			err := writer.Write(content.NewText("abc [def] ghi"))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal("abc \\[def\\] ghi"))
+		})
+
+		It("keeps brackets of a priority unescaped", func() {
+			err := writer.Write(content.NewText("abc [#A] def"))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal("abc [#A] def"))
+		})
+
+		It("keeps brackets of a footnote reference unescaped", func() {
+			err := writer.Write(content.NewText("abc [^1] def"))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal("abc [^1] def"))
+		})
+
+		It("escapes brackets that would be read back as a link", func() {
+			err := writer.Write(content.NewText("abc [#A](def) ghi"))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal("abc \\[#A\\](def) ghi"))
+		})
+
+		It("escapes around brackets that are kept unescaped", func() {
+			err := writer.Write(content.NewText("*a* [#A] *b* [^1] *c*"))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal("\\*a\\* [#A] \\*b\\* [^1] \\*c\\*"))
+		})
+
 		It("can write multiple text nodes", func() {
 			err := writer.Write(content.NewText("abc"))
 			Expect(err).ToNot(HaveOccurred())
@@ -1098,6 +1133,48 @@ var _ = Describe("Output", func() {
 				Expect(err).ToNot(HaveOccurred())
 
 				Expect(buf.String()).To(Equal("WAITING Task"))
+			})
+		})
+
+		Describe("Priorities", func() {
+			It("can write a priority", func() {
+				err := writer.Write(content.NewParagraph(
+					content.NewTaskMarker(content.TaskStatusTodo),
+					content.NewTaskPriority(content.PriorityA),
+					content.NewText("Task"),
+				))
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(buf.String()).To(Equal("TODO [#A] Task"))
+			})
+
+			It("can write a priority without a marker", func() {
+				err := writer.Write(content.NewParagraph(
+					content.NewTaskPriority(content.PriorityB),
+					content.NewText("Task"),
+				))
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(buf.String()).To(Equal("[#B] Task"))
+			})
+
+			It("can write a priority without content after it", func() {
+				err := writer.Write(content.NewParagraph(
+					content.NewTaskPriority(content.PriorityC),
+				))
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(buf.String()).To(Equal("[#C]"))
+			})
+
+			It("writes nothing for no priority", func() {
+				err := writer.Write(content.NewParagraph(
+					content.NewTaskPriority(content.PriorityNone),
+					content.NewText("Task"),
+				))
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(buf.String()).To(Equal("Task"))
 			})
 		})
 

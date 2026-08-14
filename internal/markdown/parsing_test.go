@@ -2162,6 +2162,81 @@ var _ = Describe("Parsing", func() {
 			})
 		})
 
+		Describe("Priorities", func() {
+			It("can parse a priority after a marker", func() {
+				block, err := markdown.ParseString("TODO [#A] Task")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewParagraph(
+						content.NewTaskMarker(content.TaskStatusTodo),
+						content.NewTaskPriority(content.PriorityA),
+						content.NewText("Task"),
+					),
+				)))
+			})
+
+			It("can parse a priority without a marker", func() {
+				block, err := markdown.ParseString("[#B] Task")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewParagraph(
+						content.NewTaskPriority(content.PriorityB),
+						content.NewText("Task"),
+					),
+				)))
+			})
+
+			It("can parse a priority without any content after it", func() {
+				block, err := markdown.ParseString("TODO [#C]")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewParagraph(
+						content.NewTaskMarker(content.TaskStatusTodo),
+						content.NewTaskPriority(content.PriorityC),
+					),
+				)))
+			})
+
+			It("keeps a priority that is not at the start as text", func() {
+				block, err := markdown.ParseString("Task [#A] more")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewParagraph(
+						content.NewText("Task [#A] more"),
+					),
+				)))
+			})
+
+			It("keeps an unknown priority as text", func() {
+				block, err := markdown.ParseString("TODO [#D] Task")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewParagraph(
+						content.NewTaskMarker(content.TaskStatusTodo),
+						content.NewText("[#D] Task"),
+					),
+				)))
+			})
+
+			It("keeps a tag in brackets as a tag", func() {
+				block, err := markdown.ParseString("Task [#[[a tag]]] more")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewParagraph(
+						content.NewText("Task ["),
+						content.NewHashtag("a tag"),
+						content.NewText("] more"),
+					),
+				)))
+			})
+		})
+
 		Describe("Scheduled and deadline", func() {
 			It("can parse SCHEDULED", func() {
 				block, err := markdown.ParseString("TODO Task\nSCHEDULED: <2024-01-15 Mon>")

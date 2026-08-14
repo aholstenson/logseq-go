@@ -12,13 +12,41 @@ import (
 
 var urlRegexp = regexp.MustCompile(`^(?:http|https|ftp)://[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-z]+(?::\d+)?(?:[/#?][-a-zA-Z0-9@:%_+.~#$!?&/=\(\);,'">\^{}\[\]` + "`" + `]*)?`)
 
-type EscapeFunc func(rune, rune) bool
+// EscapeFunc escapes a string so that reading it back gives the same value.
+type EscapeFunc func(string) string
 
-func EscapeNone(rune, rune) bool {
-	return false
+func EscapeNone(str string) string {
+	return str
 }
 
-func EscapePotentialMarkdown(prev rune, r rune) bool {
+// literalBracketsRegexp matches bracketed syntax that Logseq only recognizes
+// when the brackets are left alone: priorities such as `[#A]` and footnote
+// references such as `[^1]`. Escaping those would turn them into plain text.
+var literalBracketsRegexp = regexp.MustCompile(`\[[#^][^\[\]\s]+\]`)
+
+// EscapePotentialMarkdown escapes characters in text that would otherwise be
+// read back as formatting.
+func EscapePotentialMarkdown(str string) string {
+	out := strings.Builder{}
+
+	end := 0
+	for _, match := range literalBracketsRegexp.FindAllStringIndex(str, -1) {
+		if match[1] < len(str) && (str[match[1]] == '(' || str[match[1]] == '[') {
+			// Followed by a link destination or a link label, so the brackets
+			// have to stay escaped to not be read back as a link.
+			continue
+		}
+
+		out.WriteString(escapeRunes(str[end:match[0]], escapePotentialMarkdownRune))
+		out.WriteString(str[match[0]:match[1]])
+		end = match[1]
+	}
+
+	out.WriteString(escapeRunes(str[end:], escapePotentialMarkdownRune))
+	return out.String()
+}
+
+func escapePotentialMarkdownRune(prev rune, r rune) bool {
 	if r == '*' || r == '_' || r == '[' || r == ']' {
 		return true
 	}
@@ -30,27 +58,39 @@ func EscapePotentialMarkdown(prev rune, r rune) bool {
 	return false
 }
 
-func EscapeLinkURL(prev rune, r rune) bool {
-	return r == '(' || r == ')'
+func EscapeLinkURL(str string) string {
+	return escapeRunes(str, func(prev rune, r rune) bool {
+		return r == '(' || r == ')'
+	})
 }
 
-func EscapeLinkTitle(prev rune, r rune) bool {
-	return r == '"' || r == '\'' || r == ')'
+func EscapeLinkTitle(str string) string {
+	return escapeRunes(str, func(prev rune, r rune) bool {
+		return r == '"' || r == '\'' || r == ')'
+	})
 }
 
-func EscapeWikiLink(prev rune, r rune) bool {
-	return r == ']'
+func EscapeWikiLink(str string) string {
+	return escapeRunes(str, func(prev rune, r rune) bool {
+		return r == ']'
+	})
 }
 
-func EscapeBlockRef(prev rune, r rune) bool {
-	return r == ')'
+func EscapeBlockRef(str string) string {
+	return escapeRunes(str, func(prev rune, r rune) bool {
+		return r == ')'
+	})
 }
 
-func EscapeMacroQuotedArgument(prev rune, r rune) bool {
-	return r == '"'
+func EscapeMacroQuotedArgument(str string) string {
+	return escapeRunes(str, func(prev rune, r rune) bool {
+		return r == '"'
+	})
 }
 
-func EscapeString(str string, f EscapeFunc) string {
+// escapeRunes puts a backslash in front of every rune the given function picks
+// out, passing it the rune before it for the cases that need that context.
+func escapeRunes(str string, f func(prev rune, r rune) bool) string {
 	out := strings.Builder{}
 	p := rune(0)
 	for _, r := range str {
@@ -127,9 +167,9 @@ func (w *Output) Write(n content.Node) error {
 	case *content.Query:
 		return w.writeMacro(node, "query", []string{node.Query})
 	case *content.PageEmbed:
-		return w.writeMacro(node, "embed", []string{"[[" + EscapeString(node.To, EscapeWikiLink) + "]]"})
+		return w.writeMacro(node, "embed", []string{"[[" + EscapeWikiLink(node.To) + "]]"})
 	case *content.BlockEmbed:
-		return w.writeMacro(node, "embed", []string{"((" + EscapeString(node.ID, EscapeBlockRef) + "))"})
+		return w.writeMacro(node, "embed", []string{"((" + EscapeBlockRef(node.ID) + "))"})
 	case *content.Cloze:
 		return w.writeCloze(node)
 	case *content.Heading:
@@ -156,6 +196,8 @@ func (w *Output) Write(n content.Node) error {
 		return w.writeBeginEnd(node, "QUERY", node.Query)
 	case *content.TaskMarker:
 		return w.writeTaskMarker(node)
+	case *content.TaskPriority:
+		return w.writeTaskPriority(node)
 	case *content.TaskDate:
 		return w.writeTaskDate(node)
 	case *content.Logbook:
@@ -170,18 +212,7 @@ func (w *Output) writeRaw(s string) error {
 }
 
 func (w *Output) write(s string, escapeFunc EscapeFunc) error {
-	out := strings.Builder{}
-	p := rune(0)
-	for _, r := range s {
-		if escapeFunc(p, r) {
-			out.WriteRune('\\')
-		}
-
-		out.WriteRune(r)
-		p = r
-	}
-
-	return w.writeRaw(out.String())
+	return w.writeRaw(escapeFunc(s))
 }
 
 func (w *Output) startBlock(node content.BlockNode, marker string) error {
@@ -1065,6 +1096,35 @@ func (w *Output) writeTaskMarker(node *content.TaskMarker) error {
 		err = w.writeRaw("WAITING")
 	default:
 		return fmt.Errorf("unsupported task status: %d", node.Status)
+	}
+
+	if err != nil {
+		return err
+	}
+
+	if node.NextSibling() != nil {
+		err = w.writeRaw(" ")
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (w *Output) writeTaskPriority(node *content.TaskPriority) error {
+	var err error
+	switch node.Priority {
+	case content.PriorityNone:
+		return nil
+	case content.PriorityA:
+		err = w.writeRaw("[#A]")
+	case content.PriorityB:
+		err = w.writeRaw("[#B]")
+	case content.PriorityC:
+		err = w.writeRaw("[#C]")
+	default:
+		return fmt.Errorf("unsupported priority: %d", node.Priority)
 	}
 
 	if err != nil {
