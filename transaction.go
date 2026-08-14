@@ -2,6 +2,7 @@ package logseq
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -150,19 +151,98 @@ func (t *Transaction) deletePath(path string) {
 	t.removedPaths = append(t.removedPaths, path)
 }
 
+// RenameOption is an option for renaming a page.
+type RenameOption func(*renameOptions)
+
+type renameOptions struct {
+	namespaceChildren bool
+}
+
+// WithNamespaceChildren renames the pages in the namespace of a page along with
+// it, so that renaming `Parent` also renames `Parent/Child` to `New/Child` and
+// `Parent/Child/Grandchild` to `New/Child/Grandchild`. Without it those pages
+// keep the titles they have, staying in the namespace of the old title.
+//
+// A namespace does not need a page of its own, so with this option the page
+// being renamed is allowed to not exist as long as the namespace has pages in
+// it.
+func WithNamespaceChildren() RenameOption {
+	return func(o *renameOptions) {
+		o.namespaceChildren = true
+	}
+}
+
 // RenamePage changes the title of a page. The page moves to the file its new
 // title belongs in and every reference to it in the graph, such as `[[Old]]`,
 // `#Old` and `{{embed [[Old]]}}`, is pointed at the new title. As with all
 // other changes, this happens when the transaction is saved.
 //
+// Pages in the namespace of the page keep their titles unless
+// WithNamespaceChildren is used.
+//
 // The references are found via the index, so this requires the graph to have
 // been opened with indexing enabled. Pages that have changed on disk without
 // having been indexed yet may keep references to the old title.
-func (t *Transaction) RenamePage(ctx context.Context, from string, to string) error {
+func (t *Transaction) RenamePage(ctx context.Context, from string, to string, opts ...RenameOption) error {
 	if t.graph.index == nil {
 		return fmt.Errorf("indexing is not enabled, which is required to rename pages")
 	}
 
+	options := &renameOptions{}
+	for _, opt := range opts {
+		opt(options)
+	}
+
+	// The titles are collected before anything is renamed, as they are the
+	// titles the pages have in the index.
+	var children []string
+	if options.namespaceChildren {
+		var err error
+		children, err = t.graph.pageTitlesUnderNamespace(ctx, from)
+		if err != nil {
+			return fmt.Errorf("failed to find the pages in the namespace %s: %w", from, err)
+		}
+	}
+
+	// The new titles are checked before anything is renamed, so that one of
+	// them being taken does not leave a namespace that is only half renamed.
+	for _, child := range children {
+		title, ok := namespaceRenameTarget(child, from, to)
+		if !ok {
+			continue
+		}
+
+		if err := t.checkRename(child, title); err != nil {
+			return err
+		}
+	}
+
+	err := t.renamePage(ctx, from, to)
+	if err != nil {
+		// A namespace does not need a page of its own, so the page not existing
+		// is only a problem when there is nothing in the namespace either.
+		if len(children) == 0 || !errors.Is(err, ErrPageNotFound) {
+			return err
+		}
+	}
+
+	for _, child := range children {
+		title, ok := namespaceRenameTarget(child, from, to)
+		if !ok {
+			continue
+		}
+
+		// Pages that are in the index but no longer on disk have nothing to
+		// rename, so they are left alone.
+		if err := t.renamePage(ctx, child, title); err != nil && !errors.Is(err, ErrPageNotFound) {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (t *Transaction) renamePage(ctx context.Context, from string, to string) error {
 	fromPath, err := t.graph.pagePath(from)
 	if err != nil {
 		return err
@@ -183,6 +263,11 @@ func (t *Transaction) RenamePage(ctx context.Context, from string, to string) er
 	}
 
 	current := page.(*pageImpl)
+	if current.path != fromPath {
+		// The title belongs to another page, as an alias of it, so there is no
+		// page of its own to rename here.
+		return fmt.Errorf("%w: %s", ErrPageNotFound, from)
+	}
 
 	renamed := current
 	if fromPath != toPath {
@@ -239,6 +324,30 @@ func (t *Transaction) RenamePage(ctx context.Context, from string, to string) er
 	}
 
 	return nil
+}
+
+// checkRename makes sure a page can be renamed, which needs its new title to be
+// free. Titles without a page of their own are left to renaming to skip over.
+func (t *Transaction) checkRename(from string, to string) error {
+	fromPath, err := t.graph.pagePath(from)
+	if err != nil {
+		return err
+	}
+
+	toPath, err := t.graph.pagePath(to)
+	if err != nil {
+		return err
+	}
+
+	if fromPath == toPath {
+		return nil
+	}
+
+	if _, err := os.Stat(fromPath); err != nil {
+		return nil
+	}
+
+	return t.checkRenameTarget(fromPath, toPath, to)
 }
 
 // checkRenameTarget makes sure a page can be moved to the given path, which it

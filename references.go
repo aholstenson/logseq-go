@@ -40,38 +40,23 @@ func (g *Graph) referencingSubPaths(ctx context.Context, title string) ([]string
 		return nil, fmt.Errorf("indexing is not enabled")
 	}
 
-	// References are indexed per block, so the blocks are collected in batches
-	// and reduced to the pages they belong to.
-	const batchSize = 500
-
+	// References are indexed per block, so the blocks are reduced to the pages
+	// they belong to.
 	subPaths := make([]string, 0)
 	seen := make(map[string]struct{})
 
-	for from := 0; ; from += batchSize {
-		results, err := g.index.SearchBlocks(ctx, indexing.References(title), indexing.SearchOptions{
-			Size: batchSize,
-			From: from,
-		})
-		if err != nil {
-			return nil, err
+	err := eachResult(func(opts indexing.SearchOptions) (indexing.SearchResults[*indexing.Block], error) {
+		return g.index.SearchBlocks(ctx, indexing.References(title), opts)
+	}, func(block *indexing.Block) {
+		if _, ok := seen[block.PageSubPath]; ok {
+			return
 		}
 
-		if results.Size() == 0 {
-			break
-		}
-
-		for _, block := range results.Results() {
-			if _, ok := seen[block.PageSubPath]; ok {
-				continue
-			}
-
-			seen[block.PageSubPath] = struct{}{}
-			subPaths = append(subPaths, block.PageSubPath)
-		}
-
-		if from+results.Size() >= results.Count() {
-			break
-		}
+		seen[block.PageSubPath] = struct{}{}
+		subPaths = append(subPaths, block.PageSubPath)
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	return subPaths, nil

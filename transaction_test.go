@@ -222,6 +222,33 @@ var _ = Describe("Transaction", func() {
 			Expect(page.Blocks()).To(HaveLen(1))
 		})
 
+		It("leaves the pages in the namespace of the page alone", func() {
+			graph = openGraphWithPages(dir, map[string]string{
+				"old.md":        "- content of old\n",
+				"old___kept.md": "- content of kept\n",
+			})
+
+			tx := graph.NewTransaction()
+			Expect(tx.RenamePage(ctx, "old", "new")).To(Succeed())
+			Expect(tx.Save()).To(Succeed())
+
+			Expect(readPage("old___kept.md")).To(Equal("- content of kept\n"))
+		})
+
+		It("fails when the title is an alias of another page", func() {
+			graph = openGraphWithPages(dir, map[string]string{
+				"target.md": "alias:: Other\n- content of target\n",
+			})
+
+			tx := graph.NewTransaction()
+			err := tx.RenamePage(ctx, "Other", "new")
+			Expect(errors.Is(err, logseq.ErrPageNotFound)).To(BeTrue())
+
+			Expect(tx.Save()).To(Succeed())
+			Expect(readPage("target.md")).To(Equal("alias:: Other\n- content of target\n"))
+			Expect(filepath.Join(dir, "pages", "new.md")).ToNot(BeAnExistingFile())
+		})
+
 		It("fails when the page does not exist", func() {
 			graph = openGraphWithPages(dir, map[string]string{})
 
@@ -253,6 +280,109 @@ var _ = Describe("Transaction", func() {
 
 			tx := graph.NewTransaction()
 			Expect(tx.RenamePage(ctx, "old", "new")).ToNot(Succeed())
+		})
+	})
+
+	Describe("RenamePage with namespace children", func() {
+		It("renames the pages in the namespace of the page", func() {
+			graph = openGraphWithPages(dir, map[string]string{
+				"old.md":         "- content of old\n",
+				"old___child.md": "- content of child\n",
+				"old___other.md": "- content of other\n",
+			})
+
+			tx := graph.NewTransaction()
+			Expect(tx.RenamePage(ctx, "old", "new", logseq.WithNamespaceChildren())).To(Succeed())
+			Expect(tx.Save()).To(Succeed())
+
+			Expect(readPage("new.md")).To(Equal("- content of old\n"))
+			Expect(readPage("new___child.md")).To(Equal("- content of child\n"))
+			Expect(readPage("new___other.md")).To(Equal("- content of other\n"))
+
+			Expect(filepath.Join(dir, "pages", "old___child.md")).ToNot(BeAnExistingFile())
+			Expect(filepath.Join(dir, "pages", "old___other.md")).ToNot(BeAnExistingFile())
+		})
+
+		It("renames the pages deeper in the namespace", func() {
+			graph = openGraphWithPages(dir, map[string]string{
+				"old.md":                      "- content of old\n",
+				"old___child.md":              "- content of child\n",
+				"old___child___nested.md":     "- content of nested\n",
+				"old___child___nested___x.md": "- content of x\n",
+			})
+
+			tx := graph.NewTransaction()
+			Expect(tx.RenamePage(ctx, "old", "new", logseq.WithNamespaceChildren())).To(Succeed())
+			Expect(tx.Save()).To(Succeed())
+
+			Expect(readPage("new___child___nested.md")).To(Equal("- content of nested\n"))
+			Expect(readPage("new___child___nested___x.md")).To(Equal("- content of x\n"))
+		})
+
+		It("points references to the renamed pages at their new titles", func() {
+			graph = openGraphWithPages(dir, map[string]string{
+				"old.md":         "- content of old\n",
+				"old___child.md": "- content of child\n",
+				"referrer.md":    "- see [[old]] and [[old/child]] for more\n",
+			})
+
+			tx := graph.NewTransaction()
+			Expect(tx.RenamePage(ctx, "old", "new", logseq.WithNamespaceChildren())).To(Succeed())
+			Expect(tx.Save()).To(Succeed())
+
+			Expect(readPage("referrer.md")).To(Equal("- see [[new]] and [[new/child]] for more\n"))
+		})
+
+		It("renames a namespace without a page of its own", func() {
+			graph = openGraphWithPages(dir, map[string]string{
+				"old___child.md": "- content of child\n",
+			})
+
+			tx := graph.NewTransaction()
+			Expect(tx.RenamePage(ctx, "old", "new", logseq.WithNamespaceChildren())).To(Succeed())
+			Expect(tx.Save()).To(Succeed())
+
+			Expect(readPage("new___child.md")).To(Equal("- content of child\n"))
+			Expect(filepath.Join(dir, "pages", "old___child.md")).ToNot(BeAnExistingFile())
+			Expect(filepath.Join(dir, "pages", "new.md")).ToNot(BeAnExistingFile())
+		})
+
+		It("keeps the part of the title below the namespace as it is", func() {
+			graph = openGraphWithPages(dir, map[string]string{
+				"Old___Child.md": "- content of child\n",
+			})
+
+			tx := graph.NewTransaction()
+			Expect(tx.RenamePage(ctx, "old", "new", logseq.WithNamespaceChildren())).To(Succeed())
+			Expect(tx.Save()).To(Succeed())
+
+			Expect(readPage("new___Child.md")).To(Equal("- content of child\n"))
+		})
+
+		It("fails when neither the page nor its namespace exists", func() {
+			graph = openGraphWithPages(dir, map[string]string{})
+
+			tx := graph.NewTransaction()
+			err := tx.RenamePage(ctx, "missing", "new", logseq.WithNamespaceChildren())
+			Expect(errors.Is(err, logseq.ErrPageNotFound)).To(BeTrue())
+		})
+
+		It("fails when the new title of a page in the namespace is taken", func() {
+			graph = openGraphWithPages(dir, map[string]string{
+				"old.md":         "- content of old\n",
+				"old___child.md": "- content of child\n",
+				"new___child.md": "- content of the other child\n",
+			})
+
+			tx := graph.NewTransaction()
+			err := tx.RenamePage(ctx, "old", "new", logseq.WithNamespaceChildren())
+			Expect(errors.Is(err, logseq.ErrPageExists)).To(BeTrue())
+
+			// Nothing was renamed, so the namespace is not left half renamed
+			Expect(tx.Save()).To(Succeed())
+			Expect(readPage("old.md")).To(Equal("- content of old\n"))
+			Expect(readPage("old___child.md")).To(Equal("- content of child\n"))
+			Expect(filepath.Join(dir, "pages", "new.md")).ToNot(BeAnExistingFile())
 		})
 	})
 

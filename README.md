@@ -102,6 +102,14 @@ err = tx.DeletePage("Unwanted")
 err = tx.Save()
 ```
 
+Pages in the namespace of a renamed page keep their titles, unless the rename
+asks for them to come along:
+
+```go
+// Renames Old, Old/Child and Old/Child/Grandchild
+err = tx.RenamePage(ctx, "Old", "New", logseq.WithNamespaceChildren())
+```
+
 Deleted pages are removed from the graph, unless the graph is opened with
 `logseq.WithRecycleDeletedPages()`, in which case they are moved to the
 `logseq/.recycle` directory that Logseq recovers deleted pages from.
