@@ -12,6 +12,7 @@ when pages are modified. Please open issues if you find any bugs.
 - Rename and delete pages, with references to a renamed page updated across the
   graph
 - Search, linked references and lookup of blocks by their id
+- Aliases and namespaces, such as `Parent/Child`
 - Rich content model
   - Blocks
   - Formatting via headings, paragraphs, lists, code blocks, etc.
@@ -53,6 +54,17 @@ for _, reference := range references.Results() {
   block, referencingPage, err := reference.Open()
   // ...
 }
+```
+
+Pages with a `/` in their title are part of a namespace, and the pages in a
+namespace can be found from the page it belongs to:
+
+```go
+page, err := graph.OpenPage("Parent/Child")
+
+page.Namespace() // Parent
+
+children, err := page.NamespaceChildren(ctx)
 ```
 
 Blocks that have an id, which is what block references such as `((id))` point

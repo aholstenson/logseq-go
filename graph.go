@@ -23,6 +23,8 @@ type pageSource interface {
 
 	OpenPage(title string) (Page, error)
 
+	SearchPages(ctx context.Context, opts ...SearchOption) (SearchResults[PageResult], error)
+
 	SearchBlocks(ctx context.Context, opts ...SearchOption) (SearchResults[BlockResult], error)
 }
 

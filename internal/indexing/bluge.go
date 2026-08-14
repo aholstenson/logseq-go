@@ -238,6 +238,18 @@ func (i *BlugeIndex) pageToDocument(doc *Page) (*bluge.Document, error) {
 	case PageTypeDedicated:
 		blugeDoc.AddField(bluge.NewKeywordField("type", "page").StoreValue())
 		blugeDoc.AddField(bluge.NewTextField("title", doc.Title).StoreValue())
+
+		// The namespaces of a page are indexed both as the one it is directly
+		// in and as all of them, so that the pages of a namespace can be found
+		// with or without the ones deeper in it.
+		namespaces := utils.NamespacesOf(doc.Title)
+		if len(namespaces) > 0 {
+			blugeDoc.AddField(bluge.NewKeywordField("namespace", normalizeRef(namespaces[0])))
+
+			for _, namespace := range namespaces {
+				blugeDoc.AddField(bluge.NewKeywordField("namespaces", normalizeRef(namespace)))
+			}
+		}
 	case PageTypeJournal:
 		blugeDoc.AddField(bluge.NewKeywordField("type", "journal").StoreValue())
 		blugeDoc.AddField(bluge.NewDateTimeField("date", doc.Date).StoreValue())
@@ -466,10 +478,11 @@ func (i *BlugeIndex) transferRefs(doc *bluge.Document, field string, root conten
 	}
 }
 
-// normalizeRef brings the title a reference points at into the form it is
-// indexed and queried in. Logseq does not distinguish between page titles that
-// only differ in case, so `[[example]]` and `[[Example]]` are references to the
-// same page and have to match the same query.
+// normalizeRef brings a page title into the form it is indexed and queried in,
+// used for the fields that hold a title rather than text. Logseq does not
+// distinguish between page titles that only differ in case, so `[[example]]`
+// and `[[Example]]` are references to the same page and have to match the same
+// query.
 func normalizeRef(title string) string {
 	return strings.ToLower(title)
 }
@@ -657,7 +670,12 @@ func mapQuery(q Query) bluge.Query {
 			return bluge.NewTermQuery(query.value).SetField(query.field + ":value")
 		}
 
-		return bluge.NewTermQuery(query.value).SetField(query.field)
+		value := query.value
+		if query.normalized {
+			value = normalizeRef(value)
+		}
+
+		return bluge.NewTermQuery(value).SetField(query.field)
 	case *fieldRefs:
 		if query.tag {
 			return bluge.NewTermQuery(normalizeRef(query.target)).SetField(query.field + ":tag")

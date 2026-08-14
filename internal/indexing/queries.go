@@ -41,6 +41,9 @@ func (f *fieldMatches) isQuery() {}
 type fieldEquals struct {
 	field string
 	value string
+	// normalized marks fields that hold a page title, which is matched without
+	// regard for case.
+	normalized bool
 }
 
 func (f *fieldEquals) isQuery() {}
@@ -134,6 +137,22 @@ func PropertyReferencesTag(property string, target string) Query {
 		field:  "prop:" + property,
 		target: target,
 		tag:    true,
+	}
+}
+
+func InNamespace(namespace string) Query {
+	return &fieldEquals{
+		field:      "namespace",
+		value:      namespace,
+		normalized: true,
+	}
+}
+
+func UnderNamespace(namespace string) Query {
+	return &fieldEquals{
+		field:      "namespaces",
+		value:      namespace,
+		normalized: true,
 	}
 }
 

@@ -54,6 +54,18 @@ func PropertyReferencesTag(property, tag string) Query {
 	return indexing.PropertyReferencesTag(property, tag)
 }
 
+// InNamespace matches the pages that are directly in a namespace, so `Parent`
+// matches the page `Parent/Child` but not `Parent/Child/Grandchild`.
+func InNamespace(namespace string) Query {
+	return indexing.InNamespace(namespace)
+}
+
+// UnderNamespace matches the pages anywhere in a namespace, so `Parent` matches
+// both `Parent/Child` and `Parent/Child/Grandchild`.
+func UnderNamespace(namespace string) Query {
+	return indexing.UnderNamespace(namespace)
+}
+
 // HasAlias matches the page that has the given title as one of the aliases in
 // its `alias` property.
 func HasAlias(alias string) Query {

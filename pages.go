@@ -10,6 +10,7 @@ import (
 
 	"github.com/aholstenson/logseq-go/content"
 	"github.com/aholstenson/logseq-go/internal/markdown"
+	"github.com/aholstenson/logseq-go/internal/utils"
 )
 
 type PageType int
@@ -53,6 +54,23 @@ type Page interface {
 	// `alias` property. In a graph with indexing enabled, opening a page by one
 	// of its aliases opens the page itself.
 	Aliases() []string
+
+	// Namespace returns the namespace the page is in, which is the part of its
+	// title before the last `/`. Pages that are not in a namespace, and
+	// journals, have no namespace and return an empty string.
+	Namespace() string
+
+	// NamespaceChildren finds the pages that are directly below this page in
+	// the namespace hierarchy, so `Parent/Child` for a page titled `Parent`.
+	// Pages deeper in the namespace, such as `Parent/Child/Grandchild`, are
+	// children of the page between them and this one.
+	//
+	// Search options such as WithMaxHits and FromHit can be used to page through
+	// the children, and WithQuery narrows them down further.
+	//
+	// Children are found via the index, so this requires the graph to have been
+	// opened with indexing enabled.
+	NamespaceChildren(ctx context.Context, opts ...SearchOption) (SearchResults[PageResult], error)
 
 	// Blocks returns the blocks for the page. If the page has content before
 	// its first bullet, such as page properties, that content is the first
@@ -183,6 +201,24 @@ func (p *pageImpl) Properties() *content.Properties {
 	properties := content.NewProperties()
 	p.preBlock().PrependChild(properties)
 	return properties
+}
+
+func (p *pageImpl) Namespace() string {
+	if p.pageType != PageTypeDedicated {
+		// The title of a journal is a formatted date, which can contain slashes
+		// without any of it being a namespace.
+		return ""
+	}
+
+	return utils.NamespaceOf(p.title)
+}
+
+func (p *pageImpl) NamespaceChildren(ctx context.Context, opts ...SearchOption) (SearchResults[PageResult], error) {
+	options := make([]SearchOption, 0, len(opts)+1)
+	options = append(options, WithQuery(InNamespace(p.title)))
+	options = append(options, opts...)
+
+	return p.source.SearchPages(ctx, options...)
 }
 
 func (p *pageImpl) Aliases() []string {
