@@ -2118,6 +2118,20 @@ var _ = Describe("Parsing", func() {
 				)))
 			})
 
+			It("can parse property with a dot in its name", func() {
+				block, err := markdown.ParseString("item\nlogseq.order-list-type:: number")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewParagraph(
+						content.NewText("item"),
+					),
+					content.NewProperties(
+						content.NewProperty("logseq.order-list-type", content.NewText("number")),
+					).WithPreviousLineType(content.PreviousLineTypeNonBlank),
+				)))
+			})
+
 			It("can parse property with a value of several words", func() {
 				block, err := markdown.ParseString("key:: a longer value")
 				Expect(err).ToNot(HaveOccurred())

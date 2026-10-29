@@ -1,6 +1,7 @@
 package markdown_test
 
 import (
+	"github.com/aholstenson/logseq-go/content"
 	"github.com/aholstenson/logseq-go/internal/markdown"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -202,6 +203,30 @@ var _ = Describe("Parsing then outputting", func() {
 			markdown.WithIgnoredPageReferences("author"),
 		)
 		FullyEqual("Multiple properties", "key:: value\nkey2:: value2")
+		FullyEqual("Property with a dot in its name", "item\nlogseq.order-list-type:: number")
+		FullyEqual("Properties with dots in their names", "logseq.color:: red\nlogseq.tldraw.page:: value")
+
+		It("writes a set property with a dot in its name", func() {
+			block, err := markdown.ParseString("item")
+			Expect(err).ToNot(HaveOccurred())
+
+			block.Properties().Set("logseq.order-list-type", content.NewText("number"))
+
+			v, err := markdown.AsString(block)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(v).To(Equal("item\nlogseq.order-list-type:: number"))
+		})
+
+		It("removes a property with a dot in its name and keeps the others", func() {
+			block, err := markdown.ParseString("item\nkey:: value\nlogseq.order-list-type:: number\nother:: value2")
+			Expect(err).ToNot(HaveOccurred())
+
+			block.Properties().Remove("logseq.order-list-type")
+
+			v, err := markdown.AsString(block)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(v).To(Equal("item\nkey:: value\nother:: value2"))
+		})
 		FullyEqual("Properties followed by trailing paragraph", "key:: value\nParagraph")
 		FullyEqual("Paragraphs interrupted by properties", "Paragraph\nkey:: value")
 		FullyEqual("Paragraphs interrupted by properties followed by more paragraph", "Paragraph\nkey:: value\nParagraph")

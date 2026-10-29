@@ -11,7 +11,7 @@ import (
 	"github.com/yuin/goldmark/util"
 )
 
-var propertyRegex = regexp.MustCompile(`^([a-zA-Z0-9_-]+)::`)
+var propertyRegex = regexp.MustCompile(`^([a-zA-Z0-9_.-]+)::`)
 
 var propertiesKind = ast.NewNodeKind("Properties")
 
