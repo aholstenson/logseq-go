@@ -50,7 +50,7 @@ func (s *highlightParser) Trigger() []byte {
 func (s *highlightParser) Parse(parent ast.Node, block text.Reader, pc parser.Context) ast.Node {
 	before := block.PrecendingCharacter()
 	line, segment := block.PeekLine()
-	node := parser.ScanDelimiter(line, before, 2, defaultHighlightDelimiterProcessor)
+	node := scanDelimiter(line, before, 2, defaultHighlightDelimiterProcessor)
 	if node == nil {
 		return nil
 	}

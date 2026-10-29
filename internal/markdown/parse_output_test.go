@@ -57,6 +57,9 @@ var _ = Describe("Parsing then outputting", func() {
 		FullyEqual("Bold text with newline", "**Basic\ncontent**")
 		FullyEqual("Bold text with hard newline", "**Basic\\\ncontent**")
 		FullyEqual("Bold text with space before closing marker", "**Card from [[A]] and [[B]] **")
+		FullyEqual("Italic text with space before closing marker", "*Basic *")
+		FullyEqual("Strikethrough text with space before closing marker", "~~Basic ~~")
+		FullyEqual("Highlighted text with space before closing marker", "^^Basic ^^")
 		Varies("Bold text with hard newline via two spaces", "**Basic  \ncontent**", "**Basic\\\ncontent**")
 
 		FullyEqual("Italic text", "*Basic* content")

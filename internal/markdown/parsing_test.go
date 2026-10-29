@@ -170,6 +170,41 @@ var _ = Describe("Parsing", func() {
 			)))
 		})
 
+		DescribeTable("can parse a space before a closing marker at the end of the line",
+			func(input string, expected content.InlineNode) {
+				block, err := markdown.ParseString(input)
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewParagraph(expected),
+				)))
+			},
+			Entry("italic with *", "*a *", content.NewEmphasis(content.NewText("a "))),
+			Entry("italic with _", "_a _", content.NewEmphasis(content.NewText("a "))),
+			Entry("strong with __", "__a __", content.NewStrong(content.NewText("a "))),
+			Entry("strikethrough", "~~a ~~", content.NewStrikethrough(content.NewText("a "))),
+			Entry("highlight", "^^a ^^", content.NewHighlight(content.NewText("a "))),
+		)
+
+		It("can parse a space before a closing marker before a newline", func() {
+			block, err := markdown.ParseString("**a **\nb")
+			Expect(err).ToNot(HaveOccurred())
+
+			paragraph := block.FirstChild().(*content.Paragraph)
+			Expect(paragraph.FirstChild()).To(BeAssignableToTypeOf(&content.Strong{}))
+		})
+
+		It("does not parse strong from a space before a marker in the middle of a line", func() {
+			block, err := markdown.ParseString("**a ** b")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("**a ** b"),
+				),
+			)))
+		})
+
 		It("does not parse strong from markers surrounded by spaces", func() {
 			block, err := markdown.ParseString("a ** b ** c")
 			Expect(err).ToNot(HaveOccurred())
