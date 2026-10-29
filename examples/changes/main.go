@@ -44,6 +44,8 @@ func main() {
 				fmt.Printf("Page renamed: %s to %s (own write: %t)\n", event.OldTitle, event.Page.Title(), event.OwnWrite)
 			case *logseq.PageDeleted:
 				fmt.Printf("Page deleted: %s (own write: %t)\n", event.Title, event.OwnWrite)
+			case *logseq.WatchError:
+				fmt.Printf("Watch error: %s\n", event)
 			}
 		}
 	}

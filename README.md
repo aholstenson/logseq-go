@@ -161,7 +161,11 @@ from changes made by Logseq or other programs.
 A rename is a removed file and a created file on disk. When the graph has an
 index and the created file has the same content as the removed file had, the
 two are sent as one `PageRenamed` event. Otherwise they are sent as
-`PageDeleted` and `PageUpdated`:
+`PageDeleted` and `PageUpdated`.
+
+When the graph can not watch for changes, or can not read or index a changed
+file, a `WatchError` event is sent. It has the path of the file, when the error
+is for one file:
 
 ```go
 watcher := graph.Watch()
@@ -181,6 +185,8 @@ for {
       fmt.Println("Renamed:", event.OldTitle, "to", event.Page.Title())
     case *logseq.PageDeleted:
       fmt.Println("Deleted:", event.Title)
+    case *logseq.WatchError:
+      fmt.Println("Error:", event)
     }
   case <-watcher.Done():
     return

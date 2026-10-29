@@ -79,3 +79,34 @@ type PageRenamed struct {
 }
 
 func (p *PageRenamed) isChangeEvent() {}
+
+// WatchError is a change that indicates that the graph could not watch for
+// changes or could not handle a change. The change that failed is not reported
+// as another event, and the index can be out of date for that file until the
+// file changes again.
+//
+// When the graph can not start to watch for changes, this is the only event
+// that the watcher gets.
+type WatchError struct {
+	// Path is the path of the file that the error is for, relative to the
+	// graph directory. It is empty when the error is not for a single file.
+	Path string
+	// Err is the error that occurred.
+	Err error
+}
+
+func (e *WatchError) isChangeEvent() {}
+
+// Error returns the error message, with the path when there is one.
+func (e *WatchError) Error() string {
+	if e.Path == "" {
+		return e.Err.Error()
+	}
+
+	return e.Path + ": " + e.Err.Error()
+}
+
+// Unwrap returns the error that occurred.
+func (e *WatchError) Unwrap() error {
+	return e.Err
+}

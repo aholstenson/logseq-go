@@ -117,7 +117,12 @@ func Open(ctx context.Context, directory string, opts ...Option) (*Graph, error)
 	}
 
 	if g.index != nil {
-		g.watchForChanges()
+		// The index must follow the files, so a graph with an index can not
+		// be used if changes can not be watched.
+		if err := g.watchForChanges(); err != nil {
+			g.index.Close()
+			return nil, err
+		}
 	}
 	return g, nil
 }
@@ -426,29 +431,33 @@ func (g *Graph) indexDocument(ctx context.Context, docPath string) (Page, error)
 		doc.Aliases = impl.Aliases()
 	}
 
-	return page, g.index.IndexPage(ctx, doc)
+	if err := g.index.IndexPage(ctx, doc); err != nil {
+		return page, fmt.Errorf("failed to index page: %w", err)
+	}
+
+	return page, nil
 }
 
-func (g *Graph) watchForChanges() {
+// watchForChanges starts to watch the journals and pages directories for
+// changes. Must be called with g.mu held or before the graph is shared.
+func (g *Graph) watchForChanges() error {
 	changeWatcher, err := fsnotify.NewWatcher()
 	if err != nil {
-		// TODO: Error reporting
-		return
+		return fmt.Errorf("failed to create file watcher: %w", err)
+	}
+
+	for _, dir := range []string{g.config.JournalsDir, g.config.PagesDir} {
+		err = changeWatcher.Add(filepath.Join(g.directory, dir))
+		if err != nil {
+			changeWatcher.Close()
+			return fmt.Errorf("failed to watch %s directory: %w", dir, err)
+		}
 	}
 
 	g.changeWatcher = changeWatcher
 
-	err = changeWatcher.Add(filepath.Join(g.directory, g.config.JournalsDir))
-	if err != nil {
-		return
-	}
-
-	err = changeWatcher.Add(filepath.Join(g.directory, g.config.PagesDir))
-	if err != nil {
-		return
-	}
-
 	changes := make(chan *pendingChange)
+	errs := make(chan error)
 	// done is closed when the watcher has stopped, which lets debounce timers
 	// that fire around that point give up instead of sending on a channel that
 	// no longer has a receiver.
@@ -492,12 +501,14 @@ func (g *Graph) watchForChanges() {
 					case <-done:
 					}
 				})
-			case _, ok := <-changeWatcher.Errors:
+			case err, ok := <-changeWatcher.Errors:
 				if !ok {
 					break _outer
 				}
 
-				// TODO: Log error
+				// Errors are sent to watchers from the other goroutine, so
+				// that all events to watchers are sent in order.
+				errs <- err
 			}
 		}
 
@@ -515,6 +526,9 @@ func (g *Graph) watchForChanges() {
 			var change *pendingChange
 			select {
 			case change = <-changes:
+			case err := <-errs:
+				g.notifyWatchers(&WatchError{Err: fmt.Errorf("file watcher failed: %w", err)}, done)
+				continue
 			case <-done:
 				return
 			}
@@ -525,40 +539,53 @@ func (g *Graph) watchForChanges() {
 				continue
 			}
 
-			event := g.handleChange(ctx, change.path, pending)
+			report := func(path string, err error) {
+				subPath, _ := filepath.Rel(g.directory, path)
+				g.notifyWatchers(&WatchError{Path: subPath, Err: err}, done)
+			}
 
-			// Notify watchers of the change
+			event := g.handleChange(ctx, change.path, pending, report)
 			if event != nil {
-				var watchers []*Watcher
-				g.mu.Lock()
-				watchers = append(watchers, g.watchers...)
-				g.mu.Unlock()
-
-				for _, watcher := range watchers {
-					select {
-					case watcher.changes <- event:
-					case <-watcher.done:
-					case <-done:
-					}
-				}
+				g.notifyWatchers(event, done)
 			}
 		}
 	}()
+
+	return nil
+}
+
+// notifyWatchers sends an event to all current watchers. It gives up on a
+// watcher when the watcher is closed, and on all of them when done is closed.
+func (g *Graph) notifyWatchers(event ChangeEvent, done <-chan struct{}) {
+	var watchers []*Watcher
+	g.mu.Lock()
+	watchers = append(watchers, g.watchers...)
+	g.mu.Unlock()
+
+	for _, watcher := range watchers {
+		select {
+		case watcher.changes <- event:
+		case <-watcher.done:
+		case <-done:
+		}
+	}
 }
 
 // handleChange updates the index for a changed file and returns the event to
 // send to watchers, or nil if there is nothing to report. Other changes that
-// wait in pending are checked to find renames.
-func (g *Graph) handleChange(ctx context.Context, path string, pending *pendingChanges) ChangeEvent {
+// wait in pending are checked to find renames. Errors are given to report,
+// with the path of the file that they are for.
+func (g *Graph) handleChange(ctx context.Context, path string, pending *pendingChanges, report func(path string, err error)) ChangeEvent {
 	// Figure out if the page still exists
 	exists := true
 	_, err := os.Stat(path)
 	if err != nil {
-		if os.IsNotExist(err) {
-			exists = false
-		} else {
-			// TODO: Log error
+		if !os.IsNotExist(err) {
+			report(path, fmt.Errorf("failed to check if page exists: %w", err))
+			return nil
 		}
+
+		exists = false
 	}
 
 	if g.index == nil {
@@ -569,8 +596,12 @@ func (g *Graph) handleChange(ctx context.Context, path string, pending *pendingC
 		}
 
 		page, err := g.openViaPath(path, g)
-		if err != nil || page == nil {
-			// TODO: Log error
+		if err != nil {
+			report(path, fmt.Errorf("failed to open page: %w", err))
+			return nil
+		}
+
+		if page == nil {
 			return nil
 		}
 
@@ -578,17 +609,23 @@ func (g *Graph) handleChange(ctx context.Context, path string, pending *pendingC
 	}
 
 	// Sync after indexing so changes are visible
-	defer g.index.Sync()
+	defer func() {
+		if err := g.index.Sync(); err != nil {
+			report(path, fmt.Errorf("failed to sync index: %w", err))
+		}
+	}()
 
 	subPath, _ := filepath.Rel(g.directory, path)
 	state, err := g.index.GetFileState(ctx, subPath)
 	if err != nil {
-		// TODO: Log error
+		// Without the state the change is handled as a file that was not
+		// indexed before.
+		report(path, fmt.Errorf("failed to get indexed state of page: %w", err))
 	}
 
 	if !exists {
 		if err := g.index.DeletePage(ctx, subPath); err != nil {
-			// TODO: Log error
+			report(path, fmt.Errorf("failed to remove page from index: %w", err))
 		}
 
 		if g.createPageDeletedEvent(path) == nil {
@@ -598,7 +635,7 @@ func (g *Graph) handleChange(ctx context.Context, path string, pending *pendingC
 		if to := g.claimRenameTarget(ctx, pending, state.Revision); to != "" {
 			page, err := g.indexDocument(ctx, to)
 			if err != nil {
-				// TODO: Log error
+				report(to, err)
 			}
 
 			if page != nil {
@@ -612,8 +649,12 @@ func (g *Graph) handleChange(ctx context.Context, path string, pending *pendingC
 	}
 
 	page, err := g.indexDocument(ctx, path)
-	if err != nil || page == nil {
-		// TODO: Log error
+	if err != nil {
+		report(path, err)
+		return nil
+	}
+
+	if page == nil {
 		return nil
 	}
 
@@ -623,7 +664,7 @@ func (g *Graph) handleChange(ctx context.Context, path string, pending *pendingC
 		if from := g.claimRenameSource(ctx, pending, page.Revision()); from != "" {
 			fromSubPath, _ := filepath.Rel(g.directory, from)
 			if err := g.index.DeletePage(ctx, fromSubPath); err != nil {
-				// TODO: Log error
+				report(from, fmt.Errorf("failed to remove page from index: %w", err))
 			}
 
 			return g.renamedEvent(from, path, page)
@@ -917,8 +958,16 @@ func (g *Graph) Watch() *Watcher {
 	g.watchers = append(g.watchers, watcher)
 
 	if g.changeWatcher == nil {
-		// Start watching for changes if we're not already
-		g.watchForChanges()
+		// Start watching for changes if we're not already. Watch has no error
+		// to return, so the error is sent as the only event of the watcher.
+		if err := g.watchForChanges(); err != nil {
+			go func() {
+				select {
+				case watcher.changes <- &WatchError{Err: err}:
+				case <-watcher.done:
+				}
+			}()
+		}
 	}
 
 	return watcher

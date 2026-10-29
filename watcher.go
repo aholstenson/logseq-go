@@ -23,7 +23,8 @@ func (w *Watcher) Close() error {
 	return nil
 }
 
-// Events returns the channel that changes to the graph are sent to.
+// Events returns the channel that changes to the graph are sent to. Errors are
+// sent to the same channel as a WatchError.
 //
 // The channel is not closed when the watcher is closed, as the graph may be in
 // the middle of sending an event to it. Receive from Done to tell that the

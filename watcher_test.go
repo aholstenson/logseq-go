@@ -491,3 +491,137 @@ var _ = Describe("Change watching shutdown", func() {
 		time.Sleep(100 * time.Millisecond)
 	})
 })
+
+var _ = Describe("Watcher errors", func() {
+	var dir string
+
+	BeforeEach(func() {
+		dir = setupGraph()
+	})
+
+	It("emits WatchError when a changed page can not be read", func() {
+		graph, err := logseq.Open(context.Background(), dir, logseq.WithInMemoryIndex())
+		Expect(err).ToNot(HaveOccurred())
+		defer graph.Close()
+
+		watcher := graph.Watch()
+		defer watcher.Close()
+
+		// A file without read permission fails when it is indexed.
+		Expect(os.WriteFile(
+			filepath.Join(dir, "pages", "unreadable.md"),
+			[]byte("- hidden\n"),
+			0o000,
+		)).To(Succeed())
+
+		var event logseq.ChangeEvent
+		Eventually(watcher.Events(), 5*time.Second).Should(Receive(&event))
+		Expect(event).To(BeAssignableToTypeOf(&logseq.WatchError{}))
+
+		watchErr := event.(*logseq.WatchError)
+		Expect(watchErr.Path).To(Equal(filepath.Join("pages", "unreadable.md")))
+		Expect(watchErr.Err).To(MatchError(os.ErrPermission))
+	})
+
+	It("emits WatchError when a changed page can not be read without an index", func() {
+		graph, err := logseq.Open(context.Background(), dir)
+		Expect(err).ToNot(HaveOccurred())
+		defer graph.Close()
+
+		watcher := graph.Watch()
+		defer watcher.Close()
+
+		Expect(os.WriteFile(
+			filepath.Join(dir, "pages", "unreadable.md"),
+			[]byte("- hidden\n"),
+			0o000,
+		)).To(Succeed())
+
+		var event logseq.ChangeEvent
+		Eventually(watcher.Events(), 5*time.Second).Should(Receive(&event))
+		Expect(event).To(BeAssignableToTypeOf(&logseq.WatchError{}))
+		Expect(event.(*logseq.WatchError).Path).To(Equal(filepath.Join("pages", "unreadable.md")))
+	})
+
+	It("keeps reporting changes after an error", func() {
+		graph, err := logseq.Open(context.Background(), dir, logseq.WithInMemoryIndex())
+		Expect(err).ToNot(HaveOccurred())
+		defer graph.Close()
+
+		watcher := graph.Watch()
+		defer watcher.Close()
+
+		Expect(os.WriteFile(
+			filepath.Join(dir, "pages", "unreadable.md"),
+			[]byte("- hidden\n"),
+			0o000,
+		)).To(Succeed())
+
+		var event logseq.ChangeEvent
+		Eventually(watcher.Events(), 5*time.Second).Should(Receive(&event))
+		Expect(event).To(BeAssignableToTypeOf(&logseq.WatchError{}))
+
+		Expect(os.WriteFile(
+			filepath.Join(dir, "pages", "readable.md"),
+			[]byte("- visible\n"),
+			0o644,
+		)).To(Succeed())
+
+		// The unreadable file can be reported more than once, as the file
+		// system can report its creation and its write apart.
+		Eventually(func() logseq.ChangeEvent {
+			select {
+			case event = <-watcher.Events():
+				return event
+			default:
+				return nil
+			}
+		}, 5*time.Second).Should(BeAssignableToTypeOf(&logseq.PageUpdated{}))
+		Expect(event.(*logseq.PageUpdated).Page.Title()).To(Equal("readable"))
+	})
+
+	It("emits WatchError when the pages directory can not be watched", func() {
+		graph, err := logseq.Open(context.Background(), dir)
+		Expect(err).ToNot(HaveOccurred())
+		defer graph.Close()
+
+		Expect(os.RemoveAll(filepath.Join(dir, "pages"))).To(Succeed())
+
+		watcher := graph.Watch()
+		defer watcher.Close()
+
+		var event logseq.ChangeEvent
+		Eventually(watcher.Events(), 5*time.Second).Should(Receive(&event))
+		Expect(event).To(BeAssignableToTypeOf(&logseq.WatchError{}))
+		Expect(event.(*logseq.WatchError).Path).To(BeEmpty())
+		Expect(event.(*logseq.WatchError).Error()).To(ContainSubstring("pages"))
+	})
+
+	It("watches again when the directory can be watched later", func() {
+		graph, err := logseq.Open(context.Background(), dir)
+		Expect(err).ToNot(HaveOccurred())
+		defer graph.Close()
+
+		Expect(os.RemoveAll(filepath.Join(dir, "pages"))).To(Succeed())
+
+		failed := graph.Watch()
+		var event logseq.ChangeEvent
+		Eventually(failed.Events(), 5*time.Second).Should(Receive(&event))
+		Expect(event).To(BeAssignableToTypeOf(&logseq.WatchError{}))
+		Expect(failed.Close()).To(Succeed())
+
+		Expect(os.MkdirAll(filepath.Join(dir, "pages"), 0o755)).To(Succeed())
+
+		watcher := graph.Watch()
+		defer watcher.Close()
+
+		Expect(os.WriteFile(
+			filepath.Join(dir, "pages", "again.md"),
+			[]byte("- content\n"),
+			0o644,
+		)).To(Succeed())
+
+		Eventually(watcher.Events(), 5*time.Second).Should(Receive(&event))
+		Expect(event).To(BeAssignableToTypeOf(&logseq.PageUpdated{}))
+	})
+})
