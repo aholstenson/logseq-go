@@ -125,6 +125,62 @@ Deleted pages are removed from the graph, unless the graph is opened with
 `logseq.WithRecycleDeletedPages()`, in which case they are moved to the
 `logseq/.recycle` directory that Logseq recovers deleted pages from.
 
+### Revisions and conflicts
+
+Every page has a revision, which is a hash of the content of its file. A page
+that has no file yet has the empty revision. Saving a transaction fails with
+`logseq.ErrConflict` if a page it writes has changed since it was opened, and
+nothing is written.
+
+An editor that shows a page for some time can save on top of the revision it
+started from. The save then also fails if the page changed while the editor
+showed it:
+
+```go
+page, err := graph.OpenPage("Example")
+revision := page.Revision()
+
+// Later, when the user saves
+tx := graph.NewTransaction()
+page, err = tx.OpenPage("Example")
+// Apply the changes of the user to page
+
+err = tx.Save(logseq.WithExpectedRevision(page, revision))
+if errors.Is(err, logseq.ErrConflict) {
+  // The page changed, reload it and let the user merge their changes
+}
+```
+
+### Watching for changes
+
+`graph.Watch()` sends an event when a page is changed or deleted on disk.
+`PageUpdated` has the revision of the page. Saves made via the graph also
+cause events, and these have `OwnWrite` set, so that they can be told apart
+from changes made by Logseq or other programs:
+
+```go
+watcher := graph.Watch()
+defer watcher.Close()
+
+for {
+  select {
+  case e := <-watcher.Events():
+    switch event := e.(type) {
+    case *logseq.PageUpdated:
+      if event.OwnWrite {
+        continue
+      }
+
+      fmt.Println("Changed outside:", event.Page.Title(), event.Revision)
+    case *logseq.PageDeleted:
+      fmt.Println("Deleted:", event.Title)
+    }
+  case <-watcher.Done():
+    return
+  }
+}
+```
+
 ## Limitations
 
 This library is limited to working with Markdown files. As the library provides

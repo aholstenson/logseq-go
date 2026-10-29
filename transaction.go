@@ -468,7 +468,51 @@ func parseBlockTime(format string, reference time.Time, block *content.Block) *t
 	return &t
 }
 
-func (t *Transaction) Save() error {
+// SaveOption is an option for saving a transaction.
+type SaveOption func(*saveOptions)
+
+type saveOptions struct {
+	expected []expectedRevision
+}
+
+type expectedRevision struct {
+	page     Page
+	revision string
+}
+
+// WithExpectedRevision makes the save fail with ErrConflict unless the file of
+// the page is at the given revision, as returned by Page.Revision or sent in
+// PageUpdated. Use it with the revision an editor started from, so that the
+// save does not overwrite a change that was made after the editor read the
+// page. The empty revision expects the page to have no file.
+//
+// The page is matched via the file it is stored in, so it can come from the
+// graph, from a change event or from the transaction itself. A page that is not
+// part of the transaction is only checked and not written.
+func WithExpectedRevision(page Page, revision string) SaveOption {
+	return func(o *saveOptions) {
+		o.expected = append(o.expected, expectedRevision{
+			page:     page,
+			revision: revision,
+		})
+	}
+}
+
+// Save writes the changes made in the transaction to the graph.
+//
+// Every page that is written must still be at the revision it had when it was
+// opened, and pages given via WithExpectedRevision must be at that revision.
+// If any of them is not, nothing is written and ErrConflict is returned.
+//
+// The files are checked before they are written, but not locked, so a program
+// that writes to a file between the check and the write can still have its
+// change overwritten.
+func (t *Transaction) Save(opts ...SaveOption) error {
+	options := &saveOptions{}
+	for _, opt := range opts {
+		opt(options)
+	}
+
 	// Pages are written to the path they were opened from, which is the only
 	// place they can be written back to without moving them.
 	pages := make([]*pageImpl, 0, len(t.openedPages))
@@ -481,27 +525,26 @@ func (t *Transaction) Save() error {
 		pages = append(pages, impl)
 	}
 
+	// expected holds the revision each file must be at for the save to go
+	// ahead. Pages are expected to be at the revision they were opened at,
+	// unless the caller asks for another one.
+	expected := make(map[string]string, len(pages)+len(options.expected))
 	for _, page := range pages {
-		path := page.path
+		expected[page.path] = page.revision
+	}
 
-		info, err := os.Stat(path)
-		if os.IsNotExist(err) {
-			if !page.IsNew() {
-				return fmt.Errorf("page at %s no longer exists", path)
-			}
-
-			continue
-		} else if err != nil {
-			return fmt.Errorf("failed to check if page can be saved at %s: %w", path, err)
+	for _, e := range options.expected {
+		impl, ok := e.page.(*pageImpl)
+		if !ok {
+			return fmt.Errorf("unknown page type: %T", e.page)
 		}
 
-		if info.IsDir() {
-			return fmt.Errorf("page at %s is a directory", path)
-		}
+		expected[impl.path] = e.revision
+	}
 
-		// Check that the page has not been modified since it was opened
-		if info.ModTime() != page.LastModified() {
-			return fmt.Errorf("page at %s has been modified since it was opened", path)
+	for path, revision := range expected {
+		if err := checkRevision(path, revision); err != nil {
+			return err
 		}
 	}
 
@@ -534,12 +577,21 @@ func (t *Transaction) Save() error {
 			return fmt.Errorf("failed to create directory for %s: %w", path, err)
 		}
 
+		revision := revisionOf([]byte(data))
+		t.graph.ownWrites.record(path, revision)
+
 		err = os.WriteFile(path, []byte(data), 0644)
 		if err != nil {
 			return fmt.Errorf("failed to write page to %s: %w", path, err)
 		}
 
+		// The page now matches its file, so the transaction can be changed and
+		// saved again without a conflict with its own write.
+		page.revision = revision
+		page.isNew = false
+
 		if info, err := os.Stat(path); err == nil {
+			page.lastModified = info.ModTime()
 			written = append(written, info)
 		}
 	}
@@ -557,6 +609,8 @@ func (t *Transaction) Save() error {
 		if wasWritten(written, info) {
 			continue
 		}
+
+		t.graph.ownWrites.record(path, "")
 
 		if err := t.graph.removePageFile(path); err != nil {
 			return err

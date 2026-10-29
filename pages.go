@@ -46,6 +46,15 @@ type Page interface {
 	// check if the page was loaded from disk or not.
 	LastModified() time.Time
 
+	// Revision returns the revision of the page, which identifies the content
+	// of its file at the time the page was read. It is a hash of the content,
+	// so treat it as an opaque value and only compare it for equality. A page
+	// that has no file yet has the empty revision.
+	//
+	// Use WithExpectedRevision when saving a transaction to make sure the page
+	// has not been changed since this revision.
+	Revision() string
+
 	// Properties returns the properties for the page. Properties belong to the
 	// first block of the page, which is the pre-block if the page has one.
 	Properties() *content.Properties
@@ -116,6 +125,7 @@ type pageImpl struct {
 	path         string
 	isNew        bool
 	lastModified time.Time
+	revision     string
 
 	pageType PageType
 	title    string
@@ -128,13 +138,14 @@ func openOrCreatePage(source pageSource, path string, pageType PageType, title s
 	// Get the last modified time for the file
 	info, err := os.Stat(path)
 	var root *content.Block
+	var revision string
 	if os.IsNotExist(err) {
 		// This page does not exist, let's try to load the template
 		if templatePath == "" {
 			// No template, start with an empty page
 			root = content.NewBlock()
 		} else {
-			root, err = loadRootBlock(templatePath, parseOptions...)
+			root, _, err = loadRootBlock(templatePath, parseOptions...)
 			if err != nil {
 				return nil, fmt.Errorf("failed to load template: %w", err)
 			}
@@ -144,7 +155,7 @@ func openOrCreatePage(source pageSource, path string, pageType PageType, title s
 		return nil, err
 	} else {
 		// This page exists, load it
-		root, err = loadRootBlock(path, parseOptions...)
+		root, revision, err = loadRootBlock(path, parseOptions...)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load page: %w", err)
 		}
@@ -161,6 +172,7 @@ func openOrCreatePage(source pageSource, path string, pageType PageType, title s
 		path:         path,
 		isNew:        info == nil,
 		lastModified: lastModified,
+		revision:     revision,
 
 		pageType: pageType,
 		title:    title,
@@ -176,6 +188,10 @@ func (p *pageImpl) IsNew() bool {
 
 func (p *pageImpl) LastModified() time.Time {
 	return p.lastModified
+}
+
+func (p *pageImpl) Revision() string {
+	return p.revision
 }
 
 func (p *pageImpl) Type() PageType {
@@ -336,15 +352,18 @@ func (p *pageImpl) InsertBlockBefore(block *content.Block, before *content.Block
 	p.root.InsertChildBefore(block, before)
 }
 
-func loadRootBlock(path string, parseOptions ...markdown.ParseOption) (*content.Block, error) {
+// loadRootBlock reads and parses the file at the given path. The revision of
+// the file is calculated from the same data that is parsed, so it always
+// matches the content of the returned block.
+func loadRootBlock(path string, parseOptions ...markdown.ParseOption) (*content.Block, string, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	block, err := markdown.Parse(data, parseOptions...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse markdown: %w", err)
+		return nil, "", fmt.Errorf("failed to parse markdown: %w", err)
 	}
 
 	// Content that appears before the first bullet becomes the pre-block of the
@@ -369,5 +388,5 @@ func loadRootBlock(path string, parseOptions ...markdown.ParseOption) (*content.
 		block.PrependChild(preBlock)
 	}
 
-	return block, nil
+	return block, revisionOf(data), nil
 }

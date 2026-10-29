@@ -475,8 +475,7 @@ var _ = Describe("Graph", func() {
 			Expect(os.WriteFile(pagePath, []byte("- modified externally\n"), 0o644)).To(Succeed())
 
 			err = tx.Save()
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("modified since"))
+			Expect(err).To(MatchError(logseq.ErrConflict))
 		})
 
 		It("keeps the trailing newline when saving a page", func() {

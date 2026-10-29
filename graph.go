@@ -47,6 +47,10 @@ type Graph struct {
 	// changes, so they can be waited for before the index is closed.
 	changeHandlers sync.WaitGroup
 
+	// ownWrites remembers what the graph wrote, so that the change events for
+	// those writes can be marked as its own.
+	ownWrites ownWrites
+
 	mu       sync.Mutex
 	watchers []*Watcher
 }
@@ -569,11 +573,14 @@ func (g *Graph) watchForChanges() {
 			if exists {
 				if page != nil {
 					event = &PageUpdated{
-						Page: page,
+						Page:     page,
+						Revision: page.Revision(),
+						OwnWrite: g.ownWrites.consume(path, page.Revision()),
 					}
 				}
-			} else {
-				event = g.createPageDeletedEvent(path)
+			} else if deleted := g.createPageDeletedEvent(path); deleted != nil {
+				deleted.OwnWrite = g.ownWrites.consume(path, "")
+				event = deleted
 			}
 
 			// Notify watchers of the change
@@ -595,7 +602,7 @@ func (g *Graph) watchForChanges() {
 	}()
 }
 
-func (g *Graph) createPageDeletedEvent(path string) ChangeEvent {
+func (g *Graph) createPageDeletedEvent(path string) *PageDeleted {
 	name := filepath.Base(path)
 	name = name[:len(name)-3]
 

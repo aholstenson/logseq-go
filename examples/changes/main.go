@@ -39,9 +39,9 @@ func main() {
 		case e := <-watcher.Events():
 			switch event := e.(type) {
 			case *logseq.PageUpdated:
-				fmt.Printf("Page updated: %s\n", event.Page.Title())
+				fmt.Printf("Page updated: %s (revision %s, own write: %t)\n", event.Page.Title(), event.Revision, event.OwnWrite)
 			case *logseq.PageDeleted:
-				fmt.Printf("Page deleted: %s\n", event.Title)
+				fmt.Printf("Page deleted: %s (own write: %t)\n", event.Title, event.OwnWrite)
 			}
 		}
 	}
