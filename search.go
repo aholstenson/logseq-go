@@ -130,6 +130,12 @@ type PageResult interface {
 	// Date returns the date if this page is a journal.
 	Date() time.Time
 
+	// Properties returns the plain text values of the page properties, keyed by
+	// property name. References such as `[[Page]]` are returned as the title of
+	// the page they point to. Properties without a value are not included. To
+	// get the full content of the properties, open the page.
+	Properties() map[string]string
+
 	// Open the page.
 	Open() (Page, error)
 }
@@ -138,6 +144,7 @@ type pageResultImpl struct {
 	docType PageType
 	title   string
 	date    time.Time
+	props   map[string]string
 	opener  func() (Page, error)
 }
 
@@ -151,6 +158,10 @@ func (d *pageResultImpl) Title() string {
 
 func (d *pageResultImpl) Date() time.Time {
 	return d.date
+}
+
+func (d *pageResultImpl) Properties() map[string]string {
+	return d.props
 }
 
 func (d *pageResultImpl) Open() (Page, error) {

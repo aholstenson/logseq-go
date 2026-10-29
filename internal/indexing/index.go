@@ -94,6 +94,11 @@ type Page struct {
 	// Properties is the properties of the page, nil if it has none. Only used
 	// while indexing.
 	Properties *content.Properties
+
+	// PropertyValues is the plain text values of the page properties, keyed by
+	// property name. Nil if the page has no properties. Only used when
+	// searching.
+	PropertyValues map[string]string
 }
 
 type Block struct {

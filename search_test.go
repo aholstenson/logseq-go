@@ -100,6 +100,37 @@ var _ = Describe("Search", func() {
 			Expect(page.Blocks()).To(HaveLen(1))
 		})
 
+		It("returns the page properties of found pages", func() {
+			graph = openGraphWithPages(dir, map[string]string{
+				"alpha.md": "icon:: 📚\npage-type:: [[Book]]\n\n- content\n",
+				"beta.md":  "icon:: 🎬\npage-type:: [[Movie]]\n\n- content\n",
+			})
+
+			results, err := graph.SearchPages(ctx,
+				logseq.WithQuery(logseq.PropertyReferences("page-type", "book")),
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(results.Size()).To(Equal(1))
+			Expect(results.Results()[0].Title()).To(Equal("alpha"))
+			Expect(results.Results()[0].Properties()).To(Equal(map[string]string{
+				"icon":      "📚",
+				"page-type": "Book",
+			}))
+		})
+
+		It("does not return block properties as page properties", func() {
+			graph = openGraphWithPages(dir, map[string]string{
+				"alpha.md": "- first\n- second\n  icon:: 📚\n",
+			})
+
+			results, err := graph.SearchPages(ctx,
+				logseq.WithQuery(logseq.TitleMatches("alpha")),
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(results.Size()).To(Equal(1))
+			Expect(results.Results()[0].Properties()).To(BeEmpty())
+		})
+
 		It("reports correct result type for dedicated pages", func() {
 			graph = openGraphWithPages(dir, map[string]string{
 				"alpha.md": "- content\n",

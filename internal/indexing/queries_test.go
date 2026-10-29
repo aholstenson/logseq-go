@@ -286,6 +286,37 @@ var _ = Describe("Queries", func() {
 		})
 	})
 
+	Describe("Page properties", func() {
+		It("returns the property values of found pages", func() {
+			indexPage(idx, "pages/a.md", "Page A",
+				content.NewBlock(
+					content.NewProperties(
+						content.NewProperty("icon", content.NewText("📚")),
+						content.NewProperty("page-type", content.NewPageLink("book")),
+					),
+					content.NewParagraph(content.NewText("content")),
+				),
+			)
+
+			results := searchPages(idx, indexing.PropertyReferences("page-type", "Book"))
+			Expect(results).To(HaveLen(1))
+			Expect(results[0].PropertyValues).To(Equal(map[string]string{
+				"icon":      "📚",
+				"page-type": "book",
+			}))
+		})
+
+		It("returns no property values for pages without properties", func() {
+			indexPage(idx, "pages/a.md", "Page A",
+				content.NewBlock(content.NewParagraph(content.NewText("content"))),
+			)
+
+			results := searchPages(idx, indexing.TitleMatches("Page A"))
+			Expect(results).To(HaveLen(1))
+			Expect(results[0].PropertyValues).To(BeNil())
+		})
+	})
+
 	Describe("References", func() {
 		It("matches pages that reference another page", func() {
 			indexPage(idx, "pages/a.md", "Page A",

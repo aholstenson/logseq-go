@@ -262,7 +262,7 @@ func (i *BlugeIndex) pageToDocument(doc *Page) (*bluge.Document, error) {
 	}
 
 	if doc.Properties != nil {
-		i.transferProperties(blugeDoc, doc.Properties)
+		i.transferProperties(blugeDoc, doc.Properties, true)
 		i.transferRefs(blugeDoc, "pages", doc.Properties)
 	}
 
@@ -404,7 +404,7 @@ func (i *BlugeIndex) blockToDocument(page *Page, id string, block *content.Block
 	// Look up the properties without creating them, as indexing should not
 	// modify the block.
 	if props := block.FindProperties(); props != nil {
-		i.transferProperties(blugeDoc, props)
+		i.transferProperties(blugeDoc, props, false)
 	}
 	i.transferRefs(blugeDoc, "pages", block)
 	i.transferLinks(blugeDoc, block)
@@ -448,7 +448,10 @@ func blockID(page *Page, block *content.Block) string {
 	return path.String()
 }
 
-func (i *BlugeIndex) transferProperties(doc *bluge.Document, properties *content.Properties) {
+// transferProperties indexes properties so that they can be queried. If store
+// is set the plain text value of each property is also stored, so that it can
+// be returned in search results without opening the page.
+func (i *BlugeIndex) transferProperties(doc *bluge.Document, properties *content.Properties, store bool) {
 	for _, node := range properties.Children() {
 		prop, ok := node.(*content.Property)
 		if !ok {
@@ -463,7 +466,11 @@ func (i *BlugeIndex) transferProperties(doc *bluge.Document, properties *content
 		}
 
 		doc.AddField(bluge.NewTextField("prop:"+prop.Name+":text", s))
-		doc.AddField(bluge.NewKeywordField("prop:"+prop.Name+":value", s))
+		value := bluge.NewKeywordField("prop:"+prop.Name+":value", s)
+		if store {
+			value.StoreValue()
+		}
+		doc.AddField(value)
 	}
 }
 
@@ -780,12 +787,31 @@ func mapMatchToPage(match *search.DocumentMatch) *Page {
 			}
 
 			page.Date = t
+		default:
+			if name, ok := storedPropertyName(field); ok {
+				if page.PropertyValues == nil {
+					page.PropertyValues = make(map[string]string)
+				}
+
+				page.PropertyValues[name] = string(value)
+			}
 		}
 
 		return true
 	})
 
 	return page
+}
+
+// storedPropertyName returns the name of the property that a stored field
+// holds the value of.
+func storedPropertyName(field string) (string, bool) {
+	name, ok := strings.CutPrefix(field, "prop:")
+	if !ok {
+		return "", false
+	}
+
+	return strings.CutSuffix(name, ":value")
 }
 
 func mapMatchToBlock(match *search.DocumentMatch) *Block {

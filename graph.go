@@ -670,6 +670,7 @@ func (g *Graph) searchPages(ctx context.Context, opts []SearchOption, source pag
 				docType: PageTypeJournal,
 				title:   g.journalTitleFormat.Format(date),
 				date:    date,
+				props:   page.PropertyValues,
 
 				opener: func() (Page, error) {
 					return source.OpenJournal(date)
@@ -680,6 +681,7 @@ func (g *Graph) searchPages(ctx context.Context, opts []SearchOption, source pag
 				docType: PageTypeDedicated,
 				title:   page.Title,
 				date:    time.Time{},
+				props:   page.PropertyValues,
 
 				opener: func() (Page, error) {
 					return source.OpenPage(page.Title)
