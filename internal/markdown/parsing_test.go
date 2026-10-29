@@ -1970,6 +1970,75 @@ var _ = Describe("Parsing", func() {
 				)))
 			})
 
+			It("bullets indented by eight spaces under a block are its children", func() {
+				block, err := markdown.ParseString("- Parent\n        - Child 1\n        - Child 2\n- Sibling\n")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewBlock(
+						content.NewParagraph(
+							content.NewText("Parent"),
+						),
+						content.NewBlock(
+							content.NewParagraph(
+								content.NewText("Child 1"),
+							),
+						),
+						content.NewBlock(
+							content.NewParagraph(
+								content.NewText("Child 2"),
+							),
+						),
+					),
+					content.NewBlock(
+						content.NewParagraph(
+							content.NewText("Sibling"),
+						),
+					),
+				)))
+			})
+
+			It("bullets indented by eight spaces under a child block are its children", func() {
+				block, err := markdown.ParseString("- Parent\n  - Child\n          - Grandchild\n")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewBlock(
+						content.NewParagraph(
+							content.NewText("Parent"),
+						),
+						content.NewBlock(
+							content.NewParagraph(
+								content.NewText("Child"),
+							),
+							content.NewBlock(
+								content.NewParagraph(
+									content.NewText("Grandchild"),
+								),
+							),
+						),
+					),
+				)))
+			})
+
+			It("bullets indented by eight spaces after a blank line under a block are its children", func() {
+				block, err := markdown.ParseString("- Parent\n\n        - Child\n")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewBlock(
+						content.NewParagraph(
+							content.NewText("Parent"),
+						),
+						content.NewBlock(
+							content.NewParagraph(
+								content.NewText("Child"),
+							),
+						),
+					),
+				)))
+			})
+
 			It("indented text that is not a bullet is still a code block", func() {
 				block, err := markdown.ParseString("Paragraph\n\n\tcode\n")
 				Expect(err).ToNot(HaveOccurred())
