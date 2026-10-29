@@ -1167,6 +1167,19 @@ var _ = Describe("Output", func() {
 			Expect(buf.String()).To(Equal("key:: value\nabc\n- block 1"))
 		})
 
+		It("can write a pre-block with children", func() {
+			err := writer.Write(content.NewBlock(
+				content.NewPreBlock(
+					content.NewParagraph(content.NewText("abc")),
+					content.NewBlock(content.NewParagraph(content.NewText("child"))),
+				),
+				content.NewBlock(content.NewParagraph(content.NewText("block 1"))),
+			))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal("abc\n\t- child\n- block 1"))
+		})
+
 		It("can write a pre-block as the only block", func() {
 			err := writer.Write(content.NewBlock(
 				content.NewPreBlock(content.NewParagraph(content.NewText("abc"))),

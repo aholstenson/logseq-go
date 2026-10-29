@@ -1895,6 +1895,94 @@ var _ = Describe("Parsing", func() {
 			)))
 		})
 
+		Describe("Indented blocks", func() {
+			It("bullets indented under the content of a page are children of the pre-block", func() {
+				block, err := markdown.ParseString("Paragraph\n\n\t- Child 1\n\t- Child 2\n\t\t- Grandchild\n- Item\n")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewPreBlock(
+						content.NewParagraph(
+							content.NewText("Paragraph"),
+						),
+						content.NewBlock(
+							content.NewParagraph(
+								content.NewText("Child 1"),
+							),
+						),
+						content.NewBlock(
+							content.NewParagraph(
+								content.NewText("Child 2"),
+							),
+							content.NewBlock(
+								content.NewParagraph(
+									content.NewText("Grandchild"),
+								),
+							),
+						),
+					),
+					content.NewBlock(
+						content.NewParagraph(
+							content.NewText("Item"),
+						),
+					),
+				)))
+				Expect(block.Blocks()[0].IsPreBlock()).To(BeTrue())
+				Expect(block.Blocks()[1].IsPreBlock()).To(BeFalse())
+			})
+
+			It("bullets indented directly after a paragraph are children of the pre-block", func() {
+				block, err := markdown.ParseString("Paragraph\n\t- Child\n")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewPreBlock(
+						content.NewParagraph(
+							content.NewText("Paragraph"),
+						),
+						content.NewBlock(
+							content.NewParagraph(
+								content.NewText("Child"),
+							),
+						),
+					),
+				)))
+			})
+
+			It("bullets indented under page properties are children of the pre-block", func() {
+				block, err := markdown.ParseString("key:: value\nParagraph\n\n\t- Child\n")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewPreBlock(
+						content.NewProperties(
+							content.NewProperty("key", content.NewText("value")),
+						),
+						content.NewParagraph(
+							content.NewText("Paragraph"),
+						).WithPreviousLineType(content.PreviousLineTypeNonBlank),
+						content.NewBlock(
+							content.NewParagraph(
+								content.NewText("Child"),
+							),
+						),
+					),
+				)))
+			})
+
+			It("indented text that is not a bullet is still a code block", func() {
+				block, err := markdown.ParseString("Paragraph\n\n\tcode\n")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewParagraph(
+						content.NewText("Paragraph"),
+					),
+					content.NewCodeBlock("code\n"),
+				)))
+			})
+		})
+
 		Describe("Malformed blocks", func() {
 			It("trailing content is added to last block", func() {
 				block, err := markdown.ParseString("This is a paragraph\n\n- Item 1\n- Item 2\n\nThis is a trailing paragraph\n")

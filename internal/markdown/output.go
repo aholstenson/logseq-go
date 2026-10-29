@@ -1288,7 +1288,9 @@ func (w *Output) writeBlock(node *content.Block) error {
 			}
 		}
 
-		if hasParentBlock {
+		if hasParentBlock || writesWithoutBullet(node) {
+			// The children of the pre-block are indented with a tab so that
+			// they are read back as its children and not as top-level blocks.
 			w.out.PushIndentation("\t")
 		} else {
 			w.out.PushIndentation("")

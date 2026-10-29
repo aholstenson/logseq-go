@@ -26,6 +26,7 @@ func init() {
 			util.Prioritized(parser.NewThematicBreakParser(), 200),
 			util.Prioritized(parser.NewListParser(), 300),
 			util.Prioritized(parser.NewListItemParser(), 400),
+			util.Prioritized(&indentedBlocksParser{}, 450),
 			util.Prioritized(parser.NewCodeBlockParser(), 500),
 			util.Prioritized(parser.NewATXHeadingParser(), 600),
 			util.Prioritized(parser.NewFencedCodeBlockParser(), 700),
@@ -302,8 +303,47 @@ func canMergeTextNodes(a *ast.Text, b *ast.Text) bool {
 func convertToBlock(src []byte, node ast.Node) (*content.Block, error) {
 	block := content.NewBlock()
 
+	// target is the block that content before the first list of blocks goes
+	// into. It changes to a pre-block when the content of a page has child
+	// blocks of its own.
+	target := block
+
 	hasParsedBlock := false
 	for child := node.FirstChild(); child != nil; child = child.NextSibling() {
+		if indented, ok := child.(*indentedBlocks); ok {
+			nested, err := convertToBlock(src, indented)
+			if err != nil {
+				return nil, err
+			}
+
+			parent := target
+			if hasParsedBlock {
+				// The bullets are indented under the last block.
+				lastBlock, ok := block.LastChild().(*content.Block)
+				if !ok {
+					return nil, errors.New("Last node is not a block")
+				}
+
+				parent = lastBlock
+			} else if _, isDocument := node.(*ast.Document); isDocument && target == block {
+				// The content before the first bullet of a page is the
+				// pre-block, so the indented bullets are its children.
+				target = content.NewPreBlock()
+				for _, existing := range block.Content() {
+					target.AddChild(existing)
+				}
+
+				block.PrependChild(target)
+				parent = target
+			}
+
+			for _, nestedBlock := range nested.Blocks() {
+				parent.AddChild(nestedBlock)
+			}
+
+			continue
+		}
+
 		// Check if the child is a list of blocks.
 		if list, ok := child.(*ast.List); ok && list.Marker == '-' {
 			// This is a list using the block marker, so children are parsed
@@ -329,7 +369,11 @@ func convertToBlock(src []byte, node ast.Node) (*content.Block, error) {
 				convertTaskMarker(p)
 			}
 
-			if !hasParsedBlock {
+			if target != block && !hasParsedBlock {
+				// Content after the child blocks of the pre-block still
+				// belongs to the pre-block.
+				addBeforeBlocks(target, node)
+			} else if !hasParsedBlock {
 				// No list of blocks encountered yet, treat nodes as content
 				// to main block.
 				block.AddChild(node)
@@ -365,22 +409,7 @@ func convertToBlock(src []byte, node ast.Node) (*content.Block, error) {
 				// We have parsed blocks so this is trailing content, in Logseq
 				// this seems to be added to the last block.
 				if lastBlock, ok := block.LastChild().(*content.Block); ok {
-					// Find the node before the first block in sub-block.
-					var lastNode content.Node
-					for subNode := lastBlock.FirstChild(); subNode != nil; subNode = subNode.NextSibling() {
-						if _, ok := subNode.(*content.Block); ok {
-							break
-						}
-						lastNode = subNode
-					}
-
-					if lastNode == nil {
-						// Likely no content, just add as the first child.
-						lastBlock.PrependChild(node)
-					} else {
-						// Insert after the last node.
-						lastBlock.InsertChildAfter(node, lastNode)
-					}
+					addBeforeBlocks(lastBlock, node)
 				} else {
 					return nil, errors.New("Last node is not a block")
 				}
@@ -389,6 +418,25 @@ func convertToBlock(src []byte, node ast.Node) (*content.Block, error) {
 	}
 
 	return block, nil
+}
+
+// addBeforeBlocks adds a node to the end of the content of a block, which is
+// before the first child block.
+func addBeforeBlocks(block *content.Block, node content.Node) {
+	var lastNode content.Node
+	for subNode := block.FirstChild(); subNode != nil; subNode = subNode.NextSibling() {
+		if _, ok := subNode.(*content.Block); ok {
+			break
+		}
+		lastNode = subNode
+	}
+
+	if lastNode == nil {
+		// No content yet, so the node is the first child.
+		block.PrependChild(node)
+	} else {
+		block.InsertChildAfter(node, lastNode)
+	}
 }
 
 func convertTaskMarker(node *content.Paragraph) {

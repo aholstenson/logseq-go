@@ -185,6 +185,27 @@ var _ = Describe("Graph", func() {
 			Expect(blocks[1].IsPreBlock()).To(BeFalse())
 		})
 
+		It("reads bullets indented under the content of a page as children of the pre-block", func() {
+			Expect(os.WriteFile(
+				filepath.Join(dir, "pages", "intro.md"),
+				[]byte("type:: note\nIntro text\n\n\t- Child 1\n\t- Child 2\n- Block 1\n"),
+				0o644,
+			)).To(Succeed())
+
+			graph, err := logseq.Open(context.Background(), dir)
+			Expect(err).ToNot(HaveOccurred())
+			defer graph.Close()
+
+			page, err := graph.OpenPage("intro")
+			Expect(err).ToNot(HaveOccurred())
+
+			blocks := page.Blocks()
+			Expect(blocks).To(HaveLen(2))
+			Expect(blocks[0].IsPreBlock()).To(BeTrue())
+			Expect(blocks[0].Blocks()).To(HaveLen(2))
+			Expect(page.Properties().Get("type")).ToNot(BeNil())
+		})
+
 		It("opens a page with special characters in the title", func() {
 			// Logseq uses ___  for / in filenames
 			Expect(os.WriteFile(
