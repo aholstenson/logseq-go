@@ -331,6 +331,10 @@ func (t *propertiesASTTransformer) transformTextBlockOrParagraph(node ast.Node, 
 				// Check if there is a space after the ::
 				if strings.HasPrefix(potentialName[valueStart:], " ") {
 					valueStart++
+				} else if valueStart == len(potentialName) && endsLine(textNode, next) {
+					// Nothing follows the :: on the line, so the property has
+					// an empty value. Goldmark removes the space at the end of
+					// a line, so `key:: ` is read the same as `key::`.
 				} else {
 					// There isn't a space after :: in the current text node
 					nextTextNode, _ := next.(*ast.Text)
@@ -402,6 +406,18 @@ func (t *propertiesASTTransformer) transformTextBlockOrParagraph(node ast.Node, 
 		// The paragraph is now empty
 		node.Parent().RemoveChild(node.Parent(), node)
 	}
+}
+
+// endsLine checks if a text node is the last text on its line. Goldmark can put
+// the line break on an empty text node that follows the text, so that node is
+// also checked.
+func endsLine(node *ast.Text, next ast.Node) bool {
+	if node.HardLineBreak() || node.SoftLineBreak() || next == nil {
+		return true
+	}
+
+	nextTextNode, ok := next.(*ast.Text)
+	return ok && nextTextNode.Segment.IsEmpty() && (nextTextNode.HardLineBreak() || nextTextNode.SoftLineBreak())
 }
 
 func startsWithSpace(node *ast.Text, reader text.Reader) bool {

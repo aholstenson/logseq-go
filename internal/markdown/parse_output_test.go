@@ -207,6 +207,8 @@ var _ = Describe("Parsing then outputting", func() {
 			markdown.WithIgnoredPageReferences("author"),
 		)
 		FullyEqual("Multiple properties", "key:: value\nkey2:: value2")
+		FullyEqual("Property with an empty value between other properties", "type:: #Software\ntags:: \nwebsite:: https://connectrpc.com/")
+		Varies("Property with an empty value and no space after the name", "tags::\nkey:: value", "tags:: \nkey:: value")
 		FullyEqual("Property with a dot in its name", "item\nlogseq.order-list-type:: number")
 		FullyEqual("Properties with dots in their names", "logseq.color:: red\nlogseq.tldraw.page:: value")
 

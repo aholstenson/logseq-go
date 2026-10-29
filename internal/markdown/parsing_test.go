@@ -2423,6 +2423,43 @@ var _ = Describe("Parsing", func() {
 				)))
 			})
 
+			It("can parse property with an empty value", func() {
+				block, err := markdown.ParseString("tags:: \nkey:: value\n")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewProperties(
+						content.NewProperty("tags"),
+						content.NewProperty("key", content.NewText("value")),
+					),
+				)))
+			})
+
+			It("can parse property with an empty value after a property that ends with a tag", func() {
+				block, err := markdown.ParseString("type:: #Software\ntags:: \nkey:: value\n")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewProperties(
+						content.NewProperty("type", content.NewHashtag("Software")),
+						content.NewProperty("tags"),
+						content.NewProperty("key", content.NewText("value")),
+					),
+				)))
+			})
+
+			It("can parse property with an empty value at the end of the input", func() {
+				block, err := markdown.ParseString("key:: value\ntags::")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewProperties(
+						content.NewProperty("key", content.NewText("value")),
+						content.NewProperty("tags"),
+					),
+				)))
+			})
+
 			It("can parse property with non text nodes", func() {
 				block, err := markdown.ParseString("key:: [[link]]\nThis is a paragraph\n")
 				Expect(err).ToNot(HaveOccurred())
