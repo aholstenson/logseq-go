@@ -354,6 +354,15 @@ func convertToBlock(src []byte, node ast.Node) (*content.Block, error) {
 					return nil, err
 				}
 
+				_, isDocument := node.(*ast.Document)
+				if isDocument && !hasParsedBlock && listItem == list.FirstChild() &&
+					list.HasBlankPreviousLines() && block.FirstChild() != nil {
+					// Keep the blank line between the content before the
+					// first bullet of a page, such as page properties, and
+					// the first bullet.
+					listItemBlock.SetPreviousLineType(content.PreviousLineTypeBlank)
+				}
+
 				block.AddChild(listItemBlock)
 			}
 
@@ -507,7 +516,13 @@ func convertParagraph(src []byte, node *ast.Paragraph) (*content.Paragraph, erro
 	if err != nil {
 		return nil, err
 	}
-	updatePreviousLine(node, paragraph)
+	if _, afterProperties := node.PreviousSibling().(*properties); afterProperties {
+		// A paragraph directly after properties is written on the next line,
+		// so a blank line between them has to be recorded explicitly.
+		updatePreviousLineKeepingBlank(node, paragraph)
+	} else {
+		updatePreviousLine(node, paragraph)
+	}
 	return paragraph, nil
 }
 

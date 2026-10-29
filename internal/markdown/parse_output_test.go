@@ -206,11 +206,15 @@ var _ = Describe("Parsing then outputting", func() {
 		FullyEqual("Paragraphs interrupted by properties", "Paragraph\nkey:: value")
 		FullyEqual("Paragraphs interrupted by properties followed by more paragraph", "Paragraph\nkey:: value\nParagraph")
 		FullyEqual("Paragraph followed by properties", "Paragraph\n\nkey:: value")
+		FullyEqual("Properties followed by a blank line and a paragraph", "key:: value\n\nParagraph")
+		FullyEqual("Properties followed by a blank line and blocks", "key:: value\n\n- Block 1\n- Block 2")
+		FullyEqual("Properties followed by blocks", "key:: value\n- Block 1\n- Block 2")
 	})
 
 	Describe("Pre-block with children", func() {
 		FullyEqual("Paragraph with indented children", "Paragraph\n\t- Child 1\n\t\t- Grandchild\n- Item")
 		FullyEqual("Properties with indented children", "key:: value\nParagraph\n\t- Child\n- Item")
+		FullyEqual("Properties with indented children followed by a blank line", "key:: value\n\t- Child\n\n- Item")
 		Varies("Paragraph with indented children after a blank line",
 			"Paragraph\n\n\t- Child\n- Item",
 			"Paragraph\n\t- Child\n- Item",

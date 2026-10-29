@@ -553,6 +553,30 @@ var _ = Describe("Graph", func() {
 			Expect(saveUnchanged(graph, path, "props")).To(Equal(source))
 		})
 
+		It("keeps the blank line after page properties", func() {
+			path := filepath.Join(dir, "pages", "props.md")
+			source := "icon:: 🔀\ntitle:: Properties\n\n- Block 1\n\t- Child\n- Block 2\n"
+			Expect(os.WriteFile(path, []byte(source), 0o644)).To(Succeed())
+
+			graph, err := logseq.Open(context.Background(), dir)
+			Expect(err).ToNot(HaveOccurred())
+			defer graph.Close()
+
+			Expect(saveUnchanged(graph, path, "props")).To(Equal(source))
+		})
+
+		It("keeps the blank line between page properties and a paragraph", func() {
+			path := filepath.Join(dir, "pages", "props.md")
+			source := "title:: Properties\n\nParagraph\n- Block 1\n"
+			Expect(os.WriteFile(path, []byte(source), 0o644)).To(Succeed())
+
+			graph, err := logseq.Open(context.Background(), dir)
+			Expect(err).ToNot(HaveOccurred())
+			defer graph.Close()
+
+			Expect(saveUnchanged(graph, path, "props")).To(Equal(source))
+		})
+
 		It("reads the properties of blocks after page properties", func() {
 			path := filepath.Join(dir, "pages", "props.md")
 			source := "title:: Properties\n- Block 1\n  collapsed:: true\n\t- Child\n- Block 2\n  key:: value\n"

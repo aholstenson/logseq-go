@@ -1281,7 +1281,8 @@ func (w *Output) writeBlock(node *content.Block) error {
 	// Output the sub blocks
 	blocks := node.Blocks()
 	if len(blocks) > 0 {
-		if w.out.HasWrittenAtCurrentIndent() {
+		hasContent := w.out.HasWrittenAtCurrentIndent()
+		if hasContent {
 			err := w.out.WriteString("\n")
 			if err != nil {
 				return err
@@ -1316,6 +1317,15 @@ func (w *Output) writeBlock(node *content.Block) error {
 				}
 
 				continue
+			}
+
+			if child.PreviousLineType() == content.PreviousLineTypeBlank && (i > 1 || hasContent) {
+				// Keep the blank line between the block and what is written
+				// before it.
+				err := w.out.WriteString("\n")
+				if err != nil {
+					return err
+				}
 			}
 
 			err := w.out.WriteString("- ")

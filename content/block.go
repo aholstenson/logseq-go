@@ -6,6 +6,7 @@ import "github.com/google/uuid"
 // or another block.
 type Block struct {
 	baseNodeWithChildren
+	previousLineAwareImpl
 
 	properties *Properties
 	preBlock   bool
@@ -140,8 +141,17 @@ func (b *Block) FindProperties() *Properties {
 	return nil
 }
 
+// WithPreviousLineType sets the type of the line before the bullet of the
+// block and returns the block. Only PreviousLineTypeBlank changes the output,
+// as it keeps a blank line between the block and the content before it.
+func (b *Block) WithPreviousLineType(t PreviousLineType) *Block {
+	b.previousLineType = t
+	return b
+}
+
 func (n *Block) debug(p *debugPrinter) {
 	p.StartType("Block")
+	debugPreviousLineAware(p, n)
 	p.Children(n)
 	p.EndType()
 }
@@ -157,6 +167,7 @@ func (n *Block) isBlock() {}
 var _ Node = (*Block)(nil)
 var _ HasChildren = (*Block)(nil)
 var _ BlockNode = (*Block)(nil)
+var _ PreviousLineAware = (*Block)(nil)
 
 type BlockList []*Block
 

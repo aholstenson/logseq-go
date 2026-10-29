@@ -1808,7 +1808,7 @@ var _ = Describe("Parsing", func() {
 					content.NewParagraph(
 						content.NewText("Item 1"),
 					),
-				),
+				).WithPreviousLineType(content.PreviousLineTypeBlank),
 				content.NewBlock(
 					content.NewParagraph(
 						content.NewText("Item 2"),
@@ -2065,7 +2065,7 @@ var _ = Describe("Parsing", func() {
 						content.NewParagraph(
 							content.NewText("Item 1"),
 						),
-					),
+					).WithPreviousLineType(content.PreviousLineTypeBlank),
 					content.NewBlock(
 						content.NewParagraph(
 							content.NewText("Item 2"),
@@ -2106,7 +2106,7 @@ var _ = Describe("Parsing", func() {
 							content.NewProperty("id", content.NewText("123")),
 							content.NewProperty("collapsed", content.NewText("true")),
 						).WithPreviousLineType(content.PreviousLineTypeNonBlank),
-					),
+					).WithPreviousLineType(content.PreviousLineTypeBlank),
 					content.NewBlock(
 						content.NewParagraph(
 							content.NewText("Other"),
