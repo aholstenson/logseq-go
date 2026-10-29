@@ -40,6 +40,8 @@ func main() {
 			switch event := e.(type) {
 			case *logseq.PageUpdated:
 				fmt.Printf("Page updated: %s (revision %s, own write: %t)\n", event.Page.Title(), event.Revision, event.OwnWrite)
+			case *logseq.PageRenamed:
+				fmt.Printf("Page renamed: %s to %s (own write: %t)\n", event.OldTitle, event.Page.Title(), event.OwnWrite)
 			case *logseq.PageDeleted:
 				fmt.Printf("Page deleted: %s (own write: %t)\n", event.Title, event.OwnWrite)
 			}

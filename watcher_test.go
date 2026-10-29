@@ -198,6 +198,192 @@ var _ = Describe("Watcher", func() {
 	})
 })
 
+var _ = Describe("Watcher renames", func() {
+	var (
+		graph   *logseq.Graph
+		watcher *logseq.Watcher
+		dir     string
+	)
+
+	BeforeEach(func() {
+		dir = setupGraph()
+
+		Expect(os.WriteFile(
+			filepath.Join(dir, "pages", "old.md"),
+			[]byte("- hello world\n"),
+			0o644,
+		)).To(Succeed())
+	})
+
+	JustBeforeEach(func() {
+		var err error
+		graph, err = logseq.Open(context.Background(), dir, logseq.WithInMemoryIndex())
+		Expect(err).ToNot(HaveOccurred())
+
+		watcher = graph.Watch()
+	})
+
+	AfterEach(func() {
+		watcher.Close()
+		graph.Close()
+	})
+
+	// receive collects the given number of events, and then checks that no
+	// more events arrive. Both halves of a rename are handled within the same
+	// debounce window, so a short wait is enough to see a missing pairing.
+	receive := func(count int) []logseq.ChangeEvent {
+		var events []logseq.ChangeEvent
+		for len(events) < count {
+			var event logseq.ChangeEvent
+			Eventually(watcher.Events(), 5*time.Second).Should(Receive(&event))
+			events = append(events, event)
+		}
+
+		Consistently(watcher.Events(), 300*time.Millisecond).ShouldNot(Receive())
+		return events
+	}
+
+	It("emits PageRenamed when a page file is moved", func() {
+		Expect(os.Rename(
+			filepath.Join(dir, "pages", "old.md"),
+			filepath.Join(dir, "pages", "new.md"),
+		)).To(Succeed())
+
+		events := receive(1)
+		Expect(events[0]).To(BeAssignableToTypeOf(&logseq.PageRenamed{}))
+
+		renamed := events[0].(*logseq.PageRenamed)
+		Expect(renamed.OldType).To(Equal(logseq.PageTypeDedicated))
+		Expect(renamed.OldTitle).To(Equal("old"))
+		Expect(renamed.Page.Title()).To(Equal("new"))
+		Expect(renamed.Revision).To(Equal(renamed.Page.Revision()))
+		Expect(renamed.OwnWrite).To(BeFalse())
+	})
+
+	It("updates the index when a page file is moved", func() {
+		Expect(os.Rename(
+			filepath.Join(dir, "pages", "old.md"),
+			filepath.Join(dir, "pages", "new.md"),
+		)).To(Succeed())
+
+		receive(1)
+
+		results, err := graph.SearchPages(context.Background(),
+			logseq.WithQuery(logseq.TitleMatches("old")),
+		)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(results.Size()).To(Equal(0))
+
+		results, err = graph.SearchPages(context.Background(),
+			logseq.WithQuery(logseq.TitleMatches("new")),
+		)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(results.Size()).To(Equal(1))
+	})
+
+	It("emits PageRenamed when a file is removed and created with the same content", func() {
+		Expect(os.Remove(filepath.Join(dir, "pages", "old.md"))).To(Succeed())
+
+		// The create comes after the removal, but before the removal is
+		// handled.
+		time.Sleep(300 * time.Millisecond)
+		Expect(os.WriteFile(
+			filepath.Join(dir, "pages", "new.md"),
+			[]byte("- hello world\n"),
+			0o644,
+		)).To(Succeed())
+
+		events := receive(1)
+		Expect(events[0]).To(BeAssignableToTypeOf(&logseq.PageRenamed{}))
+		Expect(events[0].(*logseq.PageRenamed).OldTitle).To(Equal("old"))
+	})
+
+	It("emits PageRenamed when a journal file is moved", func() {
+		journalPath := filepath.Join(dir, "journals", "2025_06_15.md")
+		Expect(os.WriteFile(journalPath, []byte("- entry\n"), 0o644)).To(Succeed())
+		receive(1)
+
+		Expect(os.Rename(journalPath, filepath.Join(dir, "journals", "2025_06_16.md"))).To(Succeed())
+
+		events := receive(1)
+		Expect(events[0]).To(BeAssignableToTypeOf(&logseq.PageRenamed{}))
+
+		renamed := events[0].(*logseq.PageRenamed)
+		Expect(renamed.OldType).To(Equal(logseq.PageTypeJournal))
+		Expect(renamed.OldDate).To(Equal(time.Date(2025, 6, 15, 0, 0, 0, 0, time.Local)))
+		Expect(renamed.Page.Date()).To(Equal(time.Date(2025, 6, 16, 0, 0, 0, 0, time.Local)))
+	})
+
+	It("emits PageDeleted and PageUpdated when the content changes", func() {
+		Expect(os.Remove(filepath.Join(dir, "pages", "old.md"))).To(Succeed())
+		Expect(os.WriteFile(
+			filepath.Join(dir, "pages", "new.md"),
+			[]byte("- other content\n"),
+			0o644,
+		)).To(Succeed())
+
+		events := receive(2)
+		Expect(events).To(ConsistOf(
+			BeAssignableToTypeOf(&logseq.PageDeleted{}),
+			BeAssignableToTypeOf(&logseq.PageUpdated{}),
+		))
+	})
+
+	It("emits PageDeleted and PageUpdated when more than one file matches", func() {
+		Expect(os.Remove(filepath.Join(dir, "pages", "old.md"))).To(Succeed())
+		for _, name := range []string{"first.md", "second.md"} {
+			Expect(os.WriteFile(
+				filepath.Join(dir, "pages", name),
+				[]byte("- hello world\n"),
+				0o644,
+			)).To(Succeed())
+		}
+
+		events := receive(3)
+		Expect(events).To(ConsistOf(
+			BeAssignableToTypeOf(&logseq.PageDeleted{}),
+			BeAssignableToTypeOf(&logseq.PageUpdated{}),
+			BeAssignableToTypeOf(&logseq.PageUpdated{}),
+		))
+	})
+
+	It("marks a page renamed by the graph as its own write", func() {
+		tx := graph.NewTransaction()
+		Expect(tx.RenamePage(context.Background(), "old", "new")).To(Succeed())
+		Expect(tx.Save()).To(Succeed())
+
+		events := receive(1)
+		Expect(events[0]).To(BeAssignableToTypeOf(&logseq.PageRenamed{}))
+		Expect(events[0].(*logseq.PageRenamed).OwnWrite).To(BeTrue())
+	})
+
+	It("emits PageDeleted and PageUpdated without an index", func() {
+		withoutIndex, err := logseq.Open(context.Background(), dir)
+		Expect(err).ToNot(HaveOccurred())
+		defer withoutIndex.Close()
+
+		other := withoutIndex.Watch()
+		defer other.Close()
+
+		Expect(os.Rename(
+			filepath.Join(dir, "pages", "old.md"),
+			filepath.Join(dir, "pages", "new.md"),
+		)).To(Succeed())
+
+		var events []logseq.ChangeEvent
+		for len(events) < 2 {
+			var event logseq.ChangeEvent
+			Eventually(other.Events(), 5*time.Second).Should(Receive(&event))
+			events = append(events, event)
+		}
+
+		Expect(events).To(ConsistOf(
+			BeAssignableToTypeOf(&logseq.PageDeleted{}),
+			BeAssignableToTypeOf(&logseq.PageUpdated{}),
+		))
+	})
+})
+
 var _ = Describe("Watcher lifecycle", func() {
 	var dir string
 

@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/aholstenson/logseq-go/content"
 	"github.com/aholstenson/logseq-go/internal/utils"
@@ -192,47 +191,56 @@ func (i *BlugeIndex) IndexPage(ctx context.Context, page *Page) error {
 	return nil
 }
 
-func (i *BlugeIndex) GetLastModified(ctx context.Context, subPath string) (time.Time, error) {
+func (i *BlugeIndex) GetFileState(ctx context.Context, subPath string) (FileState, error) {
 	reader, err := i.reader()
 	if err != nil {
-		return time.Time{}, err
+		return FileState{}, err
 	}
 
 	it, err := reader.Search(ctx, bluge.NewTopNSearch(1, bluge.NewTermQuery(subPath).SetField("_id")))
 	if err != nil {
-		return time.Time{}, fmt.Errorf("error searching index: %w", err)
+		return FileState{}, fmt.Errorf("error searching index: %w", err)
 	}
 
 	match, err := it.Next()
 	if err != nil {
-		return time.Time{}, fmt.Errorf("error getting next match: %w", err)
+		return FileState{}, fmt.Errorf("error getting next match: %w", err)
 	}
 
 	if match == nil {
-		return time.Time{}, nil
+		return FileState{}, nil
 	}
 
-	var lastModified time.Time
-	match.VisitStoredFields(func(field string, value []byte) bool {
-		if field == "lastModified" {
+	var state FileState
+	err = match.VisitStoredFields(func(field string, value []byte) bool {
+		switch field {
+		case "lastModified":
 			time, err := bluge.DecodeDateTime(value)
 			if err != nil {
 				return false
 			}
 
-			lastModified = time
-			return false
+			state.LastModified = time
+		case "revision":
+			state.Revision = string(value)
 		}
 
 		return true
 	})
+	if err != nil {
+		return FileState{}, fmt.Errorf("error reading stored fields: %w", err)
+	}
 
-	return lastModified, nil
+	return state, nil
 }
 
 func (i *BlugeIndex) pageToDocument(doc *Page) (*bluge.Document, error) {
 	blugeDoc := bluge.NewDocument(doc.SubPath).
 		AddField(bluge.NewDateTimeField("lastModified", doc.LastModified).StoreValue())
+
+	if doc.Revision != "" {
+		blugeDoc.AddField(bluge.NewKeywordField("revision", doc.Revision).StoreValue())
+	}
 
 	switch doc.Type {
 	case PageTypeDedicated:

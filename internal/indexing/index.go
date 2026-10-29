@@ -21,9 +21,9 @@ type Index interface {
 	// IndexPage indexes a page in the search index.
 	IndexPage(ctx context.Context, doc *Page) error
 
-	// GetLastModified returns the last modified time for a page. Should return
-	// a zero time if the page does not exist in the index.
-	GetLastModified(ctx context.Context, subPath string) (time.Time, error)
+	// GetFileState returns what the index knows about the file of a page.
+	// Should return a zero FileState if the page does not exist in the index.
+	GetFileState(ctx context.Context, subPath string) (FileState, error)
 
 	// SearchPages searches for pages in the index.
 	SearchPages(ctx context.Context, query Query, opts SearchOptions) (SearchResults[*Page], error)
@@ -60,6 +60,17 @@ type SearchResults[V any] interface {
 	Results() []V
 }
 
+// FileState is what the index stores about the file of a page, which tells
+// if the file changed after it was indexed.
+type FileState struct {
+	// LastModified is the last time the file was modified on disk.
+	LastModified time.Time
+
+	// Revision is the revision of the content of the file. It is empty for
+	// pages that were indexed before the index stored revisions.
+	Revision string
+}
+
 type PageType int
 
 const (
@@ -76,6 +87,10 @@ type Page struct {
 
 	// LastModified is the last time the page was modified on disk.
 	LastModified time.Time
+
+	// Revision is the revision of the content of the page file, only used
+	// while indexing.
+	Revision string
 
 	// Title is the title of the page. Only used for dedicated pages.
 	Title string

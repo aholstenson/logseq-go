@@ -153,10 +153,15 @@ if errors.Is(err, logseq.ErrConflict) {
 
 ### Watching for changes
 
-`graph.Watch()` sends an event when a page is changed or deleted on disk.
-`PageUpdated` has the revision of the page. Saves made via the graph also
+`graph.Watch()` sends an event when a page is changed, renamed or deleted on
+disk. `PageUpdated` has the revision of the page. Saves made via the graph also
 cause events, and these have `OwnWrite` set, so that they can be told apart
-from changes made by Logseq or other programs:
+from changes made by Logseq or other programs.
+
+A rename is a removed file and a created file on disk. When the graph has an
+index and the created file has the same content as the removed file had, the
+two are sent as one `PageRenamed` event. Otherwise they are sent as
+`PageDeleted` and `PageUpdated`:
 
 ```go
 watcher := graph.Watch()
@@ -172,6 +177,8 @@ for {
       }
 
       fmt.Println("Changed outside:", event.Page.Title(), event.Revision)
+    case *logseq.PageRenamed:
+      fmt.Println("Renamed:", event.OldTitle, "to", event.Page.Title())
     case *logseq.PageDeleted:
       fmt.Println("Deleted:", event.Title)
     }

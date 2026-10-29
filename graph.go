@@ -368,11 +368,13 @@ func (g *Graph) createWalker(ctx context.Context, listener func(event OpenEvent)
 			return nil
 		}
 
-		lastModified, err := g.index.GetLastModified(ctx, subPath)
+		state, err := g.index.GetFileState(ctx, subPath)
 		if err != nil {
 			return fmt.Errorf("failed to get last modified: %w", err)
-		} else if lastModified.Equal(info.ModTime()) {
-			// Page is assumed to be up to date if times match
+		} else if state.LastModified.Equal(info.ModTime()) && state.Revision != "" {
+			// Page is assumed to be up to date if times match. Pages indexed
+			// without a revision are indexed again, as the revision is needed
+			// to report renames.
 			return nil
 		}
 
@@ -409,6 +411,7 @@ func (g *Graph) indexDocument(ctx context.Context, docPath string) (Page, error)
 	doc := &indexing.Page{
 		Type:         indexing.PageType(page.Type()),
 		LastModified: page.LastModified(),
+		Revision:     page.Revision(),
 		Date:         page.Date(),
 		Blocks:       page.Blocks(),
 		Title:        page.Title(),
@@ -445,13 +448,12 @@ func (g *Graph) watchForChanges() {
 		return
 	}
 
-	changes := make(chan string)
+	changes := make(chan *pendingChange)
 	// done is closed when the watcher has stopped, which lets debounce timers
 	// that fire around that point give up instead of sending on a channel that
 	// no longer has a receiver.
 	done := make(chan struct{})
-	changeTimers := make(map[string]*time.Timer)
-	var mu sync.Mutex
+	pending := newPendingChanges()
 
 	g.changeHandlers.Add(2)
 
@@ -466,7 +468,9 @@ func (g *Graph) watchForChanges() {
 					break _outer
 				}
 
-				if !event.Has(fsnotify.Write) && !event.Has(fsnotify.Create) && !event.Has(fsnotify.Remove) {
+				// A file that is moved away is reported as renamed, while the
+				// file it is moved to is reported as created.
+				if !event.Has(fsnotify.Write) && !event.Has(fsnotify.Create) && !event.Has(fsnotify.Remove) && !event.Has(fsnotify.Rename) {
 					continue
 				}
 
@@ -480,26 +484,14 @@ func (g *Graph) watchForChanges() {
 					continue
 				}
 
-				path := event.Name
-
 				// Logseq will save as you write, so debounce changes to files
 				// so we don't index too often
-				mu.Lock()
-				if timer, found := changeTimers[path]; found {
-					timer.Stop()
-				}
-
-				changeTimers[path] = time.AfterFunc(1*time.Second, func() {
-					mu.Lock()
-					delete(changeTimers, path)
-					mu.Unlock()
-
+				pending.schedule(event.Name, changeDebounce, func(change *pendingChange) {
 					select {
-					case changes <- path:
+					case changes <- change:
 					case <-done:
 					}
 				})
-				mu.Unlock()
 			case _, ok := <-changeWatcher.Errors:
 				if !ok {
 					break _outer
@@ -512,12 +504,7 @@ func (g *Graph) watchForChanges() {
 		// When the watcher is closed remove all of the current timers. Timers
 		// that already fired are released via done instead of being stopped.
 		close(done)
-
-		mu.Lock()
-		defer mu.Unlock()
-		for _, timer := range changeTimers {
-			timer.Stop()
-		}
+		pending.stop()
 	}()
 
 	go func() {
@@ -525,63 +512,20 @@ func (g *Graph) watchForChanges() {
 
 		ctx := context.Background()
 		for {
-			var path string
+			var change *pendingChange
 			select {
-			case path = <-changes:
+			case change = <-changes:
 			case <-done:
 				return
 			}
 
-			// Figure out if the page still exists
-			exists := true
-			_, err := os.Stat(path)
-			if err != nil {
-				if os.IsNotExist(err) {
-					exists = false
-				} else {
-					// TODO: Log error
-				}
+			if !pending.take(change) {
+				// The change was already handled together with another one,
+				// such as the other half of a rename.
+				continue
 			}
 
-			var page Page
-
-			if g.index != nil {
-				// Indexing is enabled, update the index and retrieve the page
-				var err error
-				if exists {
-					page, err = g.indexDocument(ctx, path)
-				} else {
-					subPath, _ := filepath.Rel(g.directory, path)
-					err = g.index.DeletePage(ctx, subPath)
-				}
-
-				if err != nil {
-					// TODO: Log error
-				}
-
-				// Sync after indexing so changes are visible
-				g.index.Sync()
-			} else if exists {
-				// No indexing, open the page directly
-				page, err = g.openViaPath(path, g)
-				if err != nil {
-					// TODO: Log error
-				}
-			}
-
-			var event ChangeEvent
-			if exists {
-				if page != nil {
-					event = &PageUpdated{
-						Page:     page,
-						Revision: page.Revision(),
-						OwnWrite: g.ownWrites.consume(path, page.Revision()),
-					}
-				}
-			} else if deleted := g.createPageDeletedEvent(path); deleted != nil {
-				deleted.OwnWrite = g.ownWrites.consume(path, "")
-				event = deleted
-			}
+			event := g.handleChange(ctx, change.path, pending)
 
 			// Notify watchers of the change
 			if event != nil {
@@ -600,6 +544,132 @@ func (g *Graph) watchForChanges() {
 			}
 		}
 	}()
+}
+
+// handleChange updates the index for a changed file and returns the event to
+// send to watchers, or nil if there is nothing to report. Other changes that
+// wait in pending are checked to find renames.
+func (g *Graph) handleChange(ctx context.Context, path string, pending *pendingChanges) ChangeEvent {
+	// Figure out if the page still exists
+	exists := true
+	_, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			exists = false
+		} else {
+			// TODO: Log error
+		}
+	}
+
+	if g.index == nil {
+		// Without an index there are no revisions of removed files to find
+		// renames with, so changes are reported as they are.
+		if !exists {
+			return g.deletedEvent(path)
+		}
+
+		page, err := g.openViaPath(path, g)
+		if err != nil || page == nil {
+			// TODO: Log error
+			return nil
+		}
+
+		return g.updatedEvent(path, page)
+	}
+
+	// Sync after indexing so changes are visible
+	defer g.index.Sync()
+
+	subPath, _ := filepath.Rel(g.directory, path)
+	state, err := g.index.GetFileState(ctx, subPath)
+	if err != nil {
+		// TODO: Log error
+	}
+
+	if !exists {
+		if err := g.index.DeletePage(ctx, subPath); err != nil {
+			// TODO: Log error
+		}
+
+		if g.createPageDeletedEvent(path) == nil {
+			return nil
+		}
+
+		if to := g.claimRenameTarget(ctx, pending, state.Revision); to != "" {
+			page, err := g.indexDocument(ctx, to)
+			if err != nil {
+				// TODO: Log error
+			}
+
+			if page != nil {
+				return g.renamedEvent(path, to, page)
+			}
+		} else {
+			pending.handledUnpaired(state.Revision)
+		}
+
+		return g.deletedEvent(path)
+	}
+
+	page, err := g.indexDocument(ctx, path)
+	if err != nil || page == nil {
+		// TODO: Log error
+		return nil
+	}
+
+	if state == (indexing.FileState{}) {
+		// The file was not indexed before, so it may be the new location of a
+		// file that was removed.
+		if from := g.claimRenameSource(ctx, pending, page.Revision()); from != "" {
+			fromSubPath, _ := filepath.Rel(g.directory, from)
+			if err := g.index.DeletePage(ctx, fromSubPath); err != nil {
+				// TODO: Log error
+			}
+
+			return g.renamedEvent(from, path, page)
+		}
+
+		pending.handledUnpaired(page.Revision())
+	}
+
+	return g.updatedEvent(path, page)
+}
+
+func (g *Graph) updatedEvent(path string, page Page) *PageUpdated {
+	return &PageUpdated{
+		Page:     page,
+		Revision: page.Revision(),
+		OwnWrite: g.ownWrites.consume(path, page.Revision()),
+	}
+}
+
+func (g *Graph) deletedEvent(path string) ChangeEvent {
+	deleted := g.createPageDeletedEvent(path)
+	if deleted == nil {
+		return nil
+	}
+
+	deleted.OwnWrite = g.ownWrites.consume(path, "")
+	return deleted
+}
+
+func (g *Graph) renamedEvent(from string, to string, page Page) *PageRenamed {
+	// Both pages are checked to be part of the graph before they are paired.
+	deleted := g.createPageDeletedEvent(from)
+
+	// Both writes are consumed, so that neither of them is left to mark a
+	// later change as an own write.
+	removed := g.ownWrites.consume(from, "")
+	written := g.ownWrites.consume(to, page.Revision())
+
+	return &PageRenamed{
+		Page:     page,
+		Revision: page.Revision(),
+		OldType:  deleted.Type,
+		OldTitle: deleted.Title,
+		OldDate:  deleted.Date,
+		OwnWrite: removed && written,
+	}
 }
 
 func (g *Graph) createPageDeletedEvent(path string) *PageDeleted {
