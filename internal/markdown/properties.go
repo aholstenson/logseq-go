@@ -81,13 +81,21 @@ var defaultPropertiesASTTransformer = &propertiesASTTransformer{}
 // If a property is found just after another property, it is considered to be
 // part of the same properties block.
 func (t *propertiesASTTransformer) Transform(node *ast.Document, reader text.Reader, pc parser.Context) {
-	ast.Walk(node, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
+	// The paragraphs are found before they are changed, as a paragraph that
+	// only holds properties is removed, and a removed node has no next sibling
+	// for the walk to continue to.
+	var paragraphs []ast.Node
+	_ = ast.Walk(node, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
 		if entering && (node.Kind() == ast.KindParagraph || node.Kind() == ast.KindTextBlock) {
-			t.transformTextBlockOrParagraph(node, reader)
+			paragraphs = append(paragraphs, node)
 		}
 
 		return ast.WalkContinue, nil
 	})
+
+	for _, paragraph := range paragraphs {
+		t.transformTextBlockOrParagraph(paragraph, reader)
+	}
 
 	// How the value of a property is read depends on the settings of the graph,
 	// which are applied once the properties have been found.

@@ -2021,6 +2021,34 @@ var _ = Describe("Parsing", func() {
 				)))
 			})
 
+			It("can parse properties of blocks after page properties", func() {
+				block, err := markdown.ParseString("title:: X\n\n- Block\n  id:: 123\n  collapsed:: true\n- Other\n  key:: value\n")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewProperties(
+						content.NewProperty("title", content.NewText("X")),
+					),
+					content.NewBlock(
+						content.NewParagraph(
+							content.NewText("Block"),
+						),
+						content.NewProperties(
+							content.NewProperty("id", content.NewText("123")),
+							content.NewProperty("collapsed", content.NewText("true")),
+						).WithPreviousLineType(content.PreviousLineTypeNonBlank),
+					),
+					content.NewBlock(
+						content.NewParagraph(
+							content.NewText("Other"),
+						),
+						content.NewProperties(
+							content.NewProperty("key", content.NewText("value")),
+						).WithPreviousLineType(content.PreviousLineTypeNonBlank),
+					),
+				)))
+			})
+
 			It("can parse property with a value of several words", func() {
 				block, err := markdown.ParseString("key:: a longer value")
 				Expect(err).ToNot(HaveOccurred())
