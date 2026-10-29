@@ -140,6 +140,47 @@ var _ = Describe("Parsing", func() {
 			)))
 		})
 
+		It("can parse strong with a space before the closing marker", func() {
+			block, err := markdown.ParseString("**Card from [[A]] and [[B]] **")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewStrong(
+						content.NewText("Card from "),
+						content.NewPageLink("A"),
+						content.NewText(" and "),
+						content.NewPageLink("B"),
+						content.NewText(" "),
+					),
+				),
+			)))
+		})
+
+		It("can parse strong parts that follow each other", func() {
+			block, err := markdown.ParseString("**a** **b**")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewStrong(content.NewText("a")),
+					content.NewText(" "),
+					content.NewStrong(content.NewText("b")),
+				),
+			)))
+		})
+
+		It("does not parse strong from markers surrounded by spaces", func() {
+			block, err := markdown.ParseString("a ** b ** c")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("a ** b ** c"),
+				),
+			)))
+		})
+
 		It("can parse emphasis and strong", func() {
 			block, err := markdown.ParseString("This is ***strong and emphasized*** text")
 			Expect(err).ToNot(HaveOccurred())

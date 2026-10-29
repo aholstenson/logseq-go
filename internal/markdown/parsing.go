@@ -51,7 +51,7 @@ func init() {
 			util.Prioritized(parser.NewLinkParser(), 200),
 			util.Prioritized(parser.NewAutoLinkParser(), 300),
 			util.Prioritized(parser.NewRawHTMLParser(), 400),
-			util.Prioritized(parser.NewEmphasisParser(), 500),
+			util.Prioritized(&emphasisParser{}, 500),
 			util.Prioritized(extension.NewStrikethroughParser(), 501),
 			util.Prioritized(&highlightParser{}, 502),
 			util.Prioritized(extension.NewLinkifyParser(
