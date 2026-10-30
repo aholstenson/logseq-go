@@ -54,6 +54,7 @@ var _ = Describe("Query", func() {
 			"acme.md":             "alias:: ACME Corp\n\n- A company\n",
 			"ada.md":              "organization:: [[Acme]], [[Initech]]\n\n- Engineer\n",
 			"bob.md":              "organization:: [[Initech]]\n\n- Manager\n",
+			"notes.md":            "- TODO Review [[book]]\n- Visit [[recipe one]]\n- Plan [[Nowhere Page]]\n",
 			"films.md": "- Good film\n  rating:: 8\n" +
 				"- Great film\n  rating:: 10\n" +
 				"- Fine film\n  rating:: 6\n",
@@ -244,6 +245,25 @@ var _ = Describe("Query", func() {
 		})
 	})
 
+	Describe("References to pages that match a filter", func() {
+		It("finds the blocks that reference the pages", func() {
+			Expect(blocks("(refs (page-tags [[reading]]))")).To(ConsistOf("Review book"))
+			Expect(blocks("(refs (page-property type [[Cognitive Recipe]]))")).To(ConsistOf("Visit recipe one"))
+			Expect(blocks("(and (task TODO) (refs (page-tags [[reading]])))")).To(ConsistOf("Review book"))
+			Expect(blocks("(refs (page-tags [[nothing]]))")).To(BeEmpty())
+		})
+
+		It("matches titles on the references, also for pages without a file", func() {
+			Expect(blocks(`(refs (title starts-with "recipe"))`)).To(ConsistOf("Visit recipe one"))
+			Expect(blocks(`(refs (title ends-with "PAGE"))`)).To(ConsistOf("Plan Nowhere Page"))
+			Expect(blocks(`(refs (title = "nowhere page"))`)).To(ConsistOf("Plan Nowhere Page"))
+		})
+
+		It("finds the blocks about the pages", func() {
+			Expect(blocks("(page-ref (page-tags [[reading]]))")).To(ContainElements("Review book", "Finish chapter"))
+		})
+	})
+
 	Describe("Sorting", func() {
 		It("sorts blocks by a property with numbers in the order of their value", func() {
 			Expect(blocks("(and (property rating) (sort-by rating asc))")).
@@ -396,6 +416,20 @@ var _ = Describe("Query", func() {
 			Expect(results.Pages[0].Title()).To(Equal("tasks"))
 		})
 
+		It("finds the pages without open tasks", func() {
+			results := runAdvanced(`{:query [:find (pull ?p [*])
+				:where [?p :block/name] (not-join [?p] [?b :block/page ?p] [?b :block/marker "TODO"])]}`)
+			Expect(results.Type).To(Equal(logseq.QueryResultPages))
+
+			titles := make([]string, 0, len(results.Pages))
+			for _, page := range results.Pages {
+				titles = append(titles, page.Title())
+			}
+			Expect(titles).To(ContainElement("films"))
+			Expect(titles).ToNot(ContainElement("tasks"))
+			Expect(titles).ToNot(ContainElement("book"))
+		})
+
 		It("finds the pages by the start of their title", func() {
 			results := runAdvanced(`{:query [:find (pull ?p [*])
 				:where [?p :block/name ?n] [(clojure.string/starts-with? ?n "recipe")]]}`)
@@ -406,6 +440,12 @@ var _ = Describe("Query", func() {
 				titles = append(titles, page.Title())
 			}
 			Expect(titles).To(ConsistOf("recipe one", "recipe two"))
+		})
+
+		It("finds the tasks that refer to tagged pages", func() {
+			results := runAdvanced(`{:query [:find (pull ?b [*])
+				:where [?b :block/marker "TODO"] [?b :block/refs ?p] [?p :block/tags ?t] [?t :block/name "reading"]]}`)
+			Expect(blockPreviews(results)).To(ConsistOf("Review book"))
 		})
 
 		It("finds the people of the current page", func() {

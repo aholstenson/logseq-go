@@ -54,6 +54,9 @@
 //	(alias [[name]])         pages with the alias
 //	(has-block (task TODO))  pages with one or more blocks that match the
 //	                         filter
+//	(refs (page-tags x))     blocks that reference one or more of the pages
+//	                         that the filter matches, see ReferencesFilter;
+//	                         `page-ref` does the same for blocks about them
 //	(sort-by priority asc)   sort by a built-in value: `priority`,
 //	                         `scheduled`, `deadline`, `journal-day` or `title`
 //

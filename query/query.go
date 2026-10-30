@@ -65,7 +65,7 @@ func findsBlocks(filter Filter) bool {
 		return findsBlocks(f.Filter)
 	case *DateFilter:
 		return f.Field != FieldJournalPage
-	case *PageRefFilter, *RefsFilter, *FullTextFilter, *TaskFilter, *PriorityFilter,
+	case *PageRefFilter, *RefsFilter, *ReferencesFilter, *FullTextFilter, *TaskFilter, *PriorityFilter,
 		*PageFilter, *ParentFilter, *AncestorFilter, *PropertyFilter:
 		return true
 	}
@@ -219,6 +219,32 @@ type RefsFilter struct {
 // themselves.
 func Refs(page string) *RefsFilter {
 	return &RefsFilter{Page: page}
+}
+
+// ReferencesFilter matches the blocks that reference one or more of the pages
+// that its filter matches, such as the pages with a tag. If Path is false it
+// matches the blocks that reference a page themselves, the same as RefsFilter,
+// and is written as `(refs (page-tags [[project]]))`. If Path is true it also
+// matches the blocks below them and the blocks on the pages, the same as
+// PageRefFilter, and is written as `(page-ref (page-tags [[project]]))`.
+type ReferencesFilter struct {
+	// Pages is the filter for the pages that are referenced.
+	Pages Filter
+
+	// Path is true to match the path refs of the blocks.
+	Path bool
+}
+
+// RefsTo creates a filter that matches the blocks that reference one or more
+// of the pages that the filter matches themselves.
+func RefsTo(pages Filter) *ReferencesFilter {
+	return &ReferencesFilter{Pages: pages}
+}
+
+// PageRefTo creates a filter that matches the blocks about one or more of the
+// pages that the filter matches, the same as PageRef does for one page.
+func PageRefTo(pages Filter) *ReferencesFilter {
+	return &ReferencesFilter{Pages: pages, Path: true}
 }
 
 // FullTextFilter matches the blocks that contain the text. It is written as
@@ -440,6 +466,7 @@ func (*TaskFilter) isFilter()         {}
 func (*PriorityFilter) isFilter()     {}
 func (*PageRefFilter) isFilter()      {}
 func (*RefsFilter) isFilter()         {}
+func (*ReferencesFilter) isFilter()   {}
 func (*FullTextFilter) isFilter()     {}
 func (*PageFilter) isFilter()         {}
 func (*ParentFilter) isFilter()       {}

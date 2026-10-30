@@ -256,10 +256,26 @@ func parseFilter(e *expr) (Filter, error) {
 			return nil, err
 		}
 		return Page(name), nil
-	case "page-ref":
+	case "page-ref", "refs":
+		if len(args) == 1 && args[0].kind == exprList {
+			pages, err := parseFilter(args[0])
+			if err != nil {
+				return nil, err
+			}
+
+			if op == "refs" {
+				return RefsTo(pages), nil
+			}
+			return PageRefTo(pages), nil
+		}
+
 		name, err := parseSingleName(e, args)
 		if err != nil {
 			return nil, err
+		}
+
+		if op == "refs" {
+			return Refs(name), nil
 		}
 		return PageRef(name), nil
 	case "parent", "ancestor":
@@ -287,12 +303,6 @@ func parseFilter(e *expr) (Filter, error) {
 			return Parent(args[0].text), nil
 		}
 		return nil, errorAt(args[0].pos, "expected a block, such as ((uuid)) or [[page]] 0 1")
-	case "refs":
-		name, err := parseSingleName(e, args)
-		if err != nil {
-			return nil, err
-		}
-		return Refs(name), nil
 	case "namespace":
 		name, err := parseSingleName(e, args)
 		if err != nil {

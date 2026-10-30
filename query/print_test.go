@@ -41,6 +41,8 @@ var _ = Describe("Writing queries", func() {
 		Prints("title", query.New(query.Title(query.TitleIncludes, "a\"b")), `(title includes "a\"b")`)
 		Prints("alias", query.New(query.Alias("ACME Corp")), "(alias [[ACME Corp]])")
 		Prints("has-block", query.New(query.HasBlock(query.Task(content.TaskStatusTodo))), "(has-block (task TODO))")
+		Prints("refs to pages", query.New(query.RefsTo(query.PageTags("project"))), "(refs (page-tags [[project]]))")
+		Prints("page refs to pages", query.New(query.PageRefTo(query.Alias("x"))), "(page-ref (alias [[x]]))")
 		Prints("ancestor by location", query.New(query.AncestorAt("Outline", 2)), "(ancestor [[Outline]] 2)")
 		Prints("refs with brackets", query.New(query.Refs("a ]] b")), `(refs "a ]] b")`)
 		Prints("namespace", query.New(query.Namespace("Projects")), "(namespace [[Projects]])")

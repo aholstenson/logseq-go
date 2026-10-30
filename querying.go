@@ -237,6 +237,8 @@ func (r *queryRunner) compile(filter query.Filter, blocks bool) (indexing.Query,
 		return indexing.PathReferences(f.Page), nil
 	case *query.RefsFilter:
 		return indexing.References(f.Page), nil
+	case *query.ReferencesFilter:
+		return r.referencesQuery(f)
 	case *query.FullTextFilter:
 		return indexing.ContentMatches(f.Text), nil
 	case *query.PageFilter:
@@ -384,15 +386,78 @@ func titleQuery(f *query.TitleFilter) (indexing.Query, error) {
 	switch f.Op {
 	case query.TitleEquals:
 		return indexing.PageTitleIs(f.Text), nil
-	case query.TitleStartsWith:
-		return indexing.PageTitleStartsWith(f.Text), nil
-	case query.TitleEndsWith:
-		return indexing.PageTitleEndsWith(f.Text), nil
-	case query.TitleIncludes:
-		return indexing.PageTitleIncludes(f.Text), nil
 	}
 
-	return nil, fmt.Errorf("query: unknown title comparison %d", f.Op)
+	match, err := textMatch(f.Op)
+	if err != nil {
+		return nil, err
+	}
+	return indexing.PageTitleMatches(match, f.Text), nil
+}
+
+// textMatch returns how the index compares a part of a title, for the
+// comparisons of a TitleFilter other than TitleEquals.
+func textMatch(op query.TitleOp) (indexing.TextMatch, error) {
+	switch op {
+	case query.TitleStartsWith:
+		return indexing.MatchPrefix, nil
+	case query.TitleEndsWith:
+		return indexing.MatchSuffix, nil
+	case query.TitleIncludes:
+		return indexing.MatchIncludes, nil
+	}
+
+	return 0, fmt.Errorf("query: unknown title comparison %d", op)
+}
+
+// referencesQuery matches the blocks that reference one or more of the pages
+// that the filter of f matches. A filter on the title is matched on the
+// references themselves, so that pages without a file match as well. Other
+// filters are run on the pages first, as the index has no joins, so only
+// pages with a file match them.
+func (r *queryRunner) referencesQuery(f *query.ReferencesFilter) (indexing.Query, error) {
+	if f.Pages == nil {
+		return nil, fmt.Errorf("query: the references have no filter for the pages")
+	}
+
+	byTitle := indexing.References
+	byMatch := indexing.ReferencesMatching
+	if f.Path {
+		byTitle = indexing.PathReferences
+		byMatch = indexing.PathReferencesMatching
+	}
+
+	if title, ok := f.Pages.(*query.TitleFilter); ok {
+		if title.Op == query.TitleEquals {
+			return byTitle(title.Text), nil
+		}
+
+		match, err := textMatch(title.Op)
+		if err != nil {
+			return nil, err
+		}
+		return byMatch(match, title.Text), nil
+	}
+
+	pageQuery, err := r.compile(f.Pages, false)
+	if err != nil {
+		return nil, err
+	}
+
+	var clauses []indexing.Query
+	err = eachResult(func(opts indexing.SearchOptions) (indexing.SearchResults[*indexing.Page], error) {
+		return r.graph.index.SearchPages(r.ctx, pageQuery, opts)
+	}, func(page *indexing.Page) {
+		clauses = append(clauses, byTitle(r.graph.newPageResult(page, r.graph).Title()))
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if len(clauses) == 0 {
+		return indexing.None(), nil
+	}
+	return indexing.Or(clauses...), nil
 }
 
 // blocksOnPages finds the pages that match a query, and returns a query that

@@ -293,28 +293,56 @@ func PagesAt(subPaths ...string) Query {
 	return Or(clauses...)
 }
 
-// PageTitleStartsWith matches the pages with a title that starts with the
-// text, and the blocks on them. Titles are matched without regard for case.
-func PageTitleStartsWith(text string) Query {
-	return titlePattern(regexp.QuoteMeta(normalizeRef(text)) + ".*")
+// TextMatch is how a title is compared with a text, for the queries that
+// match a part of a title.
+type TextMatch int
+
+const (
+	// MatchPrefix matches the titles that start with the text.
+	MatchPrefix TextMatch = iota
+	// MatchSuffix matches the titles that end with the text.
+	MatchSuffix
+	// MatchIncludes matches the titles that include the text.
+	MatchIncludes
+)
+
+// titlePattern returns the regular expression for the titles that match the
+// text. Titles are stored in lower case, see normalizeRef.
+func titlePattern(match TextMatch, text string) string {
+	quoted := regexp.QuoteMeta(normalizeRef(text))
+	switch match {
+	case MatchPrefix:
+		return quoted + ".*"
+	case MatchSuffix:
+		return ".*" + quoted
+	}
+	return ".*" + quoted + ".*"
 }
 
-// PageTitleEndsWith matches the pages with a title that ends with the text,
-// and the blocks on them. Titles are matched without regard for case.
-func PageTitleEndsWith(text string) Query {
-	return titlePattern(".*" + regexp.QuoteMeta(normalizeRef(text)))
-}
-
-// PageTitleIncludes matches the pages with a title that includes the text,
-// and the blocks on them. Titles are matched without regard for case.
-func PageTitleIncludes(text string) Query {
-	return titlePattern(".*" + regexp.QuoteMeta(normalizeRef(text)) + ".*")
-}
-
-func titlePattern(pattern string) Query {
+// PageTitleMatches matches the pages with a title that matches the text, and
+// the blocks on them. Titles are matched without regard for case.
+func PageTitleMatches(match TextMatch, text string) Query {
 	return &fieldPattern{
 		field:   SortFieldTitle,
-		pattern: pattern,
+		pattern: titlePattern(match, text),
+	}
+}
+
+// ReferencesMatching matches the blocks that reference a page with a title
+// that matches the text, the same as References does for one title.
+func ReferencesMatching(match TextMatch, text string) Query {
+	return &fieldPattern{
+		field:   "pages:ref",
+		pattern: titlePattern(match, text),
+	}
+}
+
+// PathReferencesMatching matches the blocks about a page with a title that
+// matches the text, the same as PathReferences does for one title.
+func PathReferencesMatching(match TextMatch, text string) Query {
+	return &fieldPattern{
+		field:   "path:ref",
+		pattern: titlePattern(match, text),
 	}
 }
 

@@ -105,6 +105,18 @@ func (f *RefsFilter) String() string {
 	return list("refs", formatPageRef(f.Page))
 }
 
+func (f *ReferencesFilter) String() string {
+	name := "refs"
+	if f.Path {
+		name = "page-ref"
+	}
+
+	if f.Pages == nil {
+		return list(name)
+	}
+	return list(name, f.Pages.String())
+}
+
 func (f *FullTextFilter) String() string {
 	return formatString(f.Text)
 }
