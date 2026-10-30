@@ -626,7 +626,7 @@ func (i *BlugeIndex) blockToDocument(page *Page, id string, block *content.Block
 	// Blocks are found by their parent through the id of the parent, so only
 	// the blocks below a parent with an id get the field.
 	if parent, ok := block.Parent().(*content.Block); ok {
-		if id := findID(parent); id != "" {
+		if id := parent.ID(); id != "" {
 			blugeDoc.AddField(bluge.NewKeywordField("parent", id))
 		}
 	}
@@ -651,25 +651,6 @@ func (i *BlugeIndex) blockToDocument(page *Page, id string, block *content.Block
 	blugeDoc.AddField(bluge.NewTextField("preview", preview).StoreValue())
 
 	return blugeDoc, nil
-}
-
-// findID returns the `id` property of a block, or an empty string if it has
-// none. Unlike Block.ID it does not add properties to the block.
-func findID(block *content.Block) string {
-	props := block.FindProperties()
-	if props == nil {
-		return ""
-	}
-
-	id := props.GetAsNode("id")
-	if id == nil {
-		return ""
-	}
-
-	if text, ok := id.FirstChild().(*content.Text); ok {
-		return text.Value
-	}
-	return ""
 }
 
 // transferTask indexes the status, priority and dates of a task so that

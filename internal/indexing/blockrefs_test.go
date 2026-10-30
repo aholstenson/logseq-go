@@ -67,6 +67,14 @@ var _ = Describe("References of blocks", func() {
 		Expect(previewsOf(searchBlocks(idx, indexing.ParentIs("second-id")))).To(BeEmpty())
 	})
 
+	It("does not add properties to blocks without an id", func() {
+		block := textBlock(text("no id"), textBlock(text("child")))
+		indexPage(idx, "pages/b.md", "Page B", block)
+
+		Expect(block.FindProperties()).To(BeNil())
+		Expect(block.Blocks()[0].FindProperties()).To(BeNil())
+	})
+
 	It("still matches the page with references in child blocks of its first block", func() {
 		Expect(searchPages(idx, indexing.References("Target"))).To(HaveLen(1))
 	})

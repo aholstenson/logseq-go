@@ -97,5 +97,24 @@ var _ = Describe("Blocks", func() {
 
 			Expect(block.ID()).To(Equal(""))
 		})
+
+		It("does not add properties to a block without them", func() {
+			block := content.NewBlock(
+				content.NewParagraph(content.NewText("content")),
+				content.NewBlock(content.NewParagraph(content.NewText("child"))),
+			)
+
+			Expect(block.ID()).To(Equal(""))
+			Expect(block.FindProperties()).To(BeNil())
+		})
+
+		It("returns an empty id for a block with other properties", func() {
+			block := content.NewBlock(
+				content.NewParagraph(content.NewText("content")),
+				content.NewProperties(content.NewProperty("type", content.NewText("book"))),
+			)
+
+			Expect(block.ID()).To(Equal(""))
+		})
 	})
 })

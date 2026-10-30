@@ -61,9 +61,14 @@ func (b *Block) Blocks() BlockList {
 }
 
 // ID gets the identifier of the block. If the block does not have an ID this
-// will return an empty string.
+// will return an empty string. This never changes the block, use WithID to
+// give the block an ID.
 func (b *Block) ID() string {
-	p := b.Properties()
+	p := b.FindProperties()
+	if p == nil {
+		return ""
+	}
+
 	id := p.GetAsNode("id")
 	if id != nil {
 		if child, ok := id.FirstChild().(*Text); ok {
