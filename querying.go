@@ -252,6 +252,8 @@ func (r *queryRunner) compile(filter query.Filter, blocks bool) (indexing.Query,
 		return r.belowQuery(f)
 	case *query.HasChildFilter:
 		return r.hasChildQuery(f)
+	case *query.TopLevelFilter:
+		return indexing.TopLevel(), nil
 	case *query.FullTextFilter:
 		return indexing.ContentMatches(f.Text), nil
 	case *query.ContentFilter:

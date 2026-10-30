@@ -394,6 +394,11 @@ func parseFilter(e *expr) (Filter, error) {
 			return nil, errorAt(e.pos, "all-page-tags takes no arguments")
 		}
 		return AllPageTags(), nil
+	case "top-level":
+		if len(args) > 0 {
+			return nil, errorAt(e.pos, "top-level takes no arguments")
+		}
+		return TopLevel(), nil
 	case "between":
 		if len(args) == 3 {
 			return nil, errorAt(e.pos, "between with a timestamp property is not supported")

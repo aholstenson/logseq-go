@@ -232,6 +232,15 @@ var _ = Describe("Advanced queries", func() {
 	})
 
 	Describe("Pages of blocks", func() {
+		Translates("a second variable for the page in an or",
+			where(`[?b :block/page ?p] [?p :block/journal? true] (or [?b :block/marker "TODO"] [?b :block/page ?q])`),
+			"(journal)")
+		Translates("a second variable for the page in a not",
+			where(`[?b :block/marker "TODO"] [?b :block/page ?p] (not [?b :block/page ?q] [?q :block/journal? true])`),
+			"(and (task TODO) (not (journal)))")
+		Translates("a page with a title in a not keeps its variable",
+			where(`[?b :block/marker "TODO"] [?b :block/page ?p] [?p :block/journal? true] (not [?b :block/page ?q] [?q :block/name "x"])`),
+			"(and (task TODO) (journal) (not (page [[x]])))")
 		Translates("page property of the page of a block",
 			where(`[?b :block/marker "TODO"] [?b :block/page ?p] [?p :block/properties ?props] [(get ?props :type) ?t] [(= ?t "book")]`),
 			"(and (task TODO) (page-property type book))")
@@ -240,6 +249,9 @@ var _ = Describe("Advanced queries", func() {
 			"{:query [:find (pull ?p [*]) :where [?p :block/name ?name] [?p :block/properties ?props] [(get ?props :type) ?t] [(= ?t \"book\")]]}",
 			"(page-property type book)")
 		Translates("namespace", "{:query [:find ?p :where [?p :block/namespace [:block/name \"projects\"]]]}", "(namespace [[projects]])")
+		Translates("a second variable for the page of the blocks",
+			`{:query [:find (pull ?q [*]) :where [?b :block/page ?p] [?p :block/journal? true] [?b :block/page ?q] [?b :block/marker "TODO"]]}`,
+			"(and (journal-page) (has-block (task TODO)))")
 		Translates("page property as a condition in a not",
 			`{:query [:find (pull ?p [*]) :where [?p :block/name] [?p :block/properties ?pp] (not [(get ?pp :type)])]}`,
 			"(not (page-property type))")
@@ -426,7 +438,15 @@ var _ = Describe("Advanced queries", func() {
 			`{:query [:find (pull ?b [*]) :in $ ?cp :where [?b :block/page ?p] [?b :block/parent ?p] [?p :block/name ?cp]] :inputs ["Notes"]}`,
 			"(and (parent [[Notes]]) (page [[Notes]]))")
 
-		Unsupported("a page without a title as the parent", where(`[?b :block/page ?p] [?b :block/parent ?p]`), "or a page with a title")
+		Translates("the page of the block without a title as the parent", where(`[?b :block/page ?p] [?b :block/parent ?p]`), "(top-level)")
+		Translates("the page of the block with conditions as the parent",
+			where(`[?b :block/page ?p] [?p :block/journal? true] [?b :block/parent ?p]`), "(and (journal) (top-level))")
+		Translates("the page of the blocks on the pages a query finds as the parent",
+			`{:query [:find (pull ?p [*]) :where [?b :block/page ?p] [?b :block/parent ?p] [?b :block/marker "TODO"]]}`,
+			"(has-block (and (top-level) (task TODO)))")
+
+		Unsupported("a page as the parent that is not the page of the block",
+			where(`[?b :block/parent ?p] [?p :block/journal? true]`), "or a page with a title")
 	})
 
 	Describe("Inputs", func() {
@@ -642,9 +662,6 @@ var _ = Describe("Advanced queries", func() {
 		Unsupported("other conditions on titles", "{:query [:find ?p :where [?p :block/name ?n] [(clojure.string/blank? ?n)]]}", "for the title of a page")
 		Unsupported("a referenced page that is also about the block",
 			where(`[?b :block/page ?q] [?b :block/refs ?p] [?p :block/namespace ?q]`), "expected a page")
-		Unsupported("another page without a title",
-			where(`[?b :block/page ?p] [?p :block/journal? true] (or [?b :block/marker "TODO"] [?b :block/page ?q])`),
-			"or a page with a title")
 		Unsupported("defaults that are not values", where(`[?b :block/properties ?p] [(get ?p :type [1]) ?t]`), "expected a value as the default")
 		Unsupported("missing for other attributes", where(`[?b :block/marker "TODO"] [(missing? $ ?b :block/properties)]`), "missing? is only supported")
 		Unsupported("regex that Go can not read", where(`[?b :block/content ?c] [(re-find #"(?<=a)b" ?c)]`), "the regular expression is not supported")

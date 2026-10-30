@@ -38,6 +38,7 @@ var _ = Describe("Writing queries", func() {
 		Prints("ancestor that is not a UUID", query.New(query.Ancestor("a b")), `(ancestor "a b")`)
 		Prints("parent by location", query.New(query.ParentAt("Outline", 0, 1)), "(parent [[Outline]] 0 1)")
 		Prints("page as the parent", query.New(query.ParentAt("Outline")), "(parent [[Outline]])")
+		Prints("top-level", query.New(query.And(query.TopLevel(), query.PageTags("x"))), "(and (top-level) (page-tags [[x]]))")
 		Prints("journal page", query.New(query.JournalPage(query.Less, query.Relative("today"))), "(journal-page < today)")
 		Prints("title", query.New(query.Title(query.TitleIncludes, "a\"b")), `(title includes "a\"b")`)
 		Prints("content", query.New(query.Content(query.TitleEndsWith, "a\nb")), `(content ends-with "a\nb")`)

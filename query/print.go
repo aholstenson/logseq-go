@@ -211,6 +211,10 @@ func (f *AllPageTagsFilter) String() string {
 	return list("all-page-tags")
 }
 
+func (f *TopLevelFilter) String() string {
+	return list("top-level")
+}
+
 func (f *NamespaceFilter) String() string {
 	return list("namespace", formatPageRef(f.Namespace))
 }

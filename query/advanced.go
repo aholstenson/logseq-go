@@ -585,7 +585,13 @@ func (t *translator) translate(queryNode *ednNode, inputsNode *ednNode) (*Query,
 	if err != nil {
 		return nil, err
 	}
+
+	// The variables for the page of a block are renamed in :find as well,
+	// as the query can find that page.
+	renames := t.pageRenames(where)
+	where = renameVars(where, renames)
 	sections["where"] = where
+	sections["find"] = renameVars(sections["find"], renames)
 
 	for _, clause := range sections["where"] {
 		if err := t.checkBlockInputs(clause); err != nil {
@@ -930,6 +936,108 @@ func (t *translator) setKind(node *ednNode, kind entityKind) error {
 
 	t.kinds[node.text] = kind
 	return nil
+}
+
+// pageRenames returns new names for the variables that name the page of a
+// block that another variable already names, such as ?q in
+// `[?b :block/page ?p] (or ... [?b :block/page ?q])`. A block is on one page,
+// so both variables are the same page, and the translator can only follow
+// one page of the block. A page with a title keeps its variable, as the
+// translator reads it as the page with that title, also in a `not`.
+func (t *translator) pageRenames(clauses []*ednNode) map[string]string {
+	named := make(map[string]bool)
+	var findNamed func(node *ednNode)
+	findNamed = func(node *ednNode) {
+		if isDataPattern(node) && len(node.items) == 3 &&
+			(node.items[1].text == "block/name" || node.items[1].text == "block/original-name") {
+			if _, ok := t.name(node.items[2]); ok {
+				named[node.items[0].text] = true
+			}
+			return
+		}
+
+		for _, item := range node.items {
+			findNamed(item)
+		}
+	}
+	for _, clause := range clauses {
+		findNamed(clause)
+	}
+
+	pageOf := make(map[string]string)
+	renames := make(map[string]string)
+
+	var visit func(node *ednNode)
+	visit = func(node *ednNode) {
+		if isDataPattern(node) && len(node.items) == 3 && node.items[1].text == "block/page" {
+			block, page := node.items[0], node.items[2]
+			_, isInput := t.inputs[page.text]
+			if isVar(block) && isVar(page) && !isInput && !named[page.text] {
+				if first, ok := pageOf[block.text]; !ok {
+					pageOf[block.text] = page.text
+				} else if first != page.text {
+					renames[page.text] = first
+				}
+			}
+			return
+		}
+
+		for _, item := range node.items {
+			visit(item)
+		}
+	}
+	for _, clause := range clauses {
+		visit(clause)
+	}
+
+	// A rename can lead to a variable that is renamed as well, such as when
+	// two blocks share a page.
+	for from := range renames {
+		to := renames[from]
+		for seen := 0; seen < len(renames); seen++ {
+			next, ok := renames[to]
+			if !ok || next == from {
+				break
+			}
+			to = next
+		}
+		renames[from] = to
+	}
+
+	return renames
+}
+
+// renameVars returns the nodes with the variables renamed. Nodes without a
+// renamed variable are kept as they are.
+func renameVars(nodes []*ednNode, renames map[string]string) []*ednNode {
+	if len(renames) == 0 {
+		return nodes
+	}
+
+	result := make([]*ednNode, len(nodes))
+	for i, node := range nodes {
+		result[i] = renameVar(node, renames)
+	}
+	return result
+}
+
+func renameVar(node *ednNode, renames map[string]string) *ednNode {
+	if isVar(node) {
+		if to, ok := renames[node.text]; ok {
+			renamed := *node
+			renamed.text = to
+			return &renamed
+		}
+		return node
+	}
+
+	if len(node.items) == 0 {
+		return node
+	}
+
+	renamed := *node
+	renamed.items = renameVars(node.items, renames)
+	return &renamed
 }
 
 // isDataPattern returns true for a clause such as `[?b :block/marker ?m]`.
@@ -1737,6 +1845,12 @@ func (t *translator) binding(clause *ednNode, conditions []*condition) (Filter, 
 		if t.kinds[value.text] == entityPage || value.text == t.page || value.kind == ednVector {
 			if name, ok := t.pageRefName(value); ok {
 				return ParentAt(name), nil
+			}
+
+			// Conditions on the page of the block are translated with
+			// the clauses about it.
+			if value.text == t.page && entity.text == t.block {
+				return TopLevel(), nil
 			}
 		}
 		return nil, t.unsupported(clause, "expected a block, such as :current-block or [:block/uuid #uuid \"...\"], or a page with a title")

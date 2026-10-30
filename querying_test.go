@@ -337,6 +337,15 @@ var _ = Describe("Query", func() {
 			Expect(blocks("(ancestor [[meetings]])")).To(HaveLen(6))
 		})
 
+		It("finds the blocks at the top of the pages that match", func() {
+			topLevel := blocks("(and (top-level) (task TODO))")
+			Expect(topLevel).To(ContainElements("Call the bank", "Plan offsite", "No dates"))
+			for _, below := range []string{"Send notes", "Buy milk", "Read a book", "Follow up with finance"} {
+				Expect(topLevel).ToNot(ContainElement(below))
+			}
+			Expect(blocks(`(and (top-level) (title starts-with "meet"))`)).To(ConsistOf("Weekly sync #meeting", "Plan offsite"))
+		})
+
 		It("finds the blocks with blocks below them that match", func() {
 			Expect(blocks(`(has-child "finance")`)).To(ConsistOf("Discussed budget"))
 			Expect(blocks(`(has-descendant "finance")`)).To(ConsistOf("Weekly sync #meeting", "Discussed budget"))
@@ -465,6 +474,12 @@ var _ = Describe("Query", func() {
 					(remove #(some? (:block/scheduled %)))
 					(sort-by :block/deadline)))}`)
 			Expect(blockPreviews(results)).To(Equal([]string{"Due today", "No dates"}))
+		})
+
+		It("finds the tasks at the top of journal pages", func() {
+			results := runAdvanced(`{:query [:find (pull ?b [*])
+				:where [?b :block/marker "TODO"] [?b :block/page ?p] [?p :block/journal? true] [?b :block/parent ?p]]}`)
+			Expect(blockPreviews(results)).To(ConsistOf("Call the bank", "Moved task", "Old journal task"))
 		})
 
 		It("finds the recipes", func() {

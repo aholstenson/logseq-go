@@ -49,6 +49,8 @@
 //	                         AncestorFilter
 //	(parent [[page]])        blocks at the top of the page, which is their
 //	                         parent in Logseq
+//	(top-level)              blocks at the top of their page, see
+//	                         TopLevelFilter
 //	(journal-page ...)       journal pages, with the same dates as
 //	                         `journal`; it matches pages, not blocks
 //	(title starts-with "x")  pages with a title that starts with the text,

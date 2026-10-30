@@ -69,7 +69,7 @@ func findsBlocks(filter Filter) bool {
 		return !f.Page
 	case *PageRefFilter, *RefsFilter, *ReferencesFilter, *FullTextFilter, *ContentFilter, *TaskFilter, *PriorityFilter,
 		*PageFilter, *ParentFilter, *AncestorFilter, *PropertyFilter,
-		*OnPageFilter, *BelowFilter, *HasChildFilter:
+		*OnPageFilter, *BelowFilter, *HasChildFilter, *TopLevelFilter:
 		return true
 	}
 
@@ -357,6 +357,18 @@ func HasDescendant(filter Filter) *HasChildFilter {
 	return &HasChildFilter{Filter: filter, AnyDepth: true}
 }
 
+// TopLevelFilter matches the blocks at the top of their page, which have the
+// page as their parent in Logseq. It is written as `(top-level)`. With filters
+// for pages, such as `(and (top-level) (page-property type book))`, it matches
+// the blocks at the top of these pages. `(parent [[page]])` does the same for
+// one page.
+type TopLevelFilter struct{}
+
+// TopLevel creates a filter that matches the blocks at the top of their page.
+func TopLevel() *TopLevelFilter {
+	return &TopLevelFilter{}
+}
+
 // ParentFilter matches the blocks directly below a block. The block is named
 // by its UUID, which is the value of its `id::` property, and is written as
 // `(parent ((uuid)))`.
@@ -628,6 +640,7 @@ func (*ParentFilter) isFilter()          {}
 func (*OnPageFilter) isFilter()          {}
 func (*BelowFilter) isFilter()           {}
 func (*HasChildFilter) isFilter()        {}
+func (*TopLevelFilter) isFilter()        {}
 func (*AncestorFilter) isFilter()        {}
 func (*PropertyFilter) isFilter()        {}
 func (*PropertyCompareFilter) isFilter() {}
