@@ -376,6 +376,18 @@ q = query.New(query.And(
 q.String() // (and (task TODO LATER) (scheduled < today) (sort-by priority asc))
 ```
 
+Queries are run with `Graph.Query`, which returns all of the results. As in
+Logseq, a query finds blocks if one or more of its filters match blocks, and
+pages if all of its filters match pages:
+
+```go
+results, err := graph.Query(ctx, q)
+
+for _, block := range results.Blocks {
+  ...
+}
+```
+
 See the documentation of the `query` package for the full syntax.
 
 ## Limitations

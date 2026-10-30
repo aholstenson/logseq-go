@@ -966,31 +966,37 @@ func (g *Graph) searchPages(ctx context.Context, opts []SearchOption, source pag
 	}
 
 	return newSearchResults(results, func(page *indexing.Page) PageResult {
-		if page.Type == indexing.PageTypeJournal {
-			date := journalDate(page.Date)
-			return &pageResultImpl{
-				docType: PageTypeJournal,
-				title:   g.journalTitleFormat.Format(date),
-				date:    date,
-				props:   page.PropertyValues,
-
-				opener: func() (Page, error) {
-					return source.OpenJournal(date)
-				},
-			}
-		} else {
-			return &pageResultImpl{
-				docType: PageTypeDedicated,
-				title:   page.Title,
-				date:    time.Time{},
-				props:   page.PropertyValues,
-
-				opener: func() (Page, error) {
-					return source.OpenPage(page.Title)
-				},
-			}
-		}
+		return g.newPageResult(page, source)
 	}), nil
+}
+
+// newPageResult turns a page found in the index into a result that opens the
+// page from source.
+func (g *Graph) newPageResult(page *indexing.Page, source pageSource) PageResult {
+	if page.Type == indexing.PageTypeJournal {
+		date := journalDate(page.Date)
+		return &pageResultImpl{
+			docType: PageTypeJournal,
+			title:   g.journalTitleFormat.Format(date),
+			date:    date,
+			props:   page.PropertyValues,
+
+			opener: func() (Page, error) {
+				return source.OpenJournal(date)
+			},
+		}
+	}
+
+	return &pageResultImpl{
+		docType: PageTypeDedicated,
+		title:   page.Title,
+		date:    time.Time{},
+		props:   page.PropertyValues,
+
+		opener: func() (Page, error) {
+			return source.OpenPage(page.Title)
+		},
+	}
 }
 
 // OpenBlock opens the block with the given id, which is the identifier that
@@ -1065,49 +1071,55 @@ func (g *Graph) searchBlocks(ctx context.Context, opts []SearchOption, source pa
 	}
 
 	return newSearchResults(results, func(block *indexing.Block) BlockResult {
-		dir := filepath.Dir(block.PageSubPath)
-		name := filepath.Base(block.PageSubPath)
-		name = name[:len(name)-3]
-
-		var err error
-		pageType := PageTypeDedicated
-		pageDate := time.Time{}
-		var pageTitle string
-		if dir == g.config.JournalsDir {
-			pageType = PageTypeJournal
-
-			pageDate, err = g.journalNameFormat.Parse(name)
-			if err != nil {
-				// TODO: This is an edge case where the format of journals has changed since indexing
-			}
-
-			pageTitle = g.journalTitleFormat.Format(pageDate)
-		} else {
-			pageTitle, err = utils.FilenameToTitle(g.config.FileNameFormat, name)
-			if err != nil {
-				// TODO: This page is not in the expected format
-			}
-		}
-
-		return &blockResultImpl{
-			pageType:  pageType,
-			pageTitle: pageTitle,
-			pageDate:  pageDate,
-
-			id:       block.ID,
-			preview:  block.Preview,
-			props:    block.PropertyValues,
-			location: block.Location,
-
-			opener: func() (Page, error) {
-				if pageType == PageTypeJournal {
-					return source.OpenJournal(pageDate)
-				} else {
-					return source.OpenPage(pageTitle)
-				}
-			},
-		}
+		return g.newBlockResult(block, source)
 	}), nil
+}
+
+// newBlockResult turns a block found in the index into a result that opens
+// the page of the block from source.
+func (g *Graph) newBlockResult(block *indexing.Block, source pageSource) BlockResult {
+	dir := filepath.Dir(block.PageSubPath)
+	name := filepath.Base(block.PageSubPath)
+	name = name[:len(name)-3]
+
+	var err error
+	pageType := PageTypeDedicated
+	pageDate := time.Time{}
+	var pageTitle string
+	if dir == g.config.JournalsDir {
+		pageType = PageTypeJournal
+
+		pageDate, err = g.journalNameFormat.Parse(name)
+		if err != nil {
+			// TODO: This is an edge case where the format of journals has changed since indexing
+		}
+
+		pageTitle = g.journalTitleFormat.Format(pageDate)
+	} else {
+		pageTitle, err = utils.FilenameToTitle(g.config.FileNameFormat, name)
+		if err != nil {
+			// TODO: This page is not in the expected format
+		}
+	}
+
+	return &blockResultImpl{
+		pageType:  pageType,
+		pageTitle: pageTitle,
+		pageDate:  pageDate,
+
+		id:       block.ID,
+		preview:  block.Preview,
+		props:    block.PropertyValues,
+		location: block.Location,
+
+		opener: func() (Page, error) {
+			if pageType == PageTypeJournal {
+				return source.OpenJournal(pageDate)
+			} else {
+				return source.OpenPage(pageTitle)
+			}
+		},
+	}
 }
 
 func (g *Graph) Watch() *Watcher {

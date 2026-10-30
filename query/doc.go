@@ -2,7 +2,7 @@
 // filters with an optional sort order. It can be built in code, read from text
 // with Parse, changed, and written back as text with Query.String. Dates such
 // as `today` stay relative in the model, so a stored query keeps its meaning
-// from day to day.
+// from day to day. Queries are run with Graph.Query in the logseq package.
 //
 // The text form is the simple query syntax of Logseq, the part inside
 // `{{query ...}}`, with some additions. Every simple query that Logseq can

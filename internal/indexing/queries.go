@@ -209,6 +209,34 @@ func PathReferences(page string) Query {
 	}
 }
 
+// OnPages matches the blocks on the pages with the given sub paths. Matches
+// nothing if no sub path is given.
+func OnPages(subPaths ...string) Query {
+	if len(subPaths) == 0 {
+		return None()
+	}
+
+	clauses := make([]Query, 0, len(subPaths))
+	for _, subPath := range subPaths {
+		clauses = append(clauses, &fieldEquals{
+			field: "page",
+			value: subPath,
+		})
+	}
+
+	return Or(clauses...)
+}
+
+// PageTitleIs matches the page with the title, and the blocks on it. Titles
+// are matched without regard for case.
+func PageTitleIs(title string) Query {
+	return &fieldEquals{
+		field:      SortFieldTitle,
+		value:      title,
+		normalized: true,
+	}
+}
+
 func LinksToURL(url string) Query {
 	return &fieldEquals{
 		field: "link",
