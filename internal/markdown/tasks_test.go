@@ -107,4 +107,21 @@ var _ = Describe("Editing tasks", func() {
 			Expect(out).To(Equal("- TODO Task\n  SCHEDULED: <2024-01-10 Wed ++1d>\n  :LOGBOOK:\n  * State \"DONE\" from \"TODO\" [2024-01-08 Mon 12:00:00]\n  * State \"DONE\" from \"TODO\" [2024-01-10 Wed 12:00:00]\n  :END:"))
 		})
 	})
+
+	Describe("Clocks", func() {
+		start := time.Date(2024, time.January, 10, 11, 0, 0, 0, time.Local)
+		stop := start.Add(90 * time.Minute)
+
+		It("starts and stops a clock", func() {
+			out := editTask("- TODO Task\n  SCHEDULED: <2024-01-10 Wed>", func(block *content.Block) {
+				block.SetTaskStatusWithClock(content.TaskStatusDoing, start)
+			})
+			Expect(out).To(Equal("- DOING Task\n  SCHEDULED: <2024-01-10 Wed>\n  :LOGBOOK:\n  CLOCK: [2024-01-10 Wed 11:00:00]\n  :END:"))
+
+			out = editTask(out, func(block *content.Block) {
+				block.SetTaskStatusWithClock(content.TaskStatusTodo, stop)
+			})
+			Expect(out).To(Equal("- TODO Task\n  SCHEDULED: <2024-01-10 Wed>\n  :LOGBOOK:\n  CLOCK: [2024-01-10 Wed 11:00:00]--[2024-01-10 Wed 12:30:00] =>  01:30:00\n  :END:"))
+		})
+	})
 })

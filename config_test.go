@@ -197,6 +197,49 @@ var _ = Describe("Config", func() {
 		})
 	})
 
+	Describe("Time tracking", func() {
+		at := time.Date(2024, time.January, 10, 12, 0, 0, 0, time.Local)
+
+		task := func() *content.Block {
+			return content.NewBlock(content.NewParagraph(
+				content.NewTaskMarker(content.TaskStatusTodo),
+				content.NewText("Task"),
+			))
+		}
+
+		It("tracks time by default", func() {
+			graph := openWithConfig(`{}`)
+
+			Expect(graph.TimeTracking()).To(BeTrue())
+		})
+
+		It("does not track time when the graph turns it off", func() {
+			graph := openWithConfig(`{:feature/enable-timetracking? false}`)
+
+			Expect(graph.TimeTracking()).To(BeFalse())
+		})
+
+		It("starts a clock when the graph tracks time", func() {
+			graph := openWithConfig(`{:feature/enable-timetracking? true}`)
+
+			block := task()
+			graph.SetTaskStatus(block, content.TaskStatusDoing, at)
+
+			Expect(block.TaskStatus()).To(Equal(content.TaskStatusDoing))
+			Expect(block.RunningClock()).ToNot(BeNil())
+		})
+
+		It("only changes the status when the graph does not track time", func() {
+			graph := openWithConfig(`{:feature/enable-timetracking? false}`)
+
+			block := task()
+			graph.SetTaskStatus(block, content.TaskStatusDoing, at)
+
+			Expect(block.TaskStatus()).To(Equal(content.TaskStatusDoing))
+			Expect(block.Logbook()).To(BeNil())
+		})
+	})
+
 	Describe("Favorites", func() {
 		It("returns the favorited pages", func() {
 			graph := openWithConfig(`{:favorites ["Interstellar" "some page"]}`)

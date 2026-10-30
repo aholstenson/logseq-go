@@ -62,6 +62,10 @@ type GraphConfig struct {
 
 	// Logbook is how logbooks are recorded and displayed in the graph.
 	Logbook LogbookConfig `edn:"logbook/settings"`
+
+	// EnableTimeTracking is whether Logseq starts and stops a clock in the
+	// logbook of a task when its status changes.
+	EnableTimeTracking bool `edn:"feature/enable-timetracking?"`
 }
 
 // DefaultTemplates are the templates that Logseq fills new pages with.
@@ -247,6 +251,7 @@ func ParseConfig(data []byte) (*GraphConfig, error) {
 			EnabledInAllBlocks:         false,
 			EnabledInTimestampedBlocks: true,
 		},
+		EnableTimeTracking: true,
 	}
 
 	err := edn.Unmarshal(data, &config)

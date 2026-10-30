@@ -715,12 +715,7 @@ func (b *Block) CompleteTask(at time.Time) {
 		return
 	}
 
-	logbook := b.Logbook()
-	if logbook != nil {
-		if clock, ok := logbook.LastChild().(*LogbookEntryClock); ok && clock.IsRunning() {
-			clock.WithEnd(at)
-		}
-	}
+	b.StopClock(at)
 
 	repeated := false
 	for _, date := range []*TaskDate{b.Scheduled(), b.Deadline()} {
@@ -744,13 +739,79 @@ func (b *Block) CompleteTask(at time.Time) {
 		b.SetTaskStatus(TaskStatusLater)
 	}
 
+	b.ensureLogbook().AddChild(NewLogbookEntryStateChange(status, TaskStatusDone, at))
+}
+
+// SetTaskStatusWithClock sets the status of the task in this block like
+// SetTaskStatus, and also tracks the time spent on the task in its logbook:
+//
+//   - When the status is DOING or NOW, a clock starts at the given time,
+//     unless a clock is already running.
+//   - When the status is any other status, or TaskStatusNone, a running clock
+//     stops at the given time.
+//
+// This gives the same result as Logseq when time tracking is on, for every
+// change of status that Logseq makes, such as TODO to DOING or NOW to DONE.
+// Use Graph.SetTaskStatus in the logseq package to follow the time tracking
+// setting of a graph.
+func (b *Block) SetTaskStatusWithClock(status TaskStatus, at time.Time) {
+	b.SetTaskStatus(status)
+
+	switch status {
+	case TaskStatusDoing, TaskStatusNow:
+		b.StartClock(at)
+	default:
+		b.StopClock(at)
+	}
+}
+
+// RunningClock gets the clock in the logbook of this block that is still
+// running, or nil if no clock is running. As Logseq only adds clocks at the end
+// of the logbook, only the last entry is checked.
+func (b *Block) RunningClock() *LogbookEntryClock {
+	logbook := b.Logbook()
 	if logbook == nil {
-		// Logseq writes the logbook directly after the line before it.
-		logbook = NewLogbook().WithPreviousLineType(PreviousLineTypeNonBlank)
-		b.insertAfterTaskContent(logbook)
+		return nil
 	}
 
-	logbook.AddChild(NewLogbookEntryStateChange(status, TaskStatusDone, at))
+	clock, ok := logbook.LastChild().(*LogbookEntryClock)
+	if !ok || !clock.IsRunning() {
+		return nil
+	}
+
+	return clock
+}
+
+// StartClock starts a clock at the given time, by adding a clock without an
+// end to the logbook of this block. The logbook is created if the block does
+// not have one. Nothing changes if a clock is already running.
+func (b *Block) StartClock(at time.Time) {
+	if b.RunningClock() != nil {
+		return
+	}
+
+	b.ensureLogbook().AddChild(NewLogbookEntryClock(at, time.Time{}))
+}
+
+// StopClock stops the running clock of this block at the given time. Nothing
+// changes if no clock is running.
+func (b *Block) StopClock(at time.Time) {
+	if clock := b.RunningClock(); clock != nil {
+		clock.WithEnd(at)
+	}
+}
+
+// ensureLogbook gets the logbook of this block, adding one where Logseq puts
+// it if the block does not have one.
+func (b *Block) ensureLogbook() *Logbook {
+	if logbook := b.Logbook(); logbook != nil {
+		return logbook
+	}
+
+	// Logseq writes the logbook directly after the line before it.
+	logbook := NewLogbook().WithPreviousLineType(PreviousLineTypeNonBlank)
+	b.insertAfterTaskContent(logbook)
+	return logbook
 }
 
 // Logbook gets the logbook of this block, or nil if it does not have one. Only

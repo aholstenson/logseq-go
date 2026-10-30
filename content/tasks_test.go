@@ -602,4 +602,117 @@ var _ = Describe("Tasks", func() {
 			Expect(block).To(EqualNode(content.NewBlock(content.NewParagraph(content.NewText("Text")))))
 		})
 	})
+
+	Describe("Clocks", func() {
+		at := time.Date(2024, time.January, 10, 12, 0, 0, 0, time.Local)
+		earlier := at.Add(-time.Hour)
+
+		task := func(status content.TaskStatus, rest ...content.Node) *content.Block {
+			children := append([]content.Node{content.NewParagraph(
+				content.NewTaskMarker(status),
+				content.NewText("Task"),
+			)}, rest...)
+			return content.NewBlock(children...)
+		}
+
+		newLogbook := func(entries ...content.LogbookEntry) *content.Logbook {
+			return content.NewLogbook(entries...).WithPreviousLineType(content.PreviousLineTypeNonBlank)
+		}
+
+		It("has no running clock without a logbook", func() {
+			Expect(task(content.TaskStatusDoing).RunningClock()).To(BeNil())
+		})
+
+		It("has no running clock when the last clock is stopped", func() {
+			block := task(content.TaskStatusDoing, newLogbook(
+				content.NewLogbookEntryClock(earlier.Add(-time.Hour), time.Time{}),
+				content.NewLogbookEntryClock(earlier, at),
+			))
+
+			Expect(block.RunningClock()).To(BeNil())
+		})
+
+		It("starts a clock in a new logbook", func() {
+			block := task(content.TaskStatusDoing)
+			block.StartClock(at)
+
+			Expect(block).To(EqualNode(task(content.TaskStatusDoing,
+				newLogbook(content.NewLogbookEntryClock(at, time.Time{})),
+			)))
+			Expect(block.RunningClock()).ToNot(BeNil())
+		})
+
+		It("starts a clock after the entries that are there", func() {
+			block := task(content.TaskStatusDoing, newLogbook(content.NewLogbookEntryClock(earlier.Add(-time.Hour), earlier)))
+			block.StartClock(at)
+
+			Expect(block.Logbook()).To(EqualNode(newLogbook(
+				content.NewLogbookEntryClock(earlier.Add(-time.Hour), earlier),
+				content.NewLogbookEntryClock(at, time.Time{}),
+			)))
+		})
+
+		It("does not start a second clock", func() {
+			block := task(content.TaskStatusDoing, newLogbook(content.NewLogbookEntryClock(earlier, time.Time{})))
+			block.StartClock(at)
+
+			Expect(block.Logbook()).To(EqualNode(newLogbook(content.NewLogbookEntryClock(earlier, time.Time{}))))
+		})
+
+		It("stops a running clock", func() {
+			block := task(content.TaskStatusDoing, newLogbook(content.NewLogbookEntryClock(earlier, time.Time{})))
+			block.StopClock(at)
+
+			Expect(block.Logbook()).To(EqualNode(newLogbook(content.NewLogbookEntryClock(earlier, at))))
+		})
+
+		It("does nothing when stopping without a running clock", func() {
+			block := task(content.TaskStatusTodo)
+			block.StopClock(at)
+
+			Expect(block).To(EqualNode(task(content.TaskStatusTodo)))
+		})
+
+		Describe("SetTaskStatusWithClock", func() {
+			It("starts a clock for DOING and NOW", func() {
+				for _, status := range []content.TaskStatus{content.TaskStatusDoing, content.TaskStatusNow} {
+					block := task(content.TaskStatusTodo)
+					block.SetTaskStatusWithClock(status, at)
+
+					Expect(block).To(EqualNode(task(status, newLogbook(content.NewLogbookEntryClock(at, time.Time{})))))
+				}
+			})
+
+			It("starts a clock for a block that was not a task", func() {
+				block := content.NewBlock(content.NewParagraph(content.NewText("Task")))
+				block.SetTaskStatusWithClock(content.TaskStatusDoing, at)
+
+				Expect(block).To(EqualNode(task(content.TaskStatusDoing, newLogbook(content.NewLogbookEntryClock(at, time.Time{})))))
+			})
+
+			It("stops the clock for other statuses", func() {
+				for _, status := range []content.TaskStatus{content.TaskStatusTodo, content.TaskStatusDone, content.TaskStatusCanceled, content.TaskStatusNone} {
+					block := task(content.TaskStatusDoing, newLogbook(content.NewLogbookEntryClock(earlier, time.Time{})))
+					block.SetTaskStatusWithClock(status, at)
+
+					Expect(block.TaskStatus()).To(Equal(status))
+					Expect(block.Logbook()).To(EqualNode(newLogbook(content.NewLogbookEntryClock(earlier, at))))
+				}
+			})
+
+			It("keeps a running clock when changing between DOING and NOW", func() {
+				block := task(content.TaskStatusDoing, newLogbook(content.NewLogbookEntryClock(earlier, time.Time{})))
+				block.SetTaskStatusWithClock(content.TaskStatusNow, at)
+
+				Expect(block.Logbook()).To(EqualNode(newLogbook(content.NewLogbookEntryClock(earlier, time.Time{}))))
+			})
+
+			It("does not add a logbook for a status without a clock", func() {
+				block := task(content.TaskStatusTodo)
+				block.SetTaskStatusWithClock(content.TaskStatusDone, at)
+
+				Expect(block).To(EqualNode(task(content.TaskStatusDone)))
+			})
+		})
+	})
 })

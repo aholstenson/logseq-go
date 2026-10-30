@@ -23,6 +23,7 @@ var _ = Describe("Config", func() {
 				WithSecondSupport:          true,
 				EnabledInTimestampedBlocks: true,
 			},
+			EnableTimeTracking: true,
 		}))
 	})
 

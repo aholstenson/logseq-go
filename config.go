@@ -1,6 +1,8 @@
 package logseq
 
 import (
+	"time"
+
 	"github.com/aholstenson/logseq-go/content"
 	"github.com/aholstenson/logseq-go/internal/utils"
 )
@@ -46,6 +48,26 @@ func (g *Graph) Workflow() Workflow {
 	}
 
 	return WorkflowNow
+}
+
+// TimeTracking returns true if the graph tracks the time spent on tasks, as
+// set via `:feature/enable-timetracking?`. Logseq tracks time unless the graph
+// turns it off.
+func (g *Graph) TimeTracking() bool {
+	return g.config.EnableTimeTracking
+}
+
+// SetTaskStatus sets the status of the task in a block in the same way as
+// Logseq does in this graph. When the graph tracks time this also starts or
+// stops the clock of the task, see content.Block.SetTaskStatusWithClock.
+// Otherwise only the status changes, see content.Block.SetTaskStatus.
+func (g *Graph) SetTaskStatus(block *content.Block, status content.TaskStatus, at time.Time) {
+	if g.TimeTracking() {
+		block.SetTaskStatusWithClock(status, at)
+		return
+	}
+
+	block.SetTaskStatus(status)
 }
 
 // Favorites returns the titles of the pages that are favorited in the graph,

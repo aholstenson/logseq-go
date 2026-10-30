@@ -140,6 +140,23 @@ block.SetDeadline(content.NewDeadline(time.Now().AddDate(0, 0, 7)))
 block.CompleteTask(time.Now())
 ```
 
+The time spent on a task can be tracked in its logbook, as Logseq does when time
+tracking is on. `graph.SetTaskStatus` follows the
+`:feature/enable-timetracking?` setting of the graph:
+
+```go
+// Starts a clock for DOING and NOW, and stops it for other statuses, but only
+// if the graph tracks time
+graph.SetTaskStatus(block, graph.Workflow().Doing(), time.Now())
+
+// Always tracks time, whatever the setting of the graph is
+block.SetTaskStatusWithClock(graph.Workflow().Doing(), time.Now())
+
+// The clock can also be started and stopped without changing the status
+block.StartClock(time.Now())
+block.StopClock(time.Now())
+```
+
 ### Revisions and conflicts
 
 Every page has a revision, which is a hash of the content of its file. A page
