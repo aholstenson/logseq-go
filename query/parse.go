@@ -3,6 +3,7 @@ package query
 import (
 	"fmt"
 	"regexp"
+	"regexp/syntax"
 	"strconv"
 	"strings"
 	"time"
@@ -462,6 +463,7 @@ var titleOps = map[string]TitleOp{
 	"starts-with": TitleStartsWith,
 	"ends-with":   TitleEndsWith,
 	"includes":    TitleIncludes,
+	"matches":     TitleMatches,
 }
 
 // parseTextComparison reads the comparison and the text of a filter such as
@@ -473,12 +475,18 @@ func parseTextComparison(e *expr, args []*expr, example string) (TitleOp, string
 
 	op, ok := titleOps[strings.ToLower(args[0].text)]
 	if !ok {
-		return 0, "", errorAt(args[0].pos, "expected =, starts-with, ends-with or includes")
+		return 0, "", errorAt(args[0].pos, "expected =, starts-with, ends-with, includes or matches")
 	}
 
 	text, err := parseName(args[1])
 	if err != nil {
 		return 0, "", err
+	}
+
+	if op == TitleMatches {
+		if _, err := syntax.Parse(text, syntax.Perl); err != nil {
+			return 0, "", errorAt(args[1].pos, "expected a regular expression: %v", err)
+		}
 	}
 	return op, text, nil
 }

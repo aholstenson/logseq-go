@@ -161,6 +161,19 @@ var _ = Describe("Query", func() {
 			Expect(blocks(`(content includes "[[Reading List]]")`)).To(ConsistOf("Reading List"))
 		})
 
+		It("finds blocks by a regular expression in their text", func() {
+			Expect(blocks(`(content matches "^(TODO|LATER) (\\[#A\\] )?Overdue")`)).To(ConsistOf("Overdue scheduled", "Overdue deadline"))
+			Expect(blocks(`(content matches "rating:: \\d{2}$")`)).To(ConsistOf("Great film"))
+		})
+
+		It("finds pages by a regular expression in their title", func() {
+			Expect(pages(`(title matches "^RECIPE (one|two)$")`)).To(ConsistOf("recipe one", "recipe two"))
+		})
+
+		It("returns an error for a regular expression that the index can not match", func() {
+			Expect(queryError(`(content matches "\\bbank")`)).To(MatchError(ContainSubstring("not supported")))
+		})
+
 		It("finds blocks on a page", func() {
 			Expect(blocks("(and (page [[Book]]) (task TODO))")).To(ConsistOf("Finish chapter"))
 		})
@@ -424,6 +437,12 @@ var _ = Describe("Query", func() {
 			results := runAdvanced(`{:query [:find (pull ?b [*])
 				:where [?b :block/content ?c] [(clojure.string/starts-with? ?c "TODO [#")]]}`)
 			Expect(blockPreviews(results)).To(ConsistOf("Call the bank", "Overdue scheduled", "In two days"))
+		})
+
+		It("finds the blocks with content that matches a regular expression", func() {
+			results := runAdvanced(`{:query [:find (pull ?b [*])
+				:where [(re-pattern "^TODO In \\w+ days") ?re] [?b :block/content ?c] [(re-find ?re ?c)]]}`)
+			Expect(blockPreviews(results)).To(ConsistOf("In four days"))
 		})
 
 		It("finds the recipes", func() {

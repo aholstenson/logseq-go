@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"regexp/syntax"
 	"strconv"
 	"strings"
 	"time"
@@ -240,7 +241,10 @@ var queryFence = regexp.MustCompile(`(?im)^\s*#\+(BEGIN|END)_QUERY\s*$`)
 //     clojure.string/includes?, and `[(get ?props :key) ?value]` with or
 //     without a default value
 //   - the content of a block compared with =, clojure.string/starts-with?,
-//     ends-with? and includes?, with regard for case, see ContentFilter
+//     ends-with?, includes?, re-find and re-matches, with regard for case,
+//     see ContentFilter
+//   - a regular expression as `#"bank"`, or from `[(re-pattern "bank") ?re]`;
+//     the syntax is that of the regexp package, see TitleMatches
 //   - a value in a set, such as `[(contains? #{"book" "film"} ?value)]`, for
 //     values and for the titles of pages that blocks are on or refer to
 //   - a property that is set, such as `[(get ?props :key)]`
@@ -264,7 +268,8 @@ var queryFence = regexp.MustCompile(`(?im)^\s*#\+(BEGIN|END)_QUERY\s*$`)
 //     `or` in a query for pages, such as
 //     `(not [?b :block/page ?p] [?b :block/marker "TODO"])`
 //   - the title of a page compared with =, contains?,
-//     clojure.string/starts-with?, ends-with? and includes?, see TitleFilter
+//     clojure.string/starts-with?, ends-with?, includes?, re-find and
+//     re-matches, see TitleFilter
 //   - the title of a page with a known title as a value, such as ?title in
 //     `[?p :block/name ?page] [?p :block/original-name ?title]`
 //   - and, or, or-join, not and not-join
@@ -836,6 +841,10 @@ func (t *translator) collect(clause *ednNode, nested bool) error {
 			}
 		}
 	case ednVector:
+		if isRegexBinding(clause) {
+			return t.readRegex(clause)
+		}
+
 		if !isDataPattern(clause) {
 			return nil
 		}
@@ -1578,6 +1587,11 @@ func (t *translator) bind(variable *ednNode, src *source, conditions []*conditio
 }
 
 func (t *translator) binding(clause *ednNode, conditions []*condition) (Filter, error) {
+	if isRegexBinding(clause) {
+		// The variable is an input, see readRegex.
+		return nil, nil
+	}
+
 	if isBinding(clause) {
 		return t.functionBinding(clause, conditions)
 	}
@@ -1945,8 +1959,14 @@ func (t *translator) titleMatches(page string, conditions []*condition) ([]title
 				return nil, t.unsupported(c.node, "expected the text to compare the title with")
 			}
 			m.op, m.values = op, []string{value}
+		case regexFunctions[c.fn] && len(c.args) == 2 && c.args[1].isSymbol(c.subject):
+			pattern, err := t.regex(c)
+			if err != nil {
+				return nil, err
+			}
+			m.op, m.values = TitleMatches, []string{pattern}
 		default:
-			return nil, t.unsupported(c.node, "only =, contains?, clojure.string/starts-with?, ends-with? and includes? are supported for the title of a page")
+			return nil, t.unsupported(c.node, "only =, contains?, clojure.string/starts-with?, ends-with?, includes?, re-find and re-matches are supported for the title of a page")
 		}
 
 		matches = append(matches, m)
@@ -1957,25 +1977,92 @@ func (t *translator) titleMatches(page string, conditions []*condition) ([]title
 
 // contentFilter translates a condition on the content of a block, such as
 // `[(clojure.string/starts-with? ?c "TODO")]` with `[?b :block/content ?c]`.
+// The text is used as it is, so `"[[page]]"` is a reference in the text and
+// not the title of the page.
 func (t *translator) contentFilter(c *condition) (Filter, error) {
-	if c.fn == "=" {
-		value, err := t.comparedValue(c, "=")
-		if err != nil {
-			return nil, err
+	if len(c.args) == 2 {
+		switch {
+		case c.fn == "=":
+			other := c.args[1]
+			if other.isSymbol(c.subject) {
+				other = c.args[0]
+			}
+
+			text, ok := t.text(other)
+			if !ok {
+				return nil, t.unsupported(c.node, "expected the text to compare the content with")
+			}
+			return Content(TitleEquals, text), nil
+		case regexFunctions[c.fn] && c.args[1].isSymbol(c.subject):
+			pattern, err := t.regex(c)
+			if err != nil {
+				return nil, err
+			}
+			return Content(TitleMatches, pattern), nil
 		}
-		return Content(TitleEquals, value), nil
 	}
 
 	op, isFunction := titleFunctions[c.fn]
 	if !isFunction || len(c.args) != 2 || !c.args[0].isSymbol(c.subject) {
-		return nil, t.unsupported(c.node, "only =, clojure.string/starts-with?, ends-with? and includes? are supported for the content")
+		return nil, t.unsupported(c.node, "only =, clojure.string/starts-with?, ends-with?, includes?, re-find and re-matches are supported for the content")
 	}
 
-	text, ok := t.scalar(c.args[1])
+	text, ok := t.text(c.args[1])
 	if !ok {
 		return nil, t.unsupported(c.node, "expected the text to compare the content with")
 	}
 	return Content(op, text), nil
+}
+
+// regexFunctions are the functions that match a regular expression, with the
+// expression as the first argument.
+var regexFunctions = map[string]bool{
+	"re-find":    true,
+	"re-matches": true,
+}
+
+// regex returns the regular expression of a condition such as
+// `[(re-find #"bank\d" ?c)]`. For re-matches, which matches all of the value,
+// the expression is put between `^` and `$`.
+func (t *translator) regex(c *condition) (string, error) {
+	node := t.resolve(c.args[0])
+	if node.kind != ednRegex {
+		return "", t.unsupported(c.node, "expected a regular expression, such as #\"bank\" or (re-pattern \"bank\")")
+	}
+
+	if _, err := syntax.Parse(node.text, syntax.Perl); err != nil {
+		return "", t.unsupported(c.node, "the regular expression is not supported: %v", err)
+	}
+
+	if c.fn == "re-matches" {
+		return "^(?:" + node.text + ")$", nil
+	}
+	return node.text, nil
+}
+
+// isRegexBinding returns true for a clause such as
+// `[(re-pattern "bank") ?re]`.
+func isRegexBinding(node *ednNode) bool {
+	return isBinding(node) && node.items[0].head() == "re-pattern"
+}
+
+// readRegex reads the variable of a clause such as `[(re-pattern "bank") ?re]`
+// as an input with the regular expression, so that conditions such as
+// `[(re-find ?re ?c)]` can use it.
+func (t *translator) readRegex(clause *ednNode) error {
+	call := clause.items[0]
+	if len(call.items) != 2 {
+		return t.unsupported(clause, "re-pattern takes one text")
+	}
+
+	value := t.resolve(call.items[1])
+	if value.kind != ednString && value.kind != ednRegex {
+		return t.unsupported(clause, "expected the text of a regular expression")
+	}
+
+	out := clause.items[1]
+	t.inputs[out.text] = &ednNode{kind: ednRegex, text: value.text, pos: value.pos, end: value.end}
+	return nil
 }
 
 // propertyCondition translates a condition on the properties of a block or
@@ -2711,6 +2798,15 @@ func (t *translator) strings(node *ednNode) ([]string, bool) {
 	}
 
 	return nil, false
+}
+
+// text returns a single value as text, the same as scalar, but keeps a
+// string as it is, also when it looks like a reference to a page.
+func (t *translator) text(node *ednNode) (string, bool) {
+	if resolved := t.resolve(node); resolved.kind == ednString {
+		return resolved.text, true
+	}
+	return t.scalar(node)
 }
 
 // scalar returns a single value as text, from a string, keyword, number or

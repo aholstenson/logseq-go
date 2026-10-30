@@ -483,7 +483,7 @@ func titleQuery(f *query.TitleFilter) (indexing.Query, error) {
 	if err != nil {
 		return nil, err
 	}
-	return indexing.PageTitleMatches(match, f.Text), nil
+	return indexing.PageTitleMatches(match, f.Text)
 }
 
 // contentQuery matches the blocks with a text that compares with the text of
@@ -497,7 +497,7 @@ func contentQuery(f *query.ContentFilter) (indexing.Query, error) {
 	if err != nil {
 		return nil, err
 	}
-	return indexing.TextMatches(match, f.Text), nil
+	return indexing.TextMatches(match, f.Text)
 }
 
 // textMatch returns how the index compares a part of a title or the text of a
@@ -510,6 +510,8 @@ func textMatch(op query.TitleOp) (indexing.TextMatch, error) {
 		return indexing.MatchSuffix, nil
 	case query.TitleIncludes:
 		return indexing.MatchIncludes, nil
+	case query.TitleMatches:
+		return indexing.MatchFind, nil
 	}
 
 	return 0, fmt.Errorf("query: unknown text comparison %d", op)
@@ -541,7 +543,7 @@ func (r *queryRunner) referencesQuery(f *query.ReferencesFilter) (indexing.Query
 		if err != nil {
 			return nil, err
 		}
-		return byMatch(match, title.Text), nil
+		return byMatch(match, title.Text)
 	}
 
 	pageQuery, err := r.compile(f.Pages, false)

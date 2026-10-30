@@ -267,8 +267,9 @@ func FullText(text string) *FullTextFilter {
 // and similar functions on `:block/content` in Logseq. The text of a block is
 // its Markdown without the bullet, the indentation, the blocks below it and the
 // properties that Logseq hides, such as `id::`. It is written as
-// `(content starts-with "TODO")`, with `=`, `starts-with`, `ends-with` or
-// `includes`.
+// `(content starts-with "TODO")`, with `=`, `starts-with`, `ends-with`,
+// `includes` or `matches` for a regular expression, see TitleMatches. A
+// regular expression is matched with regard for case here.
 type ContentFilter struct {
 	Op   TitleOp
 	Text string
@@ -546,8 +547,8 @@ func Namespace(namespace string) *NamespaceFilter {
 
 // TitleFilter matches the pages with a title that compares with the text. The
 // title is compared without regard for case. It is written as
-// `(title starts-with "projects/")`, with `=`, `starts-with`, `ends-with` or
-// `includes`.
+// `(title starts-with "projects/")`, with `=`, `starts-with`, `ends-with`,
+// `includes` or `matches` for a regular expression, see TitleMatches.
 type TitleFilter struct {
 	Op   TitleOp
 	Text string
@@ -566,6 +567,13 @@ const (
 	TitleEndsWith
 	// TitleIncludes matches the titles that include the text.
 	TitleIncludes
+	// TitleMatches matches the titles with a match of the text as a regular
+	// expression anywhere in them, the same as re-find in Clojure. The
+	// syntax is that of the regexp package. `^` and `$` are supported only
+	// at the start and the end of the expression, and `\b` and `\B` are not
+	// supported. Titles are matched without regard for case, so the
+	// expression is too.
+	TitleMatches
 )
 
 var titleOpNames = map[TitleOp]string{
@@ -573,6 +581,7 @@ var titleOpNames = map[TitleOp]string{
 	TitleStartsWith: "starts-with",
 	TitleEndsWith:   "ends-with",
 	TitleIncludes:   "includes",
+	TitleMatches:    "matches",
 }
 
 // Title creates a filter that matches the pages with a title that compares

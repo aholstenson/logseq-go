@@ -263,19 +263,57 @@ var _ = Describe("Queries", func() {
 			Expect(texts(indexing.TextIs("Pay the Bank"))).To(BeEmpty())
 		})
 
+		matching := func(match indexing.TextMatch, text string) []string {
+			query, err := indexing.TextMatches(match, text)
+			Expect(err).ToNot(HaveOccurred())
+			return texts(query)
+		}
+
 		It("matches the start, the end and a part of the text with regard for case", func() {
-			Expect(texts(indexing.TextMatches(indexing.MatchPrefix, "Pay"))).To(ConsistOf("Pay the Bank"))
-			Expect(texts(indexing.TextMatches(indexing.MatchSuffix, "type:: bill"))).To(ConsistOf("Pay the Bank"))
-			Expect(texts(indexing.TextMatches(indexing.MatchIncludes, "the "))).To(ConsistOf("Pay the Bank", "pay the rent"))
-			Expect(texts(indexing.TextMatches(indexing.MatchIncludes, "bank"))).To(BeEmpty())
+			Expect(matching(indexing.MatchPrefix, "Pay")).To(ConsistOf("Pay the Bank"))
+			Expect(matching(indexing.MatchSuffix, "type:: bill")).To(ConsistOf("Pay the Bank"))
+			Expect(matching(indexing.MatchIncludes, "the ")).To(ConsistOf("Pay the Bank", "pay the rent"))
+			Expect(matching(indexing.MatchIncludes, "bank")).To(BeEmpty())
 		})
 
 		It("matches text over more than one line", func() {
-			Expect(texts(indexing.TextMatches(indexing.MatchIncludes, "Bank\ntype"))).To(ConsistOf("Pay the Bank"))
+			Expect(matching(indexing.MatchIncludes, "Bank\ntype")).To(ConsistOf("Pay the Bank"))
 		})
 
 		It("does not read the text as a regular expression", func() {
-			Expect(texts(indexing.TextMatches(indexing.MatchIncludes, "the.*"))).To(BeEmpty())
+			Expect(matching(indexing.MatchIncludes, "the.*")).To(BeEmpty())
+		})
+
+		It("finds a match of a regular expression anywhere in the text", func() {
+			Expect(matching(indexing.MatchFind, "[Bb]ank|rent")).To(ConsistOf("Pay the Bank", "pay the rent"))
+			Expect(matching(indexing.MatchFind, "(?i)PAY")).To(ConsistOf("Pay the Bank", "pay the rent"))
+			Expect(matching(indexing.MatchFind, "bank")).To(BeEmpty())
+		})
+
+		It("matches ^ and $ at the start and the end of the text", func() {
+			Expect(matching(indexing.MatchFind, "^pay")).To(ConsistOf("pay the rent"))
+			Expect(matching(indexing.MatchFind, "^Pay the Bank$")).To(BeEmpty())
+			Expect(matching(indexing.MatchFind, "bill$|^pay")).To(ConsistOf("Pay the Bank", "pay the rent"))
+		})
+
+		It("does not match . with the end of a line, the same as Logseq", func() {
+			Expect(matching(indexing.MatchFind, "Bank.type")).To(BeEmpty())
+			Expect(matching(indexing.MatchFind, "Bank\\ntype")).To(ConsistOf("Pay the Bank"))
+		})
+
+		It("accepts lazy repeats", func() {
+			Expect(matching(indexing.MatchFind, "P.*?k")).To(ConsistOf("Pay the Bank"))
+		})
+
+		It("returns an error for anchors in the middle and word boundaries", func() {
+			_, err := indexing.TextMatches(indexing.MatchFind, "a^b")
+			Expect(err).To(MatchError(ContainSubstring("only supported at the start and the end")))
+
+			_, err = indexing.TextMatches(indexing.MatchFind, `\bbank\b`)
+			Expect(err).To(MatchError(ContainSubstring(`\b and \B are not supported`)))
+
+			_, err = indexing.TextMatches(indexing.MatchFind, "(")
+			Expect(err).To(MatchError(ContainSubstring("is not valid")))
 		})
 	})
 

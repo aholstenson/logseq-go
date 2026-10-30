@@ -174,6 +174,15 @@ var _ = Describe("Advanced queries", func() {
 		Translates("content end", where(`[?b :block/content ?c] [(clojure.string/ends-with? ?c "!")]`), `(content ends-with "!")`)
 		Translates("content equal", where(`[?b :block/content ?c] [(= "Call the bank" ?c)]`), `(content = "Call the bank")`)
 		Translates("content as a value", where(`[?b :block/content "Call the bank"]`), `(content = "Call the bank")`)
+		Translates("content with a reference", where(`[?b :block/content ?c] [(clojure.string/includes? ?c "[[Money]]")]`),
+			`(content includes "[[Money]]")`)
+		Translates("content with a regex", where(`[?b :block/content ?c] [(re-find #"bank\d" ?c)]`), `(content matches "bank\\d")`)
+		Translates("content with re-pattern", where(`[(re-pattern "bank\\d") ?re] [?b :block/content ?c] [(re-find ?re ?c)]`),
+			`(content matches "bank\\d")`)
+		Translates("content with re-matches", where(`[?b :block/content ?c] [(re-matches #"TODO .*" ?c)]`), `(content matches "^(?:TODO .*)$")`)
+		Translates("content with a regex in a not",
+			where(`[?b :block/marker "TODO"] [?b :block/content ?c] (not [(re-find #"(?i)bank" ?c)])`),
+			`(and (task TODO) (not (content matches "(?i)bank")))`)
 		Translates("path refs with a name", where(`[?b :block/path-refs ?p] [?p :block/name "project"]`), "[[project]]")
 		Translates("path refs with a lookup", where(`[?b :block/path-refs [:block/original-name "Project"]]`), "[[Project]]")
 		Translates("parent with a lookup", where(`[?b :block/parent [:block/uuid #uuid "abc-123"]]`), "(parent ((abc-123)))")
@@ -263,6 +272,7 @@ var _ = Describe("Advanced queries", func() {
 		Translates("pages by title", pagesWhere(`[?p :block/name "x"]`), `(title = "x")`)
 		Translates("pages by the start of their title",
 			pagesWhere(`[?p :block/name ?n] [(clojure.string/starts-with? ?n "projects/")]`), `(title starts-with "projects/")`)
+		Translates("title with a regex", pagesWhere(`[?p :block/name ?n] [(re-find #"^proj" ?n)]`), `(title matches "^proj")`)
 		Translates("titles in an or",
 			pagesWhere(`[?p :block/name ?n] (or [(clojure.string/starts-with? ?n "a")] [(clojure.string/ends-with? ?n "b")])`),
 			`(or (title starts-with "a") (title ends-with "b"))`)
@@ -319,6 +329,8 @@ var _ = Describe("Advanced queries", func() {
 		Translates("refs to pages that include a text",
 			where(`[?b :block/refs ?p] [?p :block/name ?n] [(clojure.string/includes? ?n "x")]`),
 			`(refs (title includes "x"))`)
+		Translates("references with a regex", where(`[?b :block/refs ?p] [?p :block/name ?n] [(re-matches #"proj.*" ?n)]`),
+			`(refs (title matches "^(?:proj.*)$"))`)
 		Translates("path refs to pages with a rule",
 			where(`[?b :block/marker "TODO"] [?b :block/path-refs ?p] (page-tags ?p #{"project"})`),
 			"(and (page-ref (page-tags [[project]])) (task TODO))")
@@ -583,6 +595,9 @@ var _ = Describe("Advanced queries", func() {
 			"or a page with a title")
 		Unsupported("defaults that are not values", where(`[?b :block/properties ?p] [(get ?p :type [1]) ?t]`), "expected a value as the default")
 		Unsupported("missing for other attributes", where(`[?b :block/marker "TODO"] [(missing? $ ?b :block/properties)]`), "missing? is only supported")
-		Unsupported("regex conditions", where(`[?b :block/content ?c] [(re-find #"bank\d" ?c)]`), "includes?")
+		Unsupported("regex that Go can not read", where(`[?b :block/content ?c] [(re-find #"(?<=a)b" ?c)]`), "the regular expression is not supported")
+		Unsupported("regex from a value that is not a text", where(`[(re-pattern 1) ?re] [?b :block/content ?c] [(re-find ?re ?c)]`),
+			"expected the text of a regular expression")
+		Unsupported("regex that is not a regex", where(`[?b :block/content ?c] [(re-find "bank" ?c)]`), "expected a regular expression")
 	})
 })

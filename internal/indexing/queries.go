@@ -1,7 +1,10 @@
 package indexing
 
 import (
+	"fmt"
 	"regexp"
+	"regexp/syntax"
+	"strings"
 	"time"
 
 	"github.com/aholstenson/logseq-go/content"
@@ -203,11 +206,12 @@ func TextIs(text string) Query {
 
 // TextMatches matches the blocks with a text that matches the text, with
 // regard for case, the same as TextIs does for the whole text.
-func TextMatches(match TextMatch, text string) Query {
-	return &fieldPattern{
-		field:   "text",
-		pattern: textPattern(match, text),
+func TextMatches(match TextMatch, text string) (Query, error) {
+	pattern, err := textPattern(match, text)
+	if err != nil {
+		return nil, err
 	}
+	return &fieldPattern{field: "text", pattern: pattern}, nil
 }
 
 func ContentMatches(text string) Query {
@@ -378,52 +382,151 @@ const (
 	MatchSuffix
 	// MatchIncludes matches the values that include the text.
 	MatchIncludes
+	// MatchFind matches the values with a match of the text as a regular
+	// expression anywhere in them, the same as re-find in Clojure. The
+	// syntax is that of the regexp package. `^` and `$` are supported only
+	// at the start and the end of the expression, and `\b` and `\B` are not
+	// supported.
+	MatchFind
 )
 
+// anyText is the regular expression for any text, also over more than one
+// line.
+const anyText = "(?s:.*)"
+
 // textPattern returns the regular expression for the values that match the
-// text. The values can have more than one line.
-func textPattern(match TextMatch, text string) string {
+// text. The values can have more than one line. The index matches the
+// expression with all of the value, so a part of a value is matched with
+// anyText before and after it.
+func textPattern(match TextMatch, text string) (string, error) {
 	quoted := regexp.QuoteMeta(text)
 	switch match {
 	case MatchPrefix:
-		return "(?s)" + quoted + ".*"
+		return quoted + anyText, nil
 	case MatchSuffix:
-		return "(?s).*" + quoted
+		return anyText + quoted, nil
+	case MatchIncludes:
+		return anyText + quoted + anyText, nil
+	case MatchFind:
+		return findPattern(text)
 	}
-	return "(?s).*" + quoted + ".*"
+	return "", fmt.Errorf("unknown text match %d", match)
+}
+
+// findPattern returns the regular expression for the values with a match of
+// the expression anywhere in them. `^` at the start and `$` at the end
+// remove anyText on that side.
+func findPattern(expr string) (string, error) {
+	parsed, err := syntax.Parse(expr, syntax.Perl)
+	if err != nil {
+		return "", fmt.Errorf("the regular expression %q is not valid: %w", expr, err)
+	}
+
+	pattern, err := findAlternatives(parsed)
+	if err != nil {
+		return "", fmt.Errorf("the regular expression %q is not supported: %w", expr, err)
+	}
+	return pattern, nil
+}
+
+// findAlternatives returns the regular expression for the values with a
+// match of one of the alternatives in re, or of re if it has none.
+func findAlternatives(re *syntax.Regexp) (string, error) {
+	if re.Op != syntax.OpAlternate {
+		return findOne(re)
+	}
+
+	parts := make([]string, 0, len(re.Sub))
+	for _, sub := range re.Sub {
+		part, err := findOne(sub)
+		if err != nil {
+			return "", err
+		}
+		parts = append(parts, "(?:"+part+")")
+	}
+	return strings.Join(parts, "|"), nil
+}
+
+func findOne(re *syntax.Regexp) (string, error) {
+	subs := []*syntax.Regexp{re}
+	if re.Op == syntax.OpConcat {
+		subs = re.Sub
+	}
+
+	start, end := anyText, anyText
+	if len(subs) > 0 && subs[0].Op == syntax.OpBeginText {
+		start, subs = "", subs[1:]
+	}
+	if len(subs) > 0 && subs[len(subs)-1].Op == syntax.OpEndText {
+		end, subs = "", subs[:len(subs)-1]
+	}
+
+	var body strings.Builder
+	for _, sub := range subs {
+		if err := checkFindable(sub); err != nil {
+			return "", err
+		}
+		body.WriteString(sub.String())
+	}
+
+	return start + "(?:" + body.String() + ")" + end, nil
+}
+
+// checkFindable returns an error for the parts of a regular expression that
+// the index can not match, and makes all repeats greedy. A lazy repeat finds
+// a match in the same values as a greedy one, but the index does not accept
+// it.
+func checkFindable(re *syntax.Regexp) error {
+	switch re.Op {
+	case syntax.OpBeginLine, syntax.OpEndLine, syntax.OpBeginText, syntax.OpEndText:
+		return fmt.Errorf("^ and $ are only supported at the start and the end")
+	case syntax.OpWordBoundary, syntax.OpNoWordBoundary:
+		return fmt.Errorf("\\b and \\B are not supported")
+	}
+
+	re.Flags &^= syntax.NonGreedy
+	for _, sub := range re.Sub {
+		if err := checkFindable(sub); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // titlePattern returns the regular expression for the titles that match the
-// text. Titles are stored in lower case, see normalizeRef.
-func titlePattern(match TextMatch, text string) string {
+// text. Titles are stored in lower case, see normalizeRef, so a regular
+// expression is matched without regard for case instead.
+func titlePattern(match TextMatch, text string) (string, error) {
+	if match == MatchFind {
+		return textPattern(match, "(?i)"+text)
+	}
 	return textPattern(match, normalizeRef(text))
 }
 
 // PageTitleMatches matches the pages with a title that matches the text, and
 // the blocks on them. Titles are matched without regard for case.
-func PageTitleMatches(match TextMatch, text string) Query {
-	return &fieldPattern{
-		field:   SortFieldTitle,
-		pattern: titlePattern(match, text),
-	}
+func PageTitleMatches(match TextMatch, text string) (Query, error) {
+	return titleQuery(SortFieldTitle, match, text)
 }
 
 // ReferencesMatching matches the blocks that reference a page with a title
 // that matches the text, the same as References does for one title.
-func ReferencesMatching(match TextMatch, text string) Query {
-	return &fieldPattern{
-		field:   "pages:ref",
-		pattern: titlePattern(match, text),
-	}
+func ReferencesMatching(match TextMatch, text string) (Query, error) {
+	return titleQuery("pages:ref", match, text)
 }
 
 // PathReferencesMatching matches the blocks about a page with a title that
 // matches the text, the same as PathReferences does for one title.
-func PathReferencesMatching(match TextMatch, text string) Query {
-	return &fieldPattern{
-		field:   "path:ref",
-		pattern: titlePattern(match, text),
+func PathReferencesMatching(match TextMatch, text string) (Query, error) {
+	return titleQuery("path:ref", match, text)
+}
+
+func titleQuery(field string, match TextMatch, text string) (Query, error) {
+	pattern, err := titlePattern(match, text)
+	if err != nil {
+		return nil, err
 	}
+	return &fieldPattern{field: field, pattern: pattern}, nil
 }
 
 // PageTitleIs matches the page with the title, and the blocks on it. Titles
