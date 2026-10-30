@@ -79,6 +79,20 @@ var _ = Describe("ParseRelativeDate", func() {
 		Parses("a month from now", wednesday, day(11, 28))
 	})
 
+	Describe("Periods from the end of a month", func() {
+		january31 := time.Date(2026, 1, 31, 0, 0, 0, 0, time.UTC)
+		march31 := time.Date(2026, 3, 31, 0, 0, 0, 0, time.UTC)
+		leapDay := time.Date(2024, 2, 29, 0, 0, 0, 0, time.UTC)
+
+		Parses("next month", january31, day(2, 28))
+		Parses("in 1 month", january31, day(2, 28))
+		Parses("in 3 months", january31, day(4, 30))
+		Parses("a month ago", march31, day(2, 28))
+		Parses("last month", march31, day(2, 28))
+		Parses("next year", leapDay, time.Date(2025, 2, 28, 0, 0, 0, 0, time.UTC))
+		Parses("4 years from now", leapDay, time.Date(2028, 2, 29, 0, 0, 0, 0, time.UTC))
+	})
+
 	Describe("Other text", func() {
 		DoesNotParse("")
 		DoesNotParse("current page")

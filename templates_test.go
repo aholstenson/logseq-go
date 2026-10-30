@@ -104,6 +104,18 @@ var _ = Describe("Templates", func() {
 		Expect(blocksAsString(blocks)).To(ContainSubstring("Meeting at 15:30 on [[Project]]"))
 	})
 
+	It("links to the last day of next month when the month is shorter", func() {
+		graph.Close()
+		graph = openGraphWithPages(dir, map[string]string{
+			"monthly.md": "- Monthly\n  template:: Monthly\n\t- Review on <% next month %>\n",
+		})
+
+		endOfJanuary := time.Date(2026, 1, 31, 9, 0, 0, 0, time.Local)
+		blocks, err := graph.Template(ctx, "Monthly", logseq.WithTemplateTime(endOfJanuary))
+		Expect(err).ToNot(HaveOccurred())
+		Expect(blocksAsString(blocks)).To(ContainSubstring("Review on [[Feb 28th, 2026]]"))
+	})
+
 	It("matches the name without regard for case", func() {
 		blocks, err := graph.Template(ctx, "daily", logseq.WithTemplateTime(insertedAt))
 		Expect(err).ToNot(HaveOccurred())

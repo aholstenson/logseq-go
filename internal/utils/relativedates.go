@@ -54,6 +54,10 @@ var numberWords = map[string]int{
 //   - `in 3 days`, `2 weeks ago` and `a month from now`
 //   - a date such as `2026-11-05`
 //
+// Adding months or years to a day that the target month does not have gives
+// the last day of that month, so `next month` on January 31 is the end of
+// February. Chrono does the same.
+//
 // The returned time is midnight of the date, in the location of ref. If the
 // text is not a date this returns false.
 func ParseRelativeDate(text string, ref time.Time) (time.Time, bool) {
@@ -161,9 +165,9 @@ func addUnits(date time.Time, n int, unit string) (time.Time, bool) {
 	case "week":
 		return date.AddDate(0, 0, 7*n), true
 	case "month":
-		return date.AddDate(0, n, 0), true
+		return addMonthsClamped(date, n), true
 	case "year":
-		return date.AddDate(n, 0, 0), true
+		return addMonthsClamped(date, 12*n), true
 	}
 
 	return time.Time{}, false
