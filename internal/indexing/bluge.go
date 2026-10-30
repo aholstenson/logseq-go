@@ -736,6 +736,21 @@ func formatLocation(location []int) string {
 	return strings.Join(parts, ".")
 }
 
+// blockIDAt returns the ID that blockID gives the block at the location on the
+// page with the sub path, see utils.LocationOf.
+func blockIDAt(subPath string, location []int) string {
+	var path strings.Builder
+	path.WriteString(subPath)
+	for i := len(location) - 1; i >= 0; i-- {
+		path.WriteRune(':')
+		path.WriteString(strconv.Itoa(location[i]))
+	}
+
+	// The root of the page is the last part of the ID.
+	path.WriteString(":0")
+	return path.String()
+}
+
 // blockID returns a semi-stable ID based on the location of the block on the
 // page.
 func blockID(page *Page, block *content.Block) string {

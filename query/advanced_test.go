@@ -332,6 +332,37 @@ var _ = Describe("Advanced queries", func() {
 			"(has-block (refs (page-tags [[project]])))")
 	})
 
+	Describe("Blocks related to other blocks", func() {
+		below := `:rules [[(below ?b ?a) [?b :block/parent ?a]] [(below ?b ?a) [?b :block/parent ?c] (below ?c ?a)]]`
+
+		Translates("blocks with only conditions on their page",
+			where(`[?b :block/page ?p] [?p :block/original-name ?n] [(clojure.string/includes? ?n "Meeting")]`),
+			`(page (title includes "Meeting"))`)
+		Translates("children of tasks", where(`[?b :block/parent ?p] [?p :block/marker "TODO"]`), "(parent (task TODO))")
+		Translates("children of blocks that refer to a page",
+			where(`[?b :block/parent ?p] [?p :block/refs ?t] [?t :block/name "meeting"]`), "(parent (refs [[meeting]]))")
+		Translates("grandchildren", where(`[?b :block/parent ?p] [?p :block/parent ?g] [?g :block/marker "TODO"]`),
+			"(parent (parent (task TODO)))")
+		Translates("children of blocks on a page with a title",
+			where(`[?b :block/parent ?p] [?p :block/page ?pg] [?pg :block/name ?n] [(clojure.string/starts-with? ?n "meet")]`),
+			`(parent (page (title starts-with "meet")))`)
+		Translates("blocks with children that match", where(`[?c :block/parent ?b] [?c :block/marker "TODO"]`), "(has-child (task TODO))")
+		Translates("blocks that are not children of blocks that match",
+			where(`[?b :block/marker "TODO"] (not [?b :block/parent ?p] [?p :block/marker "DONE"])`),
+			"(and (task TODO) (not (parent (task DONE))))")
+		Translates("blocks below blocks that match with a rule",
+			`{:query [:find (pull ?b [*]) :in $ % :where [?b :block/marker "TODO"] (below ?b ?a) [?a :block/refs ?t] [?t :block/name "meeting"]] `+below+`}`,
+			"(and (ancestor (refs [[meeting]])) (task TODO))")
+		Translates("blocks with blocks below them that match with a rule",
+			`{:query [:find (pull ?b [*]) :in $ % :where (below ?c ?b) [?c :block/marker "TODO"]] `+below+`}`,
+			"(has-descendant (task TODO))")
+		Translates("pages with blocks below blocks that match",
+			"{:query [:find (pull ?p [*]) :where [?b :block/page ?p] [?b :block/marker \"TODO\"] [?b :block/parent ?q] [?q :block/refs ?t] [?t :block/name \"meeting\"]]}",
+			"(has-block (and (parent (refs [[meeting]])) (task TODO)))")
+
+		Unsupported("a page as the parent", where(`[?b :block/parent ?p] [?p :block/name "x"]`), "expected a block")
+	})
+
 	Describe("Inputs", func() {
 		Translates("older date inputs",
 			`{:query [:find (pull ?b [*]) :in $ ?start ?end :where [?b :block/scheduled ?d] [(>= ?d ?start)] [(<= ?d ?end)]] :inputs [:14d :7d-after]}`,
@@ -507,8 +538,6 @@ var _ = Describe("Advanced queries", func() {
 		Unsupported("empty lists", `{:query [:find ?b :where ()]}`, "expected a clause")
 		Unsupported("empty sets", where(`[?b :block/marker ?m] [(contains? #{} ?m)]`), "expected a set of values")
 		Unsupported("other conditions on titles", "{:query [:find ?p :where [?p :block/name ?n] [(clojure.string/blank? ?n)]]}", "for the title of a page")
-		Unsupported("blocks with only conditions on their page",
-			where(`[?b :block/page ?p] [?p :block/original-name ?n] [(clojure.string/includes? ?n "Meeting")]`), "only conditions on their page")
 		Unsupported("a referenced page that is also about the block",
 			where(`[?b :block/page ?q] [?b :block/refs ?p] [?p :block/namespace ?q]`), "expected a page")
 		Unsupported("another page without a title",

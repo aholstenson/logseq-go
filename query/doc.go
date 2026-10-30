@@ -54,6 +54,14 @@
 //	(alias [[name]])         pages with the alias
 //	(has-block (task TODO))  pages with one or more blocks that match the
 //	                         filter
+//	(page (title = "x"))     blocks on the pages that the filter matches,
+//	                         see OnPageFilter
+//	(parent (task TODO))     blocks directly below a block that the filter
+//	                         matches; `ancestor` for any depth, see
+//	                         BelowFilter
+//	(has-child (task TODO))  blocks with a block directly below that the
+//	                         filter matches; `has-descendant` for any depth,
+//	                         see HasChildFilter
 //	(refs (page-tags x))     blocks that reference one or more of the pages
 //	                         that the filter matches, see ReferencesFilter;
 //	                         `page-ref` does the same for blocks about them

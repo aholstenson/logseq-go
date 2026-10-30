@@ -125,6 +125,33 @@ func (f *PageFilter) String() string {
 	return list("page", formatPageRef(f.Page))
 }
 
+func (f *OnPageFilter) String() string {
+	return filterList("page", f.Pages)
+}
+
+func (f *BelowFilter) String() string {
+	if f.AnyDepth {
+		return filterList("ancestor", f.Filter)
+	}
+	return filterList("parent", f.Filter)
+}
+
+func (f *HasChildFilter) String() string {
+	if f.AnyDepth {
+		return filterList("has-descendant", f.Filter)
+	}
+	return filterList("has-child", f.Filter)
+}
+
+// filterList writes a filter that takes another filter, such as
+// `(has-child (task TODO))`.
+func filterList(name string, filter Filter) string {
+	if filter == nil {
+		return list(name)
+	}
+	return list(name, filter.String())
+}
+
 func (f *ParentFilter) String() string {
 	return blockFilterString("parent", f.Block, f.Page, f.Location)
 }

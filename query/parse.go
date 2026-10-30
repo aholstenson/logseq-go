@@ -250,7 +250,29 @@ func parseFilter(e *expr) (Filter, error) {
 		}
 
 		return Priority(priorities...), nil
+	case "has-child", "has-descendant":
+		if len(args) != 1 {
+			return nil, errorAt(e.pos, "%s takes one filter", op)
+		}
+
+		filter, err := parseFilter(args[0])
+		if err != nil {
+			return nil, err
+		}
+
+		if op == "has-descendant" {
+			return HasDescendant(filter), nil
+		}
+		return HasChild(filter), nil
 	case "page":
+		if len(args) == 1 && args[0].kind == exprList {
+			pages, err := parseFilter(args[0])
+			if err != nil {
+				return nil, err
+			}
+			return OnPage(pages), nil
+		}
+
 		name, err := parseSingleName(e, args)
 		if err != nil {
 			return nil, err
@@ -279,6 +301,18 @@ func parseFilter(e *expr) (Filter, error) {
 		}
 		return PageRef(name), nil
 	case "parent", "ancestor":
+		if len(args) == 1 && args[0].kind == exprList {
+			filter, err := parseFilter(args[0])
+			if err != nil {
+				return nil, err
+			}
+
+			if op == "ancestor" {
+				return DescendantOf(filter), nil
+			}
+			return ChildOf(filter), nil
+		}
+
 		if len(args) > 1 && args[0].kind == exprPageRef {
 			location, err := parseLocation(args[1:])
 			if err != nil {

@@ -55,6 +55,12 @@ var _ = Describe("Query", func() {
 			"ada.md":              "organization:: [[Acme]], [[Initech]]\n\n- Engineer\n",
 			"bob.md":              "organization:: [[Initech]]\n\n- Manager\n",
 			"notes.md":            "- TODO Review [[book]]\n- Visit [[recipe one]]\n- Plan [[Nowhere Page]]\n",
+			"meetings.md": "- Weekly sync #meeting\n" +
+				"  - TODO Send notes\n" +
+				"  - Discussed budget\n" +
+				"    - TODO Follow up with finance\n" +
+				"- TODO Plan offsite\n" +
+				"  - Book venue\n",
 			"films.md": "- Good film\n  rating:: 8\n" +
 				"- Great film\n  rating:: 10\n" +
 				"- Fine film\n  rating:: 6\n",
@@ -264,6 +270,25 @@ var _ = Describe("Query", func() {
 		})
 	})
 
+	Describe("Blocks related to other blocks", func() {
+		It("finds the blocks on the pages that match", func() {
+			Expect(blocks(`(page (title = "meetings"))`)).To(HaveLen(6))
+		})
+
+		It("finds the blocks below the blocks that match", func() {
+			Expect(blocks("(parent (refs [[meeting]]))")).To(ConsistOf("Send notes", "Discussed budget"))
+			Expect(blocks("(ancestor (refs [[meeting]]))")).To(ConsistOf("Send notes", "Discussed budget", "Follow up with finance"))
+			Expect(blocks("(and (task TODO) (ancestor (refs [[meeting]])))")).To(ConsistOf("Send notes", "Follow up with finance"))
+			Expect(blocks("(parent (refs [[nothing]]))")).To(BeEmpty())
+		})
+
+		It("finds the blocks with blocks below them that match", func() {
+			Expect(blocks(`(has-child "finance")`)).To(ConsistOf("Discussed budget"))
+			Expect(blocks(`(has-descendant "finance")`)).To(ConsistOf("Weekly sync #meeting", "Discussed budget"))
+			Expect(blocks("(has-child (task TODO))")).To(ConsistOf("Weekly sync #meeting", "Discussed budget", "Reading List", "#shopping"))
+		})
+	})
+
 	Describe("Sorting", func() {
 		It("sorts blocks by a property with numbers in the order of their value", func() {
 			Expect(blocks("(and (property rating) (sort-by rating asc))")).
@@ -455,6 +480,19 @@ var _ = Describe("Query", func() {
 				        [(to-read ?b) [?b :block/marker "TODO"] [?b :block/refs ?p] (reading? ?p)]
 				        [(to-read ?b) [?b :block/page ?p] [?p :block/name "book"] [?b :block/marker "TODO"]]]}`)
 			Expect(blockPreviews(results)).To(ConsistOf("Review book", "Finish chapter"))
+		})
+
+		It("finds the tasks below the blocks about a meeting", func() {
+			results := runAdvanced(`{:query [:find (pull ?b [*]) :in $ %
+				:where [?b :block/marker "TODO"] (below ?b ?a) [?a :block/refs ?t] [?t :block/name "meeting"]]
+				:rules [[(below ?b ?a) [?b :block/parent ?a]] [(below ?b ?a) [?b :block/parent ?c] (below ?c ?a)]]}`)
+			Expect(blockPreviews(results)).To(ConsistOf("Send notes", "Follow up with finance"))
+		})
+
+		It("finds the blocks on pages by their title", func() {
+			results := runAdvanced(`{:query [:find (pull ?b [*])
+				:where [?b :block/page ?p] [?p :block/name ?n] [(clojure.string/starts-with? ?n "meet")]]}`)
+			Expect(blockPreviews(results)).To(HaveLen(6))
 		})
 
 		It("finds the people of the current page", func() {

@@ -275,6 +275,15 @@ func OnPages(subPaths ...string) Query {
 	return Or(clauses...)
 }
 
+// BlockAt matches the block at the location on the page with the sub path,
+// see utils.LocationOf.
+func BlockAt(subPath string, location []int) Query {
+	return &fieldEquals{
+		field: "_id",
+		value: blockIDAt(subPath, location),
+	}
+}
+
 // PagesAt matches the pages with the given sub paths. Matches nothing if no
 // sub path is given.
 func PagesAt(subPaths ...string) Query {

@@ -66,7 +66,8 @@ func findsBlocks(filter Filter) bool {
 	case *DateFilter:
 		return f.Field != FieldJournalPage
 	case *PageRefFilter, *RefsFilter, *ReferencesFilter, *FullTextFilter, *TaskFilter, *PriorityFilter,
-		*PageFilter, *ParentFilter, *AncestorFilter, *PropertyFilter:
+		*PageFilter, *ParentFilter, *AncestorFilter, *PropertyFilter,
+		*OnPageFilter, *BelowFilter, *HasChildFilter:
 		return true
 	}
 
@@ -266,6 +267,72 @@ type PageFilter struct {
 // Page creates a filter that matches the blocks on the page.
 func Page(page string) *PageFilter {
 	return &PageFilter{Page: page}
+}
+
+// OnPageFilter matches the blocks on the pages that its filter matches, such as
+// the pages with a title that includes a text. It is written as
+// `(page (title includes "Meeting"))`. In a query that finds blocks, a filter
+// for pages already matches the page of each block, so this is only needed
+// for a query with no other filter for blocks, which would otherwise find
+// pages.
+type OnPageFilter struct {
+	// Pages is the filter for the pages.
+	Pages Filter
+}
+
+// OnPage creates a filter that matches the blocks on the pages that the
+// filter matches.
+func OnPage(pages Filter) *OnPageFilter {
+	return &OnPageFilter{Pages: pages}
+}
+
+// BelowFilter matches the blocks below a block that its filter matches, such
+// as the blocks below a task. If AnyDepth is false it matches the blocks
+// directly below, and is written as `(parent (task TODO))`. If AnyDepth is
+// true it matches the blocks below at any depth, and is written as
+// `(ancestor (task TODO))`.
+type BelowFilter struct {
+	// Filter is the filter for the block above.
+	Filter Filter
+
+	// AnyDepth is true to match the blocks below at any depth.
+	AnyDepth bool
+}
+
+// ChildOf creates a filter that matches the blocks directly below a block
+// that the filter matches.
+func ChildOf(filter Filter) *BelowFilter {
+	return &BelowFilter{Filter: filter}
+}
+
+// DescendantOf creates a filter that matches the blocks below a block that
+// the filter matches, at any depth.
+func DescendantOf(filter Filter) *BelowFilter {
+	return &BelowFilter{Filter: filter, AnyDepth: true}
+}
+
+// HasChildFilter matches the blocks with a block below them that its filter
+// matches. If AnyDepth is false the block must be directly below, and the
+// filter is written as `(has-child (task TODO))`. If AnyDepth is true it can be
+// at any depth, and the filter is written as `(has-descendant (task TODO))`.
+type HasChildFilter struct {
+	// Filter is the filter for the block below.
+	Filter Filter
+
+	// AnyDepth is true to match a block below at any depth.
+	AnyDepth bool
+}
+
+// HasChild creates a filter that matches the blocks with a block directly
+// below them that the filter matches.
+func HasChild(filter Filter) *HasChildFilter {
+	return &HasChildFilter{Filter: filter}
+}
+
+// HasDescendant creates a filter that matches the blocks with a block below
+// them at any depth that the filter matches.
+func HasDescendant(filter Filter) *HasChildFilter {
+	return &HasChildFilter{Filter: filter, AnyDepth: true}
 }
 
 // ParentFilter matches the blocks directly below a block. The block is named
@@ -470,6 +537,9 @@ func (*ReferencesFilter) isFilter()   {}
 func (*FullTextFilter) isFilter()     {}
 func (*PageFilter) isFilter()         {}
 func (*ParentFilter) isFilter()       {}
+func (*OnPageFilter) isFilter()       {}
+func (*BelowFilter) isFilter()        {}
+func (*HasChildFilter) isFilter()     {}
 func (*AncestorFilter) isFilter()     {}
 func (*PropertyFilter) isFilter()     {}
 func (*PagePropertyFilter) isFilter() {}

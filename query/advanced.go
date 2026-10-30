@@ -247,6 +247,11 @@ var queryFence = regexp.MustCompile(`(?im)^\s*#\+(BEGIN|END)_QUERY\s*$`)
 //   - conditions on a page that a block refers to, such as
 //     `[?b :block/refs ?p] [?p :block/tags ?t] [?t :block/name "project"]`,
 //     see ReferencesFilter
+//   - conditions on the block above a block, such as
+//     `[?b :block/parent ?p] [?p :block/marker "TODO"]`, or on a block below
+//     it, such as `[?c :block/parent ?b] [?c :block/marker "TODO"]`, also at
+//     any depth with the rule below, see BelowFilter and HasChildFilter
+//   - a query for blocks with only conditions on their page, see OnPageFilter
 //   - conditions on the blocks on the page in a `not` or a branch of an
 //     `or` in a query for pages, such as
 //     `(not [?b :block/page ?p] [?b :block/marker "TODO"])`
@@ -612,6 +617,9 @@ func (t *translator) translate(queryNode *ednNode, inputsNode *ednNode) (*Query,
 
 	if t.findsPages {
 		filter = pagesWithBlocks(filter)
+	} else if filter != nil && !findsBlocks(filter) {
+		// A query for blocks with only conditions on their page.
+		filter = OnPage(filter)
 	}
 
 	q := New(filter)
@@ -1051,15 +1059,24 @@ func (t *translator) conjunction(clauses []*ednNode, pending []*condition) (Filt
 	return t.translateConjunction(clauses, pending)
 }
 
-// referenceJoins translates the clauses about a page that the block refers
-// to, such as `[?b :block/refs ?p] [?p :block/tags ?t] [?t :block/name "x"]`,
-// into a ReferencesFilter with a filter for the page. It returns the clauses
-// that are left and the filters.
+// joins translates the clauses about another page or block that the block of
+// the query is related to into one filter for the block. It returns the
+// clauses that are left and the filters. These are the relations:
+//
+//   - a page the block refers to, such as
+//     `[?b :block/refs ?p] [?p :block/tags ?t] [?t :block/name "x"]`, into a
+//     ReferencesFilter
+//   - the block above, such as `[?b :block/parent ?p] [?p :block/marker ?m]`,
+//     or a block above at any depth with a rule for the blocks below a block,
+//     into a BelowFilter
+//   - a block below, such as `[?c :block/parent ?b] [?c :block/marker ?m]`,
+//     or at any depth with a rule for the blocks below a block, into a
+//     HasChildFilter
 //
 // A page that only has its title compared with = or contains? is left to
 // the clause itself, which then becomes a filter for each title, such as
 // `(refs [[x]])`.
-func (t *translator) referenceJoins(clauses []*ednNode, pending []*condition) ([]*ednNode, []Filter, error) {
+func (t *translator) joins(clauses []*ednNode, pending []*condition) ([]*ednNode, []Filter, error) {
 	if t.block == "" || t.result != t.block {
 		return clauses, nil, nil
 	}
@@ -1067,41 +1084,32 @@ func (t *translator) referenceJoins(clauses []*ednNode, pending []*condition) ([
 	var filters []Filter
 	for i := 0; i < len(clauses); i++ {
 		clause := clauses[i]
-		if !isDataPattern(clause) || len(clause.items) != 3 || clause.items[0].text != t.block {
-			continue
-		}
-
-		attribute, page := clause.items[1].text, clause.items[2]
-		if attribute != "block/refs" && attribute != "block/path-refs" {
-			continue
-		}
-
-		_, isInput := t.inputs[page.text]
-		_, named := t.names[page.text]
-		if !isVar(page) || isInput || named || page.text == t.page {
+		j, ok := t.joinOf(clause)
+		if !ok {
 			continue
 		}
 
 		others := append(append([]*ednNode{}, clauses[:i]...), clauses[i+1:]...)
-		about, rest, ok := t.clausesAbout(page.text, others)
-		if !ok || t.onlyTitles(page.text, about) {
+		about, rest, ok := t.clausesAbout(j.other, others)
+		if !ok || (j.isPage && t.onlyTitles(j.other, about)) {
 			continue
 		}
 
-		pages, err := t.pageFilter(page.text, about, pending)
+		var filter Filter
+		var err error
+		if j.isPage {
+			filter, err = t.pageFilter(j.other, about, pending)
+		} else {
+			filter, err = t.blockFilter(j.other, about, pending)
+		}
 		if err != nil {
 			return nil, nil, err
 		}
-		if pages == nil {
-			return nil, nil, t.unsupported(clause, "expected conditions on the page %s", page.text)
+		if filter == nil {
+			return nil, nil, t.unsupported(clause, "expected conditions on %s", j.other)
 		}
 
-		if attribute == "block/refs" {
-			filters = append(filters, RefsTo(pages))
-		} else {
-			filters = append(filters, PageRefTo(pages))
-		}
-
+		filters = append(filters, j.filter(filter))
 		clauses = rest
 		i = -1
 	}
@@ -1109,12 +1117,90 @@ func (t *translator) referenceJoins(clauses []*ednNode, pending []*condition) ([
 	return clauses, filters, nil
 }
 
-// clausesAbout returns the clauses that are about a page, directly or through
-// the variables they give values, and the clauses that are not. Returns false
-// if one of them is also about the block or the page the query is about, as
-// the page can then not be translated on its own.
-func (t *translator) clausesAbout(page string, clauses []*ednNode) ([]*ednNode, []*ednNode, bool) {
-	vars := map[string]bool{page: true}
+// join is a relation between the block of the query and another page or
+// block, see joins.
+type join struct {
+	// other is the variable of the other page or block.
+	other string
+
+	// isPage is true if other is a page.
+	isPage bool
+
+	// filter returns the filter for the block of the query from the filter
+	// for other.
+	filter func(Filter) Filter
+}
+
+// joinOf returns the join in a clause, if it has one.
+func (t *translator) joinOf(clause *ednNode) (join, bool) {
+	// isOther returns true for a variable that can be translated on its own.
+	isOther := func(node *ednNode) bool {
+		_, isInput := t.inputs[node.text]
+		_, isBlockInput := t.blockInputs[node.text]
+		return isVar(node) && !isInput && !isBlockInput && node.text != t.block && node.text != t.page
+	}
+	isBlock := func(node *ednNode) bool {
+		return isOther(node) && t.kinds[node.text] != entityPage
+	}
+
+	if rule, ok := t.rules[clause.head()]; ok && clause.kind == ednList && len(clause.items) == 3 {
+		child, ancestor := clause.items[1+rule.child], clause.items[1+rule.ancestor]
+		switch {
+		case child.text == t.block && isBlock(ancestor):
+			return join{other: ancestor.text, filter: func(f Filter) Filter { return DescendantOf(f) }}, true
+		case ancestor.text == t.block && isBlock(child):
+			return join{other: child.text, filter: func(f Filter) Filter { return HasDescendant(f) }}, true
+		}
+		return join{}, false
+	}
+
+	if !isDataPattern(clause) || len(clause.items) != 3 {
+		return join{}, false
+	}
+
+	entity, attribute, value := clause.items[0], clause.items[1].text, clause.items[2]
+	switch {
+	case attribute == "block/refs" && entity.text == t.block && isOther(value):
+		if _, named := t.names[value.text]; !named {
+			return join{other: value.text, isPage: true, filter: func(f Filter) Filter { return RefsTo(f) }}, true
+		}
+	case attribute == "block/path-refs" && entity.text == t.block && isOther(value):
+		if _, named := t.names[value.text]; !named {
+			return join{other: value.text, isPage: true, filter: func(f Filter) Filter { return PageRefTo(f) }}, true
+		}
+	case attribute == "block/parent" && entity.text == t.block && isBlock(value):
+		return join{other: value.text, filter: func(f Filter) Filter { return ChildOf(f) }}, true
+	case attribute == "block/parent" && value.text == t.block && isBlock(entity):
+		return join{other: entity.text, filter: func(f Filter) Filter { return HasChild(f) }}, true
+	}
+
+	return join{}, false
+}
+
+// blockFilter translates the clauses about another block into a filter for
+// blocks, the same as for the blocks a query finds. Conditions that are only
+// on the page of the block are matched with an OnPageFilter.
+func (t *translator) blockFilter(block string, clauses []*ednNode, pending []*condition) (Filter, error) {
+	savedPage, savedBlock, savedResult, savedFindsPages := t.page, t.block, t.result, t.findsPages
+	t.page, t.block, t.result, t.findsPages = "", block, block, false
+
+	filter, err := t.scoped(func() (Filter, error) {
+		return t.conjunction(clauses, pending)
+	})
+
+	t.page, t.block, t.result, t.findsPages = savedPage, savedBlock, savedResult, savedFindsPages
+	if err != nil || filter == nil || findsBlocks(filter) {
+		return filter, err
+	}
+	return OnPage(filter), nil
+}
+
+// clausesAbout returns the clauses that are about another page or block,
+// directly or through the variables they give values, and the clauses that
+// are not. Returns false if one of them is also about the block or the page
+// the query is about, as the other can then not be translated on its own.
+func (t *translator) clausesAbout(other string, clauses []*ednNode) ([]*ednNode, []*ednNode, bool) {
+	vars := map[string]bool{other: true}
 	taken := make([]bool, len(clauses))
 
 	for changed := true; changed; {
@@ -1252,7 +1338,7 @@ func (t *translator) blockOfPageIn(clauses []*ednNode) string {
 func (t *translator) translateConjunction(clauses []*ednNode, pending []*condition) (Filter, error) {
 	t.choosePageInScope(clauses)
 
-	clauses, joins, err := t.referenceJoins(clauses, pending)
+	clauses, joins, err := t.joins(clauses, pending)
 	if err != nil {
 		return nil, err
 	}

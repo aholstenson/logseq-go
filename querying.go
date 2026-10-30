@@ -239,6 +239,18 @@ func (r *queryRunner) compile(filter query.Filter, blocks bool) (indexing.Query,
 		return indexing.References(f.Page), nil
 	case *query.ReferencesFilter:
 		return r.referencesQuery(f)
+	case *query.OnPageFilter:
+		if f.Pages == nil || query.New(f.Pages).FindsBlocks() {
+			return nil, fmt.Errorf("query: page takes a filter for pages, such as (title = \"x\")")
+		}
+
+		// In a query for blocks, the filters for pages match the page of
+		// each block.
+		return r.compile(f.Pages, true)
+	case *query.BelowFilter:
+		return r.belowQuery(f)
+	case *query.HasChildFilter:
+		return r.hasChildQuery(f)
 	case *query.FullTextFilter:
 		return indexing.ContentMatches(f.Text), nil
 	case *query.PageFilter:
@@ -351,33 +363,103 @@ func (r *queryRunner) allPageTags() (indexing.Query, error) {
 }
 
 // pagesWithBlocks returns the sub paths of the pages with one or more blocks
-// that match the filter. The index has no joins, so the blocks are found
-// first.
+// that match the filter.
 func (r *queryRunner) pagesWithBlocks(filter query.Filter) ([]string, error) {
+	seen := make(map[string]bool)
+	var subPaths []string
+	err := r.eachBlock("has-block", filter, func(block *indexing.Block) {
+		if !seen[block.PageSubPath] {
+			seen[block.PageSubPath] = true
+			subPaths = append(subPaths, block.PageSubPath)
+		}
+	})
+	return subPaths, err
+}
+
+// eachBlock calls f for each block that the filter matches. The index has no
+// joins, so filters that relate blocks to other blocks or pages find these
+// first. name is the name of the filter that needs the blocks, for errors.
+func (r *queryRunner) eachBlock(name string, filter query.Filter, f func(block *indexing.Block)) error {
 	if filter == nil {
-		return nil, fmt.Errorf("query: has-block has no filter")
+		return fmt.Errorf("query: %s has no filter", name)
 	}
 
 	blockQuery, err := r.compile(filter, true)
 	if err != nil {
+		return err
+	}
+
+	return eachResult(func(opts indexing.SearchOptions) (indexing.SearchResults[*indexing.Block], error) {
+		return r.graph.index.SearchBlocks(r.ctx, blockQuery, opts)
+	}, f)
+}
+
+// belowQuery matches the blocks below the blocks that the filter of f
+// matches, by the location of these blocks on their pages.
+func (r *queryRunner) belowQuery(f *query.BelowFilter) (indexing.Query, error) {
+	name, below := "parent", indexing.ParentAt
+	if f.AnyDepth {
+		name, below = "ancestor", indexing.AncestorAt
+	}
+
+	var clauses []indexing.Query
+	err := r.eachBlock(name, f.Filter, func(block *indexing.Block) {
+		if len(block.Location) == 0 {
+			return
+		}
+		clauses = append(clauses, indexing.And(indexing.OnPages(block.PageSubPath), below(block.Location)))
+	})
+	if err != nil {
 		return nil, err
 	}
 
+	if len(clauses) == 0 {
+		return indexing.None(), nil
+	}
+	return indexing.Or(clauses...), nil
+}
+
+// hasChildQuery matches the blocks above the blocks that the filter of f
+// matches, by the location of these blocks on their pages.
+func (r *queryRunner) hasChildQuery(f *query.HasChildFilter) (indexing.Query, error) {
+	name := "has-child"
+	if f.AnyDepth {
+		name = "has-descendant"
+	}
+
 	seen := make(map[string]bool)
-	var subPaths []string
-	err = eachResult(func(opts indexing.SearchOptions) (indexing.SearchResults[*indexing.Block], error) {
-		return r.graph.index.SearchBlocks(r.ctx, blockQuery, opts)
-	}, func(block *indexing.Block) {
-		if !seen[block.PageSubPath] {
-			seen[block.PageSubPath] = true
-			subPaths = append(subPaths, block.PageSubPath)
+	var clauses []indexing.Query
+	add := func(subPath string, location []int) {
+		key := fmt.Sprint(subPath, location)
+		if !seen[key] {
+			seen[key] = true
+			clauses = append(clauses, indexing.BlockAt(subPath, location))
+		}
+	}
+
+	err := r.eachBlock(name, f.Filter, func(block *indexing.Block) {
+		// A block at the top of a page has no block above it.
+		if len(block.Location) < 2 {
+			return
+		}
+
+		if !f.AnyDepth {
+			add(block.PageSubPath, block.Location[:len(block.Location)-1])
+			return
+		}
+
+		for depth := 1; depth < len(block.Location); depth++ {
+			add(block.PageSubPath, block.Location[:depth])
 		}
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	return subPaths, nil
+	if len(clauses) == 0 {
+		return indexing.None(), nil
+	}
+	return indexing.Or(clauses...), nil
 }
 
 // titleQuery matches the pages with a title that compares with the text of the
