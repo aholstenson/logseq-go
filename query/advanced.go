@@ -250,7 +250,9 @@ var queryFence = regexp.MustCompile(`(?im)^\s*#\+(BEGIN|END)_QUERY\s*$`)
 //   - a property that is set, such as `[(get ?props :key)]`
 //   - a property compared as a number or a date with <, <=, > and >=, or
 //     with = and a date input, such as `[(< ?due ?today)]`, see
-//     PropertyCompareFilter
+//     PropertyCompareFilter; with a number as the default value, such as
+//     `[(get ?props :rating 0) ?r]`, the blocks or pages without the property
+//     match when the default passes the comparison
 //   - `[(missing? $ ?b :block/scheduled)]`, also for :block/marker,
 //     :block/priority, :block/deadline and the :block/journal-day of the page
 //   - conditions on a page that a block refers to, such as
@@ -3022,10 +3024,6 @@ func (t *translator) propertyComparison(c *condition, src *source, isPage bool) 
 		return nil, false, nil
 	}
 
-	if src.hasDefault {
-		return nil, false, t.unsupported(c.node, "comparing a property that has a default value is not supported")
-	}
-
 	filter := &PropertyCompareFilter{Name: src.key, Op: op, Page: isPage}
 	switch {
 	case isDateInput:
@@ -3050,7 +3048,51 @@ func (t *translator) propertyComparison(c *condition, src *source, isPage bool) 
 		return nil, false, t.unsupported(c.node, "expected a number or a date to compare with")
 	}
 
-	return filter, true, nil
+	if !src.hasDefault {
+		return filter, true, nil
+	}
+
+	passes, err := t.defaultPasses(c, src, filter)
+	if err != nil || !passes {
+		return filter, true, err
+	}
+
+	// The default is the value for the blocks or pages without the
+	// property, so they match as well.
+	var has Filter = HasProperty(src.key)
+	if isPage {
+		has = HasPageProperty(src.key)
+	}
+	return Or(filter, Not(has)), true, nil
+}
+
+// defaultPasses returns true if the default value of a property passes the
+// comparison of the filter, such as 0 in `(get ?props :rating 0)` with
+// `[(< ?rating 7)]`. Only a number is supported as the default, and only
+// when it is compared with a number.
+func (t *translator) defaultPasses(c *condition, src *source, filter *PropertyCompareFilter) (bool, error) {
+	if !filter.Date.IsZero() {
+		return false, t.unsupported(c.node, "comparing a date property that has a default value is not supported")
+	}
+
+	def, err := strconv.ParseFloat(src.def, 64)
+	if err != nil {
+		return false, t.unsupported(c.node, "expected a number as the default value of a property that is compared with a number")
+	}
+
+	switch filter.Op {
+	case Equal:
+		return def == filter.Number, nil
+	case Less:
+		return def < filter.Number, nil
+	case LessOrEqual:
+		return def <= filter.Number, nil
+	case Greater:
+		return def > filter.Number, nil
+	case GreaterOrEqual:
+		return def >= filter.Number, nil
+	}
+	return false, fmt.Errorf("query: unknown comparison %d", filter.Op)
 }
 
 // comparedValue returns the value a condition such as `[(= ?t "book")]`

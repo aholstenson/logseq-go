@@ -67,7 +67,8 @@ var _ = Describe("Query", func() {
 				"  - Book venue\n",
 			"films.md": "- Good film\n  rating:: 8\n" +
 				"- Great film\n  rating:: 10\n" +
-				"- Fine film\n  rating:: 6\n",
+				"- Fine film\n  rating:: 6\n" +
+				"- Unrated film\n",
 		})
 	})
 
@@ -443,6 +444,18 @@ var _ = Describe("Query", func() {
 			results := runAdvanced(`{:query [:find (pull ?b [*])
 				:where [(re-pattern "^TODO In \\w+ days") ?re] [?b :block/content ?c] [(re-find ?re ?c)]]}`)
 			Expect(blockPreviews(results)).To(ConsistOf("In four days"))
+		})
+
+		It("finds the blocks with a property below a number, with the default for blocks without it", func() {
+			results := runAdvanced(`{:query [:find (pull ?b [*])
+				:where [?b :block/page ?pg] [?pg :block/name "films"]
+				[?b :block/properties ?p] [(get ?p :rating 0) ?r] [(< ?r 7)]]}`)
+			Expect(blockPreviews(results)).To(ConsistOf("Fine film", "Unrated film"))
+
+			results = runAdvanced(`{:query [:find (pull ?b [*])
+				:where [?b :block/page ?pg] [?pg :block/name "films"]
+				[?b :block/properties ?p] [(get ?p :rating 0) ?r] [(> ?r 7)]]}`)
+			Expect(blockPreviews(results)).To(ConsistOf("Good film", "Great film"))
 		})
 
 		It("finds the recipes", func() {

@@ -372,7 +372,23 @@ var _ = Describe("Advanced queries", func() {
 			`{:query [:find (pull ?p [*]) :where [?p :block/name] [?p :block/properties ?pp] [(get ?pp :pages) ?n] [(> ?n 300)]]}`,
 			"(page-property pages > 300)")
 
-		Unsupported("a property with a default", where(`[?b :block/properties ?p] [(get ?p :rating 0) ?r] [(< ?r 7)]`), "has a default value")
+		Translates("a default that passes", where(`[?b :block/properties ?p] [(get ?p :rating 0) ?r] [(< ?r 7)]`),
+			"(or (property rating < 7) (not (property rating)))")
+		Translates("a default that does not pass", where(`[?b :block/properties ?p] [(get ?p :rating 0) ?r] [(> ?r 7)]`),
+			"(property rating > 7)")
+		Translates("a default in a range", where(`[?b :block/properties ?p] [(get ?p :rating 5) ?r] [(>= ?r 5)] [(< ?r 7)]`),
+			"(and (or (property rating >= 5) (not (property rating))) (or (property rating < 7) (not (property rating))))")
+		Translates("a default in a not", where(`[?b :block/properties ?p] [(get ?p :rating 0) ?r] (not [(< ?r 7)])`),
+			"(not (or (property rating < 7) (not (property rating))))")
+		Translates("a default of a page property",
+			`{:query [:find (pull ?p [*]) :where [?p :block/name] [?p :block/properties ?pp] [(get ?pp :pages 0) ?n] [(< ?n 300)]]}`,
+			"(or (page-property pages < 300) (not (page-property pages)))")
+
+		Unsupported("a date with a default",
+			`{:query [:find (pull ?b [*]) :in $ ?today :where [?b :block/properties ?p] [(get ?p :due 0) ?d] [(< ?d ?today)]] :inputs [:today]}`,
+			"comparing a date property that has a default value")
+		Unsupported("a default that is not a number", where(`[?b :block/properties ?p] [(get ?p :rating "none") ?r] [(< ?r 7)]`),
+			"expected a number as the default value")
 		Unsupported("text", withRating(`[(< ?r "m")]`), "expected a number or a date")
 	})
 
