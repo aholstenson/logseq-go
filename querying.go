@@ -2,7 +2,6 @@ package logseq
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math/rand"
 	"sort"
@@ -12,10 +11,6 @@ import (
 	"github.com/aholstenson/logseq-go/internal/utils"
 	"github.com/aholstenson/logseq-go/query"
 )
-
-// ErrUnsupportedQuery is returned by Graph.Query for queries that use
-// something that can not be run yet. The error names what is not supported.
-var ErrUnsupportedQuery = errors.New("query is not supported")
 
 // QueryResultType tells if a query found blocks or pages.
 type QueryResultType int
@@ -71,8 +66,7 @@ func QueryAt(now time.Time) QueryOption {
 // block is on.
 //
 // Dates are calendar days in the local time zone. Errors in the query, such as
-// a date that is not valid, are returned as errors. Queries that use something
-// that can not be run yet return an error that wraps ErrUnsupportedQuery.
+// a date that is not valid, are returned as errors.
 //
 // Queries are run on the index, so this requires the graph to have been opened
 // with an index.
