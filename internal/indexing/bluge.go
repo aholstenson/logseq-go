@@ -31,7 +31,7 @@ func (i idTerm) Term() []byte {
 // Increase it when the way pages or blocks are indexed changes, so that an
 // index stored on disk is built again with the new fields. Without that the
 // pages that did not change since they were indexed keep their old documents.
-const indexVersion = 10
+const indexVersion = 11
 
 // versionDocID is the id of the document that stores the version of the
 // index. It does not have a type, so searches for pages and blocks never
@@ -664,6 +664,10 @@ func (i *BlugeIndex) blockToDocument(page *Page, id string, block *content.Block
 	if len(location) > 1 {
 		blugeDoc.AddField(bluge.NewKeywordField("parent:location", formatLocation(location[:len(location)-1])))
 	}
+
+	// The depth is 1 for the blocks at the top of the page, which have the
+	// page as their parent.
+	blugeDoc.AddField(bluge.NewNumericField("depth", float64(len(location))))
 
 	// Look up the properties without creating them, as indexing should not
 	// modify the block.

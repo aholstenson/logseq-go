@@ -347,6 +347,11 @@ func HasDescendant(filter Filter) *HasChildFilter {
 // level, from the top of the page, so `0 1` is the second child of the first
 // block. A location changes when blocks are added or moved above the block,
 // so use it right after the page is read.
+//
+// Without a location the page itself is named, which is the parent of the
+// blocks at the top of the page, the same as in Logseq. `(parent [[page]])`
+// matches these blocks, and `(ancestor [[page]])` all of the blocks on the
+// page.
 type ParentFilter struct {
 	// Block is the UUID of the block.
 	Block string
@@ -366,7 +371,8 @@ func Parent(block string) *ParentFilter {
 }
 
 // ParentAt creates a filter that matches the blocks directly below the block
-// at the location on the page. See ParentFilter for the location.
+// at the location on the page. Without a location it matches the blocks at the
+// top of the page. See ParentFilter for the location.
 func ParentAt(page string, location ...int) *ParentFilter {
 	return &ParentFilter{Page: page, Location: location}
 }

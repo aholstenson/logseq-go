@@ -582,6 +582,12 @@ func blockQuery(
 		// The location is the same on every page, so the page is a part of
 		// the query.
 		return indexing.And(indexing.PageTitleIs(page), byLocation(location)), nil
+	case page != "" && name == "parent":
+		// Without a location the page itself is the parent, which it is
+		// for the blocks at the top of the page.
+		return indexing.And(indexing.PageTitleIs(page), indexing.TopLevel()), nil
+	case page != "":
+		return indexing.PageTitleIs(page), nil
 	}
 
 	return nil, fmt.Errorf("query: the %s block has no UUID or location", name)

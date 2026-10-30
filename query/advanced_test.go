@@ -388,7 +388,13 @@ var _ = Describe("Advanced queries", func() {
 			"{:query [:find (pull ?p [*]) :where [?b :block/page ?p] [?b :block/marker \"TODO\"] [?b :block/parent ?q] [?q :block/refs ?t] [?t :block/name \"meeting\"]]}",
 			"(has-block (and (parent (refs [[meeting]])) (task TODO)))")
 
-		Unsupported("a page as the parent", where(`[?b :block/parent ?p] [?p :block/name "x"]`), "expected a block")
+		Translates("a page as the parent", where(`[?b :block/parent ?p] [?p :block/name "x"]`), "(parent [[x]])")
+		Translates("a page as the parent with a lookup", where(`[?b :block/parent [:block/name "x"]]`), "(parent [[x]])")
+		Translates("the page of the block as the parent",
+			`{:query [:find (pull ?b [*]) :in $ ?cp :where [?b :block/page ?p] [?b :block/parent ?p] [?p :block/name ?cp]] :inputs ["Notes"]}`,
+			"(and (parent [[Notes]]) (page [[Notes]]))")
+
+		Unsupported("a page without a title as the parent", where(`[?b :block/page ?p] [?b :block/parent ?p]`), "or a page with a title")
 	})
 
 	Describe("Inputs", func() {

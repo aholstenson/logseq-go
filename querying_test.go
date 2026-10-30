@@ -306,6 +306,11 @@ var _ = Describe("Query", func() {
 			Expect(blocks("(parent (refs [[nothing]]))")).To(BeEmpty())
 		})
 
+		It("finds the blocks at the top of a page", func() {
+			Expect(blocks("(parent [[meetings]])")).To(ConsistOf("Weekly sync #meeting", "Plan offsite"))
+			Expect(blocks("(ancestor [[meetings]])")).To(HaveLen(6))
+		})
+
 		It("finds the blocks with blocks below them that match", func() {
 			Expect(blocks(`(has-child "finance")`)).To(ConsistOf("Discussed budget"))
 			Expect(blocks(`(has-descendant "finance")`)).To(ConsistOf("Weekly sync #meeting", "Discussed budget"))

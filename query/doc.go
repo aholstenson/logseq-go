@@ -47,6 +47,8 @@
 //	                         `id::` property, see ParentFilter
 //	(ancestor ((uuid)))      blocks below the block at any depth, see
 //	                         AncestorFilter
+//	(parent [[page]])        blocks at the top of the page, which is their
+//	                         parent in Logseq
 //	(journal-page ...)       journal pages, with the same dates as
 //	                         `journal`; it matches pages, not blocks
 //	(title starts-with "x")  pages with a title that starts with the text,

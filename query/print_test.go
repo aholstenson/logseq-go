@@ -37,6 +37,7 @@ var _ = Describe("Writing queries", func() {
 		Prints("ancestor", query.New(query.Ancestor("abc-123")), "(ancestor ((abc-123)))")
 		Prints("ancestor that is not a UUID", query.New(query.Ancestor("a b")), `(ancestor "a b")`)
 		Prints("parent by location", query.New(query.ParentAt("Outline", 0, 1)), "(parent [[Outline]] 0 1)")
+		Prints("page as the parent", query.New(query.ParentAt("Outline")), "(parent [[Outline]])")
 		Prints("journal page", query.New(query.JournalPage(query.Less, query.Relative("today"))), "(journal-page < today)")
 		Prints("title", query.New(query.Title(query.TitleIncludes, "a\"b")), `(title includes "a\"b")`)
 		Prints("alias", query.New(query.Alias("ACME Corp")), "(alias [[ACME Corp]])")

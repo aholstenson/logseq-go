@@ -169,6 +169,18 @@ func ParentAt(location []int) Query {
 	}
 }
 
+// TopLevel matches the blocks at the top of their page, which have no block
+// above them.
+func TopLevel() Query {
+	return &numberRange{
+		field:        "depth",
+		min:          1,
+		max:          1,
+		minInclusive: true,
+		maxInclusive: true,
+	}
+}
+
 // AncestorAt matches the blocks below the block at the location on a page at
 // any depth, see utils.LocationOf. It matches on every page, so combine it with a
 // query for the page.

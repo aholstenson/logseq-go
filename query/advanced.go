@@ -255,6 +255,9 @@ var queryFence = regexp.MustCompile(`(?im)^\s*#\+(BEGIN|END)_QUERY\s*$`)
 //     it, such as `[?c :block/parent ?b] [?c :block/marker "TODO"]`, also at
 //     any depth with the rule below, see BelowFilter and HasChildFilter
 //   - a query for blocks with only conditions on their page, see OnPageFilter
+//   - a page with a title as the parent, such as
+//     `[?b :block/parent ?p] [?p :block/name "x"]`, for the blocks at the top
+//     of the page, see ParentFilter
 //   - conditions on the blocks on the page in a `not` or a branch of an
 //     `or` in a query for pages, such as
 //     `(not [?b :block/page ?p] [?b :block/marker "TODO"])`
@@ -1703,10 +1706,17 @@ func (t *translator) binding(clause *ednNode, conditions []*condition) (Filter, 
 		}
 
 		ref, ok := t.blockRef(value)
-		if !ok {
-			return nil, t.unsupported(clause, "expected a block, such as :current-block or [:block/uuid #uuid \"...\"]")
+		if ok {
+			return ref.parent(), nil
 		}
-		return ref.parent(), nil
+
+		// The parent of a block at the top of a page is the page.
+		if t.kinds[value.text] == entityPage || value.text == t.page || value.kind == ednVector {
+			if name, ok := t.pageRefName(value); ok {
+				return ParentAt(name), nil
+			}
+		}
+		return nil, t.unsupported(clause, "expected a block, such as :current-block or [:block/uuid #uuid \"...\"], or a page with a title")
 	case "block/refs", "block/path-refs", "block/tags", "block/namespace", "block/alias":
 		if attribute == "block/tags" || attribute == "block/namespace" || attribute == "block/alias" {
 			if entity.text != t.page {

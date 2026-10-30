@@ -313,7 +313,7 @@ func parseFilter(e *expr) (Filter, error) {
 			return ChildOf(filter), nil
 		}
 
-		if len(args) > 1 && args[0].kind == exprPageRef {
+		if len(args) > 0 && args[0].kind == exprPageRef {
 			location, err := parseLocation(args[1:])
 			if err != nil {
 				return nil, err
@@ -680,7 +680,7 @@ var priorityValues = map[string]content.Priority{
 // parseLocation reads the location of a block on a page, such as the `0 1`
 // in `(parent [[page]] 0 1)`.
 func parseLocation(args []*expr) ([]int, error) {
-	location := make([]int, 0, len(args))
+	var location []int
 	for _, arg := range args {
 		idx, err := strconv.Atoi(arg.text)
 		if arg.kind != exprSymbol || err != nil || idx < 0 {
