@@ -2,6 +2,7 @@ package logseq
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -165,14 +166,59 @@ func (g *Graph) openJournal(date time.Time, source pageSource) (Page, error) {
 		return nil, err
 	}
 
-	templatePath := ""
-	if g.config.DefaultTemplates.Journals != "" {
-		templatePath = filepath.Join(g.directory, g.config.DefaultTemplates.Journals)
-	}
-
 	title := g.journalTitleFormat.Format(date)
 
-	return openOrCreatePage(source, path, PageTypeJournal, title, date, templatePath, g.markdownParseOptions()...)
+	page, err := openOrCreatePage(source, path, PageTypeJournal, title, date, g.markdownParseOptions()...)
+	if err != nil {
+		return nil, err
+	}
+
+	if page.IsNew() {
+		err = g.applyJournalTemplate(page)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return page, nil
+}
+
+// applyJournalTemplate adds the blocks of the template that the graph uses for
+// new journals, which is set with `:default-templates {:journals "Name"}` in
+// the config of the graph. The value is the name of a template, as in
+// `template:: Name`.
+//
+// Logseq leaves a new journal empty if the template does not exist, and so
+// does this. Templates are found via the index, so without an index new
+// journals are also empty.
+func (g *Graph) applyJournalTemplate(page *pageImpl) error {
+	name := g.config.DefaultTemplates.Journals
+	if name == "" || g.index == nil {
+		return nil
+	}
+
+	// The variables in the template are filled in as if the template was
+	// inserted on the day of the journal at the current time, so that
+	// `<% today %>` links to the journal itself.
+	now := time.Now()
+	date := page.Date()
+	insertedAt := time.Date(date.Year(), date.Month(), date.Day(), now.Hour(), now.Minute(), now.Second(), 0, date.Location())
+
+	blocks, err := g.Template(context.Background(), name,
+		WithTemplateTime(insertedAt),
+		WithTemplatePage(page.Title()),
+	)
+	if errors.Is(err, ErrTemplateNotFound) {
+		return nil
+	} else if err != nil {
+		return fmt.Errorf("failed to apply the journal template %s: %w", name, err)
+	}
+
+	for _, block := range blocks {
+		page.AddBlock(block)
+	}
+
+	return nil
 }
 
 func (g *Graph) journalPath(date time.Time) (string, error) {
@@ -191,7 +237,7 @@ func (g *Graph) openPage(title string, source pageSource) (Page, error) {
 		return nil, err
 	}
 
-	page, err := openOrCreatePage(source, path, PageTypeDedicated, title, time.Time{}, "", g.markdownParseOptions()...)
+	page, err := openOrCreatePage(source, path, PageTypeDedicated, title, time.Time{}, g.markdownParseOptions()...)
 	if err != nil {
 		return nil, err
 	}
@@ -219,7 +265,7 @@ func (g *Graph) openPage(title string, source pageSource) (Page, error) {
 		return nil, err
 	}
 
-	return openOrCreatePage(source, path, PageTypeDedicated, target, time.Time{}, "", g.markdownParseOptions()...)
+	return openOrCreatePage(source, path, PageTypeDedicated, target, time.Time{}, g.markdownParseOptions()...)
 }
 
 // pageTitleForAlias finds the title of the page that has the given title as one
@@ -288,14 +334,14 @@ func (g *Graph) openViaPath(path string, source pageSource) (Page, error) {
 	case PageTypeJournal:
 		title := g.journalTitleFormat.Format(file.date)
 
-		return openOrCreatePage(source, path, PageTypeJournal, title, file.date, "", g.markdownParseOptions()...)
+		return openOrCreatePage(source, path, PageTypeJournal, title, file.date, g.markdownParseOptions()...)
 	default:
 		title, err := utils.FilenameToTitle(g.config.FileNameFormat, file.name)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get title from filename: %w", err)
 		}
 
-		return openOrCreatePage(source, path, PageTypeDedicated, title, time.Time{}, "", g.markdownParseOptions()...)
+		return openOrCreatePage(source, path, PageTypeDedicated, title, time.Time{}, g.markdownParseOptions()...)
 	}
 }
 

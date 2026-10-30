@@ -64,7 +64,10 @@ type GraphConfig struct {
 	Logbook LogbookConfig `edn:"logbook/settings"`
 }
 
+// DefaultTemplates are the templates that Logseq fills new pages with.
 type DefaultTemplates struct {
+	// Journals is the name of the template for new journals, as in
+	// `template:: Name`. It is not a path to a file.
 	Journals string `edn:"journals"`
 }
 

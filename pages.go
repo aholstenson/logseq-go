@@ -134,22 +134,14 @@ type pageImpl struct {
 	root *content.Block
 }
 
-func openOrCreatePage(source pageSource, path string, pageType PageType, title string, date time.Time, templatePath string, parseOptions ...markdown.ParseOption) (*pageImpl, error) {
+func openOrCreatePage(source pageSource, path string, pageType PageType, title string, date time.Time, parseOptions ...markdown.ParseOption) (*pageImpl, error) {
 	// Get the last modified time for the file
 	info, err := os.Stat(path)
 	var root *content.Block
 	var revision string
 	if os.IsNotExist(err) {
-		// This page does not exist, let's try to load the template
-		if templatePath == "" {
-			// No template, start with an empty page
-			root = content.NewBlock()
-		} else {
-			root, _, err = loadRootBlock(templatePath, parseOptions...)
-			if err != nil {
-				return nil, fmt.Errorf("failed to load template: %w", err)
-			}
-		}
+		// This page does not exist, start with an empty page
+		root = content.NewBlock()
 	} else if err != nil {
 		// Other type of error, return it
 		return nil, err

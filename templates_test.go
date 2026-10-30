@@ -2,6 +2,8 @@ package logseq_test
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -131,6 +133,96 @@ var _ = Describe("Templates", func() {
 	It("returns ErrTemplateNotFound for an unknown name", func() {
 		_, err := graph.Template(ctx, "Missing")
 		Expect(err).To(MatchError(logseq.ErrTemplateNotFound))
+	})
+
+	Describe("Journal template", func() {
+		// openWithJournalTemplate opens the graph again with a config that uses
+		// the named template for new journals.
+		openWithJournalTemplate := func(name string, opts ...logseq.Option) *logseq.Graph {
+			graph.Close()
+
+			Expect(os.WriteFile(
+				filepath.Join(dir, "logseq", "config.edn"),
+				[]byte(`{:default-templates {:journals "`+name+`"}}`),
+				0o644,
+			)).To(Succeed())
+
+			if len(opts) == 0 {
+				opts = []logseq.Option{logseq.WithInMemoryIndex()}
+			}
+
+			g, err := logseq.Open(ctx, dir, opts...)
+			Expect(err).ToNot(HaveOccurred())
+			return g
+		}
+
+		It("fills a new journal with the template", func() {
+			graph = openWithJournalTemplate("Weekly")
+
+			journal, err := graph.OpenJournal(insertedAt)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(journal.IsNew()).To(BeTrue())
+			Expect(blocksAsString(journal.Blocks())).To(Equal(strings.Join([]string{
+				"- Ends [[Nov 6th, 2026]]",
+				"- Kept unknown and empty",
+			}, "\n")))
+		})
+
+		It("fills in dates relative to the day of the journal", func() {
+			graph = openWithJournalTemplate("daily")
+
+			journal, err := graph.OpenJournal(time.Date(2026, 1, 15, 0, 0, 0, 0, time.Local))
+			Expect(err).ToNot(HaveOccurred())
+
+			text := blocksAsString(journal.Blocks())
+			Expect(text).To(ContainSubstring("- Plan for [[Jan 15th, 2026]]"))
+			Expect(text).To(ContainSubstring("- Review [[Jan 14th, 2026]] and [[Jan 16th, 2026]]"))
+			Expect(text).To(MatchRegexp(`Meeting at \d\d:\d\d on \[\[Jan 15th, 2026\]\]`))
+		})
+
+		It("does not change a journal that exists", func() {
+			Expect(os.WriteFile(
+				filepath.Join(dir, "journals", "2026_10_28.md"),
+				[]byte("- Already written\n"),
+				0o644,
+			)).To(Succeed())
+
+			graph = openWithJournalTemplate("Weekly")
+
+			journal, err := graph.OpenJournal(insertedAt)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(blocksAsString(journal.Blocks())).To(Equal("- Already written"))
+		})
+
+		It("leaves a new journal empty if the template does not exist", func() {
+			graph = openWithJournalTemplate("Missing")
+
+			journal, err := graph.OpenJournal(insertedAt)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(journal.Blocks()).To(BeEmpty())
+		})
+
+		It("leaves a new journal empty without an index", func() {
+			graph = openWithJournalTemplate("Weekly", logseq.WithRecycleDeletedPages())
+
+			journal, err := graph.OpenJournal(insertedAt)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(journal.Blocks()).To(BeEmpty())
+		})
+
+		It("saves the template blocks with the journal", func() {
+			graph = openWithJournalTemplate("Weekly")
+
+			tx := graph.NewTransaction()
+			journal, err := tx.OpenJournal(insertedAt)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(journal.Blocks()).To(HaveLen(2))
+			Expect(tx.Save()).To(Succeed())
+
+			data, err := os.ReadFile(filepath.Join(dir, "journals", "2026_10_28.md"))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(string(data)).To(ContainSubstring("- Ends [[Nov 6th, 2026]]"))
+		})
 	})
 
 	It("requires an index", func() {
