@@ -819,6 +819,12 @@ var _ = Describe("Query", func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(advanced.Query.String()).To(Equal("(and (refs [[action]]) (ancestor [[plain]] 1))"))
 
+			// The text of the query and the place of its parent give the same
+			// query.
+			byLocation, err := query.ParseAdvanced(nodes[0].(*content.QueryCommand).Query, query.WithParentBlockAt(page.Title(), 1))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(byLocation.Query.String()).To(Equal(advanced.Query.String()))
+
 			results, err := graph.Query(ctx, advanced.Query, logseq.QueryAt(now))
 			Expect(err).ToNot(HaveOccurred())
 

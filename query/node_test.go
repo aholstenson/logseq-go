@@ -106,10 +106,10 @@ var _ = Describe("Queries in nodes", func() {
 		It("names the option when the block is not given", func() {
 			_, err := query.ParseAdvanced(children, query.WithCurrentPage("Project"))
 			Expect(errors.Is(err, query.ErrUnsupported)).To(BeTrue())
-			Expect(err).To(MatchError(ContainSubstring("needs the block, given with WithCurrentBlock")))
+			Expect(err).To(MatchError(ContainSubstring("needs the block, given with WithCurrentBlock or WithCurrentBlockAt")))
 
 			_, err = query.ParseAdvanced(siblings)
-			Expect(err).To(MatchError(ContainSubstring("given with WithParentBlock")))
+			Expect(err).To(MatchError(ContainSubstring("given with WithParentBlock or WithParentBlockAt")))
 		})
 
 		It("reads :parent-block as the block above the blocks in a rule", func() {
@@ -120,6 +120,20 @@ var _ = Describe("Queries in nodes", func() {
 				:inputs [:parent-block]}`, query.WithParentBlock("abc"))
 			Expect(err).ToNot(HaveOccurred())
 			Expect(advanced.Query.String()).To(Equal("(and (refs [[action]]) (ancestor ((abc))))"))
+		})
+
+		It("reads blocks given by their location on a page", func() {
+			advanced, err := query.ParseAdvanced(children, query.WithCurrentBlockAt("Outline", 1, 1))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(advanced.Query.String()).To(Equal("(parent [[Outline]] 1 1)"))
+
+			advanced, err = query.ParseAdvanced(`{:query [:find (pull ?b [*]) :in $ ?parent %
+				:where [?p :block/name "action"] [?b :block/refs ?p] (check-parent ?b ?parent)]
+				:rules [[(check-parent ?b ?parent) [?b :block/parent ?parent]]
+				        [(check-parent ?b ?parent) [?b :block/parent ?c] (check-parent ?c ?parent)]]
+				:inputs [:parent-block]}`, query.WithParentBlockAt("2023-08-21", 8))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(advanced.Query.String()).To(Equal("(and (refs [[action]]) (ancestor [[2023-08-21]] 8))"))
 		})
 
 		Describe("found by ParseNode", func() {
@@ -165,6 +179,10 @@ var _ = Describe("Queries in nodes", func() {
 				advanced, err := query.ParseNode(onPage(below), query.WithQueryPage("Outline"), query.WithParentBlock("given"))
 				Expect(err).ToNot(HaveOccurred())
 				Expect(advanced.Query.String()).To(Equal("(ancestor ((given)))"))
+
+				advanced, err = query.ParseNode(onPage(below, "abc"), query.WithParentBlockAt("Other", 3))
+				Expect(err).ToNot(HaveOccurred())
+				Expect(advanced.Query.String()).To(Equal("(ancestor [[Other]] 3)"))
 			})
 
 			It("needs the query page for blocks without a UUID", func() {

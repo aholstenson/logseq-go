@@ -421,6 +421,23 @@ for _, node := range block.Children().FilterDeep(content.IsQuery()) {
 }
 ```
 
+When only the text of the query is known, give the blocks to
+`query.ParseAdvanced` instead. Use `query.WithCurrentBlock` and
+`query.WithParentBlock` for a block with an `id::`, and
+`query.WithCurrentBlockAt` and `query.WithParentBlockAt` for a block without
+one. These take the title of the page and the location of the block on it: its
+position among the blocks next to it at each level, from the top of the page.
+A block at the top of a page has no parent block, so do not give
+`query.WithParentBlockAt` for a query in such a block:
+
+```go
+// The query is in a child of the ninth block at the top of the page.
+advanced, err := query.ParseAdvanced(text,
+  query.WithQueryPage("2023-08-21"),
+  query.WithParentBlockAt("2023-08-21", 8),
+)
+```
+
 See the documentation of the `query` package for the full syntax.
 
 ## Limitations

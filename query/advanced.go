@@ -127,11 +127,37 @@ func WithParentBlock(id string) ParseOption {
 	}
 }
 
+// WithCurrentBlockAt gives the block that the input `:current-block` of an
+// advanced query stands for by its place on the page: the title of the page
+// and the location of the block on it, see ParentFilter. Use it for a block
+// without an `id::` property, when the query is read with ParseAdvanced. The
+// location is the position of the block among the blocks next to it at each
+// level, from the top of the page, so the location 8 is the ninth block at
+// the top of the page and 0 1 is the second child of the first block.
+func WithCurrentBlockAt(page string, location ...int) ParseOption {
+	return func(o *parseOptions) {
+		o.currentBlock = blockRef{page: page, location: location}
+	}
+}
+
+// WithParentBlockAt gives the block that the input `:parent-block` of an
+// advanced query stands for by its place on the page, the same as for
+// WithCurrentBlockAt.
+//
+// A block at the top of a page has no parent block. Do not give this option
+// for a query in such a block: without a location the option names the page,
+// and the query then finds the blocks at the top of the page.
+func WithParentBlockAt(page string, location ...int) ParseOption {
+	return func(o *parseOptions) {
+		o.parentBlock = blockRef{page: page, location: location}
+	}
+}
+
 var inputOptionNames = map[string]string{
 	"current-page":  "WithCurrentPage",
 	"query-page":    "WithQueryPage",
-	"current-block": "WithCurrentBlock",
-	"parent-block":  "WithParentBlock",
+	"current-block": "WithCurrentBlock or WithCurrentBlockAt",
+	"parent-block":  "WithParentBlock or WithParentBlockAt",
 }
 
 // ParseNode reads the query in a node of a page: a simple query written as
@@ -145,7 +171,8 @@ var inputOptionNames = map[string]string{
 //
 // For an advanced query, the blocks that the inputs `:current-block` and
 // `:parent-block` stand for are the block that holds the node and its parent,
-// unless they are given with WithCurrentBlock and WithParentBlock. A block
+// unless they are given with WithCurrentBlock, WithCurrentBlockAt,
+// WithParentBlock or WithParentBlockAt. A block
 // with an `id::` property is named by its UUID. A block without one is named
 // by its location on the page given with WithQueryPage, see ParentFilter, so
 // give that option for queries in blocks without the property.
@@ -291,8 +318,9 @@ var queryFence = regexp.MustCompile(`(?im)^\s*#\+(BEGIN|END)_QUERY\s*$`)
 // The inputs `:current-page` and `:query-page` depend on where the query is,
 // and are supported when the page is given with WithCurrentPage and
 // WithQueryPage. The inputs `:current-block` and `:parent-block` are supported
-// when the UUID of the block is given with WithCurrentBlock and
-// WithParentBlock, or found by ParseNode, as the parent of the blocks in
+// when the block is given with WithCurrentBlock and WithParentBlock by its
+// UUID, with WithCurrentBlockAt and WithParentBlockAt by its place on the
+// page, or found by ParseNode, as the parent of the blocks in
 // `[?b :block/parent ?block]` or as the block above them in a rule such as the
 // one below.
 //
