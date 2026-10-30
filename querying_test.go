@@ -448,6 +448,15 @@ var _ = Describe("Query", func() {
 			Expect(blockPreviews(results)).To(ConsistOf("Review book"))
 		})
 
+		It("finds the blocks with custom rules", func() {
+			results := runAdvanced(`{:query [:find (pull ?b [*]) :in $ %
+				:where (to-read ?b)]
+				:rules [[(reading? ?p) [?p :block/tags ?t] [?t :block/name "reading"]]
+				        [(to-read ?b) [?b :block/marker "TODO"] [?b :block/refs ?p] (reading? ?p)]
+				        [(to-read ?b) [?b :block/page ?p] [?p :block/name "book"] [?b :block/marker "TODO"]]]}`)
+			Expect(blockPreviews(results)).To(ConsistOf("Review book", "Finish chapter"))
+		})
+
 		It("finds the people of the current page", func() {
 			results := runAdvanced(`{:query [:find (pull ?p [*]) :in $ ?target
 				:where [?b :block/page ?p] [?p :page/properties ?props]

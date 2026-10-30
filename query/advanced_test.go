@@ -380,12 +380,46 @@ var _ = Describe("Advanced queries", func() {
 				`(task ?b [:block/uuid "abc"])`),
 			"(ancestor ((abc)))")
 
-		Unsupported("other rules", withRules(`[[(todo ?b) [?b :block/marker "TODO"]]]`, `(todo ?b)`), "only the recursive rule")
-		Unsupported("only the direct step",
-			withRules(`[[(below ?b ?a) [?b :block/parent ?a]]]`, `(below ?b [:block/uuid "abc"])`), "only the recursive rule")
+		Translates("a rule in place of its use", withRules(`[[(todo ?b) [?b :block/marker "TODO"]]]`, `(todo ?b)`), "(task TODO)")
+		Translates("only the direct step",
+			withRules(`[[(below ?b ?a) [?b :block/parent ?a]]]`, `(below ?b [:block/uuid "abc"])`), "(parent ((abc)))")
+		Translates("a rule with a value as the argument",
+			withRules(`[[(tagged ?b ?tag) [?b :block/refs ?p] [?p :block/name ?tag]]]`, `[?b :block/marker "TODO"] (tagged ?b "project")`),
+			"(and (task TODO) (refs [[project]]))")
+		Translates("each use with variables of its own",
+			withRules(`[[(tagged ?b ?tag) [?b :block/refs ?p] [?p :block/name ?tag]]]`, `(tagged ?b "a") (tagged ?b "b")`),
+			"(and (refs [[a]]) (refs [[b]]))")
+		Translates("a rule with more than one definition",
+			withRules(`[[(active ?b) [?b :block/marker "TODO"]] [(active ?b) [?b :block/marker "DOING"]]]`, `(active ?b)`),
+			"(or (task TODO) (task DOING))")
+		Translates("a definition with more than one clause",
+			withRules(`[[(urgent ?b) [?b :block/marker "TODO"] [?b :block/priority "A"]] [(urgent ?b) [?b :block/marker "NOW"]]]`, `(urgent ?b)`),
+			"(or (and (task TODO) (priority A)) (task NOW))")
+		Translates("a rule that uses another rule",
+			withRules(`[[(todo ?b) [?b :block/marker "TODO"]] [(open ?b) (todo ?b) (not [?b :block/priority "C"])]]`, `(open ?b)`),
+			"(and (task TODO) (not (priority C)))")
+		Translates("a rule in a not",
+			withRules(`[[(todo ?b) [?b :block/marker "TODO"]]]`, `[?b :block/priority "A"] (not (todo ?b))`),
+			"(and (priority A) (not (task TODO)))")
+		Translates("a rule with the variables it requires in a vector",
+			withRules(`[[(tagged [?b] ?tag) [?b :block/refs ?p] [?p :block/name ?tag]]]`, `(tagged ?b "x")`),
+			"(refs [[x]])")
+		Translates("a rule about a page that a block refers to",
+			withRules(`[[(project? ?p) [?p :block/tags ?t] [?t :block/name "project"]]]`, `[?b :block/refs ?p] (project? ?p)`),
+			"(refs (page-tags [[project]]))")
+		Translates("a rule that uses the rule for the blocks below a block",
+			withRules(below[:len(below)-1]+` [(open-below ?b ?a) [?b :block/marker "TODO"] (below ?b ?a)]]`, `(open-below ?b [:block/uuid "abc"])`),
+			"(and (task TODO) (ancestor ((abc))))")
+
 		Unsupported("a step that does not go up",
 			withRules(`[[(below ?b ?a) [?b :block/parent ?a]] [(below ?b ?a) [?c :block/parent ?b] (below ?c ?a)]]`,
-				`(below ?b [:block/uuid "abc"])`), "only the recursive rule")
+				`(below ?b [:block/uuid "abc"])`), "rules that use themselves")
+		Unsupported("rules that use each other",
+			withRules(`[[(a ?b) (b ?b)] [(b ?b) (a ?b)]]`, `(a ?b)`), "rules that use themselves")
+		Unsupported("a use with the wrong number of arguments",
+			withRules(`[[(todo ?b) [?b :block/marker "TODO"]]]`, `(todo ?b "x")`), "takes 1 arguments")
+		Unsupported("definitions with different numbers of arguments",
+			withRules(`[[(todo ?b) [?b :block/marker "TODO"]] [(todo ?b ?x) [?b :block/marker "DOING"]]]`, `(todo ?b)`), "different numbers of arguments")
 		Unsupported("a block above that is not known", withRules(below, `[?b :block/marker "TODO"] (below ?b ?a)`), "expected a block above")
 	})
 

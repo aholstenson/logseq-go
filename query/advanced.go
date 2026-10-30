@@ -267,15 +267,17 @@ var queryFence = regexp.MustCompile(`(?im)^\s*#\+(BEGIN|END)_QUERY\s*$`)
 // `[?b :block/parent ?block]` or as the block above them in a rule such as the
 // one below.
 //
-// Of the :rules, the recursive rule that finds the blocks below a block at any
-// depth is supported, and is translated into an AncestorFilter:
+// The uses of the :rules are replaced with their clauses, with an `or-join`
+// for a rule with more than one definition. Rules that use themselves are not
+// supported, except the rule that finds the blocks below a block at any
+// depth, which is translated into an AncestorFilter:
 //
 //	[(below ?b ?parent) [?b :block/parent ?parent]]
 //	[(below ?b ?parent) [?b :block/parent ?c] (below ?c ?parent)]
 //
-// Other rules are not supported. Keys that only change how Logseq shows the
-// results, such as :view and :table-view?, are ignored. Errors in the EDN
-// itself are returned as *ParseError.
+// Keys that only change how Logseq shows the results, such as :view and
+// :table-view?, are ignored. Errors in the EDN itself are returned as
+// *ParseError.
 func ParseAdvanced(text string, opts ...ParseOption) (*AdvancedQuery, error) {
 	return parseAdvanced(text, newParseOptions(opts))
 }
@@ -316,6 +318,7 @@ func parseAdvanced(text string, options *parseOptions) (*AdvancedQuery, error) {
 		},
 		blockInputs: make(map[string]blockRef),
 		rules:       make(map[string]*ancestorRule),
+		inlineRules: make(map[string][]*ruleDef),
 	}
 
 	result := &AdvancedQuery{}
@@ -474,8 +477,18 @@ type translator struct {
 	// They are kept out of inputs, as they can not be read as values.
 	blockInputs map[string]blockRef
 
-	// rules are the rules from :rules, by name.
+	// rules are the rules from :rules that find the blocks below a block, by
+	// name.
 	rules map[string]*ancestorRule
+
+	// inlineRules are the other rules from :rules, by name. Their uses are
+	// replaced with their clauses before the query is translated, see
+	// expandRules.
+	inlineRules map[string][]*ruleDef
+
+	// expansions counts the uses of rules that have been replaced, to give
+	// the variables of each use their own names.
+	expansions int
 
 	kinds map[string]entityKind
 	// pageOf maps the variable of a page to the variable of a block on it,
@@ -543,6 +556,12 @@ func (t *translator) translate(queryNode *ednNode, inputsNode *ednNode) (*Query,
 		return nil, err
 	}
 
+	where, err := t.expandRules(sections["where"])
+	if err != nil {
+		return nil, err
+	}
+	sections["where"] = where
+
 	for _, clause := range sections["where"] {
 		if err := t.checkBlockInputs(clause); err != nil {
 			return nil, err
@@ -562,8 +581,6 @@ func (t *translator) translate(queryNode *ednNode, inputsNode *ednNode) (*Query,
 	default:
 		return nil, t.unsupported(find[0], "expected :find with one variable or pull")
 	}
-
-	where := sections["where"]
 
 	t.kinds = make(map[string]entityKind)
 	t.pageOf = make(map[string]string)
@@ -2163,14 +2180,265 @@ func (t *translator) readRules(node *ednNode) error {
 
 	for _, name := range names {
 		defs := definitions[name]
-		rule, ok := readAncestorRule(name, defs)
-		if !ok {
-			return t.unsupported(defs[0], "only the recursive rule for the blocks below a block, with :block/parent, is supported in :rules")
+		if rule, ok := readAncestorRule(name, defs); ok {
+			t.rules[name] = rule
+			continue
 		}
-		t.rules[name] = rule
+
+		for _, def := range defs {
+			ruleDef, err := t.readRuleDef(def)
+			if err != nil {
+				return err
+			}
+
+			if len(t.inlineRules[name]) > 0 && len(ruleDef.params) != len(t.inlineRules[name][0].params) {
+				return t.unsupported(def, "the definitions of the rule %s take different numbers of arguments", name)
+			}
+			t.inlineRules[name] = append(t.inlineRules[name], ruleDef)
+		}
+	}
+
+	// Rules that use themselves can not be replaced with their clauses, as
+	// that never ends.
+	for _, name := range names {
+		if t.usesRule(name, name, make(map[string]bool)) {
+			return t.unsupported(definitions[name][0], "rules that use themselves are only supported to find the blocks below a block, with :block/parent")
+		}
 	}
 
 	return nil
+}
+
+// ruleDef is one definition of a rule from :rules, such as
+// `[(tagged ?b ?tag) [?b :block/refs ?p] [?p :block/name ?tag]]`.
+type ruleDef struct {
+	// params are the variables of the arguments, such as ?b and ?tag.
+	params []string
+
+	// clauses are the clauses that match when the rule matches.
+	clauses []*ednNode
+}
+
+// readRuleDef reads one definition of a rule. The variables that a rule
+// requires to have values can be written in a vector first, such as
+// `(name [?b] ?tag)`, and are read the same as the others.
+func (t *translator) readRuleDef(def *ednNode) (*ruleDef, error) {
+	head := def.items[0]
+
+	var params []string
+	for _, item := range head.items[1:] {
+		vars := []*ednNode{item}
+		if item.kind == ednVector {
+			vars = item.items
+		}
+
+		for _, v := range vars {
+			if !isVar(v) {
+				return nil, t.unsupported(v, "expected a variable as the argument of the rule")
+			}
+			params = append(params, v.text)
+		}
+	}
+
+	return &ruleDef{params: params, clauses: def.items[1:]}, nil
+}
+
+// usesRule returns true if the rule name uses the rule target, directly or
+// through other rules.
+func (t *translator) usesRule(name string, target string, seen map[string]bool) bool {
+	if seen[name] {
+		return false
+	}
+	seen[name] = true
+
+	for _, def := range t.inlineRules[name] {
+		for _, clause := range def.clauses {
+			for _, used := range ruleUses(clause) {
+				if used == target || t.usesRule(used, target, seen) {
+					return true
+				}
+			}
+		}
+	}
+
+	return false
+}
+
+// ruleUses returns the names of the rules that a clause uses, also in the
+// clauses of an and, or or not.
+func ruleUses(clause *ednNode) []string {
+	if clause.kind != ednList {
+		return nil
+	}
+
+	switch head := clause.head(); head {
+	case "and", "or", "not", "or-join", "not-join":
+		var names []string
+		for _, item := range clause.items[1:] {
+			names = append(names, ruleUses(item)...)
+		}
+		return names
+	case "":
+		return nil
+	default:
+		return []string{head}
+	}
+}
+
+// expandRules replaces the uses of the rules in inlineRules with their
+// clauses, also in the clauses of an and, or or not. A rule with one
+// definition is replaced with its clauses, and a rule with more than one with
+// an `or-join` that has the clauses of each definition as a branch.
+func (t *translator) expandRules(clauses []*ednNode) ([]*ednNode, error) {
+	var result []*ednNode
+	for _, clause := range clauses {
+		expanded, err := t.expandRule(clause)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, expanded...)
+	}
+	return result, nil
+}
+
+func (t *translator) expandRule(clause *ednNode) ([]*ednNode, error) {
+	if clause.kind != ednList {
+		return []*ednNode{clause}, nil
+	}
+
+	head := clause.head()
+	switch head {
+	case "and", "not":
+		items, err := t.expandRules(clause.items[1:])
+		if err != nil {
+			return nil, err
+		}
+		return []*ednNode{withItems(clause, clause.items[:1], items)}, nil
+	case "not-join":
+		if len(clause.items) < 2 {
+			return []*ednNode{clause}, nil
+		}
+
+		items, err := t.expandRules(clause.items[2:])
+		if err != nil {
+			return nil, err
+		}
+		return []*ednNode{withItems(clause, clause.items[:2], items)}, nil
+	case "or", "or-join":
+		start := 1
+		if head == "or-join" {
+			start = 2
+		}
+		if len(clause.items) < start {
+			return []*ednNode{clause}, nil
+		}
+
+		branches := make([]*ednNode, 0, len(clause.items)-start)
+		for _, branch := range clause.items[start:] {
+			expanded, err := t.expandRule(branch)
+			if err != nil {
+				return nil, err
+			}
+			branches = append(branches, asBranch(branch, expanded))
+		}
+		return []*ednNode{withItems(clause, clause.items[:start], branches)}, nil
+	}
+
+	defs, isRule := t.inlineRules[head]
+	if !isRule {
+		return []*ednNode{clause}, nil
+	}
+
+	args := clause.items[1:]
+	if len(args) != len(defs[0].params) {
+		return nil, t.unsupported(clause, "the rule %s takes %d arguments", head, len(defs[0].params))
+	}
+
+	branches := make([][]*ednNode, 0, len(defs))
+	for _, def := range defs {
+		t.expansions++
+		replacements := make(map[string]*ednNode, len(def.params))
+		for i, param := range def.params {
+			replacements[param] = args[i]
+		}
+
+		clauses := make([]*ednNode, 0, len(def.clauses))
+		for _, c := range def.clauses {
+			clauses = append(clauses, t.replaceVars(c, replacements))
+		}
+
+		expanded, err := t.expandRules(clauses)
+		if err != nil {
+			return nil, err
+		}
+		branches = append(branches, expanded)
+	}
+
+	if len(branches) == 1 {
+		return branches[0], nil
+	}
+
+	// The branches join on the variables given as arguments, the other
+	// variables of each definition are its own.
+	join := &ednNode{kind: ednVector, pos: clause.pos, end: clause.end}
+	for _, arg := range args {
+		if isVar(arg) {
+			join.items = append(join.items, arg)
+		}
+	}
+
+	orJoin := &ednNode{kind: ednList, pos: clause.pos, end: clause.end, items: []*ednNode{
+		{kind: ednSymbol, text: "or-join", pos: clause.pos, end: clause.pos},
+		join,
+	}}
+	for _, branch := range branches {
+		orJoin.items = append(orJoin.items, asBranch(clause, branch))
+	}
+	return []*ednNode{orJoin}, nil
+}
+
+// replaceVars returns a copy of a clause from a rule with the parameters
+// replaced with the arguments, and the other variables given names of their
+// own for this use of the rule.
+func (t *translator) replaceVars(node *ednNode, replacements map[string]*ednNode) *ednNode {
+	if isVar(node) {
+		if arg, ok := replacements[node.text]; ok {
+			return arg
+		}
+
+		own := &ednNode{kind: ednSymbol, text: fmt.Sprintf("%s__%d", node.text, t.expansions), pos: node.pos, end: node.end}
+		replacements[node.text] = own
+		return own
+	}
+
+	if len(node.items) == 0 {
+		return node
+	}
+
+	items := make([]*ednNode, 0, len(node.items))
+	for _, item := range node.items {
+		items = append(items, t.replaceVars(item, replacements))
+	}
+	return withItems(node, nil, items)
+}
+
+// withItems returns a copy of a node with the items first followed by rest.
+func withItems(node *ednNode, first []*ednNode, rest []*ednNode) *ednNode {
+	copied := *node
+	copied.items = append(append([]*ednNode{}, first...), rest...)
+	return &copied
+}
+
+// asBranch returns the clauses of a branch of an `or` as one clause, in an
+// `and` if there is more than one.
+func asBranch(at *ednNode, clauses []*ednNode) *ednNode {
+	if len(clauses) == 1 {
+		return clauses[0]
+	}
+
+	return &ednNode{kind: ednList, pos: at.pos, end: at.end, items: append([]*ednNode{
+		{kind: ednSymbol, text: "and", pos: at.pos, end: at.pos},
+	}, clauses...)}
 }
 
 // readAncestorRule reads the two definitions of a rule that finds the blocks
