@@ -39,7 +39,7 @@ func (w Workflow) Doing() content.TaskStatus {
 // Workflow returns the task markers the graph uses, so that tasks created in
 // it match the ones Logseq creates:
 //
-//	block.PrependChild(content.NewTaskMarker(graph.Workflow().Todo()))
+//	block.SetTaskStatus(graph.Workflow().Todo())
 func (g *Graph) Workflow() Workflow {
 	if g.config.PreferredWorkflow == utils.PreferredWorkflowTodo {
 		return WorkflowTodo

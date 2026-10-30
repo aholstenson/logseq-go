@@ -159,4 +159,235 @@ var _ = Describe("Tasks", func() {
 			)))
 		})
 	})
+
+	Describe("Statuses", func() {
+		It("is open for a status that is not finished", func() {
+			Expect(content.TaskStatusTodo.IsOpen()).To(BeTrue())
+			Expect(content.TaskStatusTodo.IsClosed()).To(BeFalse())
+			Expect(content.TaskStatusWaiting.IsOpen()).To(BeTrue())
+		})
+
+		It("is closed for a status that is finished", func() {
+			for _, status := range []content.TaskStatus{
+				content.TaskStatusDone,
+				content.TaskStatusCancelled,
+				content.TaskStatusCanceled,
+			} {
+				Expect(status.IsClosed()).To(BeTrue())
+				Expect(status.IsOpen()).To(BeFalse())
+			}
+		})
+
+		It("is neither open nor closed for no status", func() {
+			Expect(content.TaskStatusNone.IsOpen()).To(BeFalse())
+			Expect(content.TaskStatusNone.IsClosed()).To(BeFalse())
+		})
+	})
+
+	Describe("Statuses on blocks", func() {
+		It("has no status on a block without a marker", func() {
+			block := content.NewBlock(content.NewParagraph(content.NewText("Task")))
+
+			Expect(block.TaskStatus()).To(Equal(content.TaskStatusNone))
+			Expect(block.IsTask()).To(BeFalse())
+		})
+
+		It("can get the status of a block", func() {
+			block := content.NewBlock(content.NewParagraph(
+				content.NewTaskMarker(content.TaskStatusDoing),
+				content.NewText("Task"),
+			))
+
+			Expect(block.TaskStatus()).To(Equal(content.TaskStatusDoing))
+			Expect(block.IsTask()).To(BeTrue())
+		})
+
+		It("finds the marker after properties", func() {
+			block := content.NewBlock(
+				content.NewProperties(content.NewProperty("id", content.NewText("1"))),
+				content.NewParagraph(
+					content.NewTaskMarker(content.TaskStatusTodo),
+					content.NewText("Task"),
+				),
+			)
+
+			Expect(block.TaskStatus()).To(Equal(content.TaskStatusTodo))
+		})
+
+		It("ignores a marker that is not at the start of the paragraph", func() {
+			block := content.NewBlock(content.NewParagraph(
+				content.NewText("Task"),
+				content.NewTaskMarker(content.TaskStatusTodo),
+			))
+
+			Expect(block.TaskStatus()).To(Equal(content.TaskStatusNone))
+		})
+
+		It("ignores a marker in a paragraph that is not the first", func() {
+			block := content.NewBlock(
+				content.NewCodeBlock("code"),
+				content.NewParagraph(
+					content.NewTaskMarker(content.TaskStatusTodo),
+					content.NewText("Task"),
+				),
+			)
+
+			Expect(block.TaskStatus()).To(Equal(content.TaskStatusNone))
+		})
+
+		It("adds a marker at the start of the paragraph", func() {
+			block := content.NewBlock(content.NewParagraph(content.NewText("Task")))
+			block.SetTaskStatus(content.TaskStatusTodo)
+
+			Expect(block).To(EqualNode(content.NewBlock(content.NewParagraph(
+				content.NewTaskMarker(content.TaskStatusTodo),
+				content.NewText("Task"),
+			))))
+		})
+
+		It("adds a marker before the priority", func() {
+			block := content.NewBlock(content.NewParagraph(
+				content.NewTaskPriority(content.PriorityA),
+				content.NewText("Task"),
+			))
+			block.SetTaskStatus(content.TaskStatusTodo)
+
+			Expect(block).To(EqualNode(content.NewBlock(content.NewParagraph(
+				content.NewTaskMarker(content.TaskStatusTodo),
+				content.NewTaskPriority(content.PriorityA),
+				content.NewText("Task"),
+			))))
+		})
+
+		It("adds a paragraph for the marker if the block has none", func() {
+			child := content.NewBlock(content.NewParagraph(content.NewText("Child")))
+			block := content.NewBlock(child)
+			block.SetTaskStatus(content.TaskStatusTodo)
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewParagraph(content.NewTaskMarker(content.TaskStatusTodo)),
+				content.NewBlock(content.NewParagraph(content.NewText("Child"))),
+			)))
+		})
+
+		It("replaces a marker that is already there", func() {
+			block := content.NewBlock(content.NewParagraph(
+				content.NewTaskMarker(content.TaskStatusTodo),
+				content.NewText("Task"),
+			))
+			block.SetTaskStatus(content.TaskStatusDone)
+
+			Expect(block).To(EqualNode(content.NewBlock(content.NewParagraph(
+				content.NewTaskMarker(content.TaskStatusDone),
+				content.NewText("Task"),
+			))))
+		})
+
+		It("removes the marker but keeps the priority", func() {
+			block := content.NewBlock(content.NewParagraph(
+				content.NewTaskMarker(content.TaskStatusTodo),
+				content.NewTaskPriority(content.PriorityB),
+				content.NewText("Task"),
+			))
+			block.SetTaskStatus(content.TaskStatusNone)
+
+			Expect(block).To(EqualNode(content.NewBlock(content.NewParagraph(
+				content.NewTaskPriority(content.PriorityB),
+				content.NewText("Task"),
+			))))
+		})
+
+		It("does nothing when removing a marker that is not there", func() {
+			block := content.NewBlock(content.NewParagraph(content.NewText("Task")))
+			block.SetTaskStatus(content.TaskStatusNone)
+
+			Expect(block).To(EqualNode(content.NewBlock(content.NewParagraph(content.NewText("Task")))))
+		})
+	})
+
+	Describe("Priorities on blocks", func() {
+		It("has no priority on a block without one", func() {
+			block := content.NewBlock(content.NewParagraph(content.NewText("Task")))
+
+			Expect(block.Priority()).To(Equal(content.PriorityNone))
+		})
+
+		It("can get the priority after a marker", func() {
+			block := content.NewBlock(content.NewParagraph(
+				content.NewTaskMarker(content.TaskStatusTodo),
+				content.NewTaskPriority(content.PriorityA),
+				content.NewText("Task"),
+			))
+
+			Expect(block.Priority()).To(Equal(content.PriorityA))
+		})
+
+		It("can get the priority without a marker", func() {
+			block := content.NewBlock(content.NewParagraph(
+				content.NewTaskPriority(content.PriorityC),
+				content.NewText("Task"),
+			))
+
+			Expect(block.Priority()).To(Equal(content.PriorityC))
+		})
+
+		It("ignores a priority that is not at the start", func() {
+			block := content.NewBlock(content.NewParagraph(
+				content.NewText("Task"),
+				content.NewTaskPriority(content.PriorityA),
+			))
+
+			Expect(block.Priority()).To(Equal(content.PriorityNone))
+		})
+
+		It("adds a priority after the marker", func() {
+			block := content.NewBlock(content.NewParagraph(
+				content.NewTaskMarker(content.TaskStatusTodo),
+				content.NewText("Task"),
+			))
+			block.SetPriority(content.PriorityA)
+
+			Expect(block).To(EqualNode(content.NewBlock(content.NewParagraph(
+				content.NewTaskMarker(content.TaskStatusTodo),
+				content.NewTaskPriority(content.PriorityA),
+				content.NewText("Task"),
+			))))
+		})
+
+		It("adds a priority at the start without a marker", func() {
+			block := content.NewBlock(content.NewParagraph(content.NewText("Task")))
+			block.SetPriority(content.PriorityB)
+
+			Expect(block).To(EqualNode(content.NewBlock(content.NewParagraph(
+				content.NewTaskPriority(content.PriorityB),
+				content.NewText("Task"),
+			))))
+		})
+
+		It("replaces a priority that is already there", func() {
+			block := content.NewBlock(content.NewParagraph(
+				content.NewTaskMarker(content.TaskStatusTodo),
+				content.NewTaskPriority(content.PriorityA),
+				content.NewText("Task"),
+			))
+			block.SetPriority(content.PriorityC)
+
+			Expect(block.Priority()).To(Equal(content.PriorityC))
+			Expect(block.TaskStatus()).To(Equal(content.TaskStatusTodo))
+		})
+
+		It("removes the priority but keeps the marker", func() {
+			block := content.NewBlock(content.NewParagraph(
+				content.NewTaskMarker(content.TaskStatusTodo),
+				content.NewTaskPriority(content.PriorityA),
+				content.NewText("Task"),
+			))
+			block.SetPriority(content.PriorityNone)
+
+			Expect(block).To(EqualNode(content.NewBlock(content.NewParagraph(
+				content.NewTaskMarker(content.TaskStatusTodo),
+				content.NewText("Task"),
+			))))
+		})
+	})
 })

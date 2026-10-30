@@ -61,6 +61,26 @@ func (t TaskStatus) String() string {
 	return ""
 }
 
+// IsOpen returns true if the status is a task that is not finished, such as
+// TODO, DOING or WAITING. Returns false for TaskStatusNone.
+func (t TaskStatus) IsOpen() bool {
+	return t != TaskStatusNone && !t.IsClosed()
+}
+
+// IsClosed returns true if the status is a task that is finished, either as
+// DONE or as cancelled.
+func (t TaskStatus) IsClosed() bool {
+	switch t {
+	case TaskStatusDone, TaskStatusCancelled, TaskStatusCanceled:
+		return true
+	}
+
+	return false
+}
+
+// TaskMarker is the status of a task, such as `TODO` or `DONE`. Logseq only
+// reads it as a task when it is the first thing in the first paragraph of a
+// block. Use Block.TaskStatus and Block.SetTaskStatus to work with it there.
 type TaskMarker struct {
 	baseNode
 
@@ -96,6 +116,8 @@ func (t *TaskMarker) debug(p *debugPrinter) {
 		p.Field("type", "now")
 	case TaskStatusCancelled:
 		p.Field("type", "cancelled")
+	case TaskStatusCanceled:
+		p.Field("type", "canceled")
 	case TaskStatusInProgress:
 		p.Field("type", "in-progress")
 	case TaskStatusWait:
@@ -165,6 +187,141 @@ func (t *TaskPriority) debug(p *debugPrinter) {
 func (t *TaskPriority) isInline() {}
 
 var _ InlineNode = (*TaskPriority)(nil)
+
+// TaskStatus gets the status of the task in this block, or TaskStatusNone if
+// the block is not a task.
+func (b *Block) TaskStatus() TaskStatus {
+	if marker := b.taskMarker(); marker != nil {
+		return marker.Status
+	}
+
+	return TaskStatusNone
+}
+
+// IsTask returns true if this block has a task marker.
+func (b *Block) IsTask() bool {
+	return b.TaskStatus() != TaskStatusNone
+}
+
+// SetTaskStatus sets the status of the task in this block, replacing the
+// marker that is already there. Passing TaskStatusNone removes the marker, but
+// keeps the priority and the dates of the block.
+//
+// The marker goes at the start of the first paragraph of the block. If the
+// block does not have a paragraph, one is added.
+func (b *Block) SetTaskStatus(status TaskStatus) {
+	existing := b.taskMarker()
+
+	if status == TaskStatusNone {
+		if existing != nil {
+			existing.RemoveSelf()
+		}
+		return
+	}
+
+	if existing != nil {
+		existing.Status = status
+		return
+	}
+
+	b.ensureTaskParagraph().PrependChild(NewTaskMarker(status))
+}
+
+// Priority gets the priority of the task in this block, or PriorityNone if it
+// does not have one. A block can have a priority without a task marker.
+func (b *Block) Priority() Priority {
+	if priority := b.taskPriority(); priority != nil {
+		return priority.Priority
+	}
+
+	return PriorityNone
+}
+
+// SetPriority sets the priority of this block, replacing the priority that is
+// already there. Passing PriorityNone removes the priority.
+//
+// The priority goes after the task marker, or at the start of the first
+// paragraph of the block if it does not have a marker.
+func (b *Block) SetPriority(priority Priority) {
+	existing := b.taskPriority()
+
+	if priority == PriorityNone {
+		if existing != nil {
+			existing.RemoveSelf()
+		}
+		return
+	}
+
+	if existing != nil {
+		existing.Priority = priority
+		return
+	}
+
+	node := NewTaskPriority(priority)
+	paragraph := b.ensureTaskParagraph()
+	if marker, ok := paragraph.FirstChild().(*TaskMarker); ok {
+		paragraph.InsertChildAfter(node, marker)
+		return
+	}
+
+	paragraph.PrependChild(node)
+}
+
+// taskParagraph gets the paragraph that holds the marker and priority of a
+// task, which is the first paragraph of the block. Properties before it are
+// skipped, but any other node means that the block does not start with a
+// paragraph.
+func (b *Block) taskParagraph() *Paragraph {
+	for node := b.FirstChild(); node != nil; node = node.NextSibling() {
+		switch n := node.(type) {
+		case *Paragraph:
+			return n
+		case *Properties:
+			continue
+		default:
+			return nil
+		}
+	}
+
+	return nil
+}
+
+// ensureTaskParagraph gets the paragraph that holds the marker and priority of
+// a task, adding an empty one at the start of the block if there is none.
+func (b *Block) ensureTaskParagraph() *Paragraph {
+	if paragraph := b.taskParagraph(); paragraph != nil {
+		return paragraph
+	}
+
+	paragraph := NewParagraph()
+	b.PrependChild(paragraph)
+	return paragraph
+}
+
+func (b *Block) taskMarker() *TaskMarker {
+	paragraph := b.taskParagraph()
+	if paragraph == nil {
+		return nil
+	}
+
+	marker, _ := paragraph.FirstChild().(*TaskMarker)
+	return marker
+}
+
+func (b *Block) taskPriority() *TaskPriority {
+	paragraph := b.taskParagraph()
+	if paragraph == nil {
+		return nil
+	}
+
+	node := paragraph.FirstChild()
+	if _, ok := node.(*TaskMarker); ok {
+		node = node.NextSibling()
+	}
+
+	priority, _ := node.(*TaskPriority)
+	return priority
+}
 
 // TaskDateType is the type of a date that is attached to a task.
 type TaskDateType int
