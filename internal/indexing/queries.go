@@ -125,6 +125,14 @@ func PropertyEquals(property string, value string) Query {
 	}
 }
 
+func HasProperty(property string) Query {
+	return &fieldEquals{
+		field:      "props",
+		value:      property,
+		normalized: true,
+	}
+}
+
 func PropertyReferences(property string, target string) Query {
 	return &fieldRefs{
 		field:  "prop:" + property,

@@ -286,6 +286,73 @@ var _ = Describe("Queries", func() {
 		})
 	})
 
+	Describe("HasProperty", func() {
+		It("matches pages that have the property", func() {
+			indexPage(idx, "pages/a.md", "Page A",
+				content.NewBlock(
+					content.NewProperties(
+						content.NewProperty("status", content.NewText("done")),
+					),
+					content.NewParagraph(content.NewText("content")),
+				),
+			)
+			indexPage(idx, "pages/b.md", "Page B",
+				content.NewBlock(
+					content.NewProperties(
+						content.NewProperty("other", content.NewText("value")),
+					),
+					content.NewParagraph(content.NewText("content")),
+				),
+			)
+
+			results := searchPages(idx, indexing.HasProperty("status"))
+			Expect(results).To(HaveLen(1))
+			Expect(results[0].Title).To(Equal("Page A"))
+		})
+
+		It("matches blocks that have the property", func() {
+			indexPage(idx, "pages/a.md", "Page A",
+				content.NewBlock(content.NewParagraph(content.NewText("first"))),
+				content.NewBlock(
+					content.NewParagraph(content.NewText("Daily")),
+					content.NewProperties(
+						content.NewProperty("template", content.NewText("Daily")),
+					),
+				),
+			)
+
+			results := searchBlocks(idx, indexing.HasProperty("template"))
+			Expect(results).To(HaveLen(1))
+			Expect(results[0].Preview).To(Equal("Daily"))
+		})
+
+		It("matches a property with an empty value", func() {
+			indexPage(idx, "pages/a.md", "Page A",
+				content.NewBlock(
+					content.NewProperties(content.NewProperty("tags")),
+					content.NewParagraph(content.NewText("content")),
+				),
+			)
+
+			results := searchPages(idx, indexing.HasProperty("tags"))
+			Expect(results).To(HaveLen(1))
+		})
+
+		It("matches the property name without regard for case", func() {
+			indexPage(idx, "pages/a.md", "Page A",
+				content.NewBlock(
+					content.NewProperties(
+						content.NewProperty("Status", content.NewText("done")),
+					),
+					content.NewParagraph(content.NewText("content")),
+				),
+			)
+
+			Expect(searchPages(idx, indexing.HasProperty("status"))).To(HaveLen(1))
+			Expect(searchPages(idx, indexing.HasProperty("STATUS"))).To(HaveLen(1))
+		})
+	})
+
 	Describe("Page properties", func() {
 		It("returns the property values of found pages", func() {
 			indexPage(idx, "pages/a.md", "Page A",

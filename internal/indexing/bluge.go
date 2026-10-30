@@ -508,6 +508,10 @@ func (i *BlugeIndex) transferProperties(doc *bluge.Document, properties *content
 			continue
 		}
 
+		// The name is indexed on its own so that a query can find what has a
+		// property, also when the property has no value.
+		doc.AddField(bluge.NewKeywordField("props", normalizeRef(prop.Name)))
+
 		i.transferRefs(doc, "prop:"+prop.Name, prop)
 
 		s := plainText(prop.Children())

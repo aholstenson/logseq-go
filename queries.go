@@ -59,6 +59,14 @@ func PropertyEquals(property, value string) Query {
 	return indexing.PropertyEquals(property, value)
 }
 
+// HasProperty returns a query that matches pages and blocks that have the
+// given property, whatever its value is. A property with an empty value, such
+// as `tags:: `, also matches. Property names are matched without regard for
+// case, so `template` also matches `Template::`.
+func HasProperty(property string) Query {
+	return indexing.HasProperty(property)
+}
+
 // PropertyReferences checks if the given property references a specific
 // page, as both a link and a tag.
 func PropertyReferences(property, target string) Query {
