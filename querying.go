@@ -101,7 +101,7 @@ func (g *Graph) runQuery(ctx context.Context, q *query.Query, opts []QueryOption
 	}
 
 	results := &QueryResults{}
-	if findsBlocks(q.Filter) {
+	if q.FindsBlocks() {
 		results.Type = QueryResultBlocks
 
 		indexQuery, err := runner.compile(q.Filter, true)
@@ -172,35 +172,6 @@ func querySortFields(sorts []query.Sort) ([]indexing.SortField, error) {
 	}
 
 	return fields, nil
-}
-
-// findsBlocks returns true if the filter has one or more filters that match
-// blocks, which makes the query find blocks instead of pages.
-func findsBlocks(filter query.Filter) bool {
-	switch f := filter.(type) {
-	case *query.AndFilter:
-		return anyFindsBlocks(f.Filters)
-	case *query.OrFilter:
-		return anyFindsBlocks(f.Filters)
-	case *query.NotFilter:
-		return findsBlocks(f.Filter)
-	case *query.PageRefFilter, *query.FullTextFilter, *query.TaskFilter,
-		*query.PriorityFilter, *query.PageFilter, *query.PropertyFilter,
-		*query.DateFilter:
-		return true
-	}
-
-	return false
-}
-
-func anyFindsBlocks(filters []query.Filter) bool {
-	for _, filter := range filters {
-		if findsBlocks(filter) {
-			return true
-		}
-	}
-
-	return false
 }
 
 // queryRunner turns the filters of a query into queries on the index.

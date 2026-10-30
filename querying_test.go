@@ -197,6 +197,78 @@ var _ = Describe("Query", func() {
 		})
 	})
 
+	Describe("Advanced queries", func() {
+		runAdvanced := func(text string) *logseq.QueryResults {
+			advanced, err := query.ParseAdvanced(text)
+			Expect(err).ToNot(HaveOccurred())
+
+			results, err := graph.Query(ctx, advanced.Query, logseq.QueryAt(now))
+			Expect(err).ToNot(HaveOccurred())
+			return results
+		}
+
+		blockPreviews := func(results *logseq.QueryResults) []string {
+			Expect(results.Type).To(Equal(logseq.QueryResultBlocks))
+			previews := make([]string, 0, len(results.Blocks))
+			for _, block := range results.Blocks {
+				previews = append(previews, block.Preview())
+			}
+			return previews
+		}
+
+		It("finds overdue tasks", func() {
+			results := runAdvanced(`{:query [:find (pull ?b [*]) :in $ ?day
+				:where [?b :block/marker ?m] [(contains? #{"LATER" "TODO"} ?m)]
+				(or-join [?b ?d] [?b :block/scheduled ?d] [?b :block/deadline ?d])
+				[(< ?d ?day)]]
+				:inputs [:today]
+				:result-transform (fn [result] (sort-by (fn [b] (get b :block/priority "Z")) result))}`)
+			Expect(blockPreviews(results)).To(Equal([]string{"Overdue scheduled", "Overdue deadline"}))
+		})
+
+		It("finds the tasks for today", func() {
+			results := runAdvanced(`{:query [:find (pull ?b [*]) :in $ ?today
+				:where [?b :block/marker ?m] [(contains? #{"LATER" "TODO"} ?m)]
+				(or-join [?b ?d]
+					(and [?b :block/page ?p] [?p :block/journal-day ?d] (not [?b :block/scheduled _]))
+					[?b :block/scheduled ?d]
+					[?b :block/deadline ?d])
+				(not [?b :block/path-refs [:block/name "shopping"]])
+				(not [?b :block/path-refs [:block/name "reading list"]])
+				[(= ?d ?today)]]
+				:inputs [:today]
+				:result-transform (fn [result] (sort-by (fn [b] (get b :block/priority "Z")) result))}`)
+			Expect(blockPreviews(results)).To(Equal([]string{"Call the bank", "Due today"}))
+		})
+
+		It("finds the tasks for the next three days", func() {
+			results := runAdvanced(`{:query [:find (pull ?b [*]) :in $ ?next ?today
+				:where [?b :block/marker ?m] [(contains? #{"LATER" "TODO"} ?m)]
+				(or-join [?b ?d]
+					(and [?b :block/page ?p] [?p :block/journal-day ?d] (not [?b :block/scheduled _]))
+					[?b :block/scheduled ?d]
+					[?b :block/deadline ?d])
+				[(<= ?d ?next)]
+				[(> ?d ?today)]]
+				:inputs [:3d-after :today]
+				:result-transform (fn [result] (sort-by (fn [b] (get b :block/priority "Z")) result))}`)
+			Expect(blockPreviews(results)).To(Equal([]string{"In two days", "Moved task"}))
+		})
+
+		It("finds the recipes", func() {
+			results := runAdvanced(`{:query [:find (pull ?p [*])
+				:where [?b :block/page ?p] [?p :page/properties ?props]
+				[(get ?props :type) ?t] [(get ?t "Cognitive Recipe")]]}`)
+			Expect(results.Type).To(Equal(logseq.QueryResultPages))
+
+			titles := make([]string, 0, len(results.Pages))
+			for _, page := range results.Pages {
+				titles = append(titles, page.Title())
+			}
+			Expect(titles).To(ConsistOf("recipe one", "recipe two"))
+		})
+	})
+
 	Describe("Results", func() {
 		It("picks a sample of the results", func() {
 			results := blocks("(and (task TODO) (sort-by priority asc) (sample 2))")

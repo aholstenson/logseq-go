@@ -46,6 +46,41 @@ func (q *Query) SortByProperty(name string, order Order) *Query {
 	return q
 }
 
+// FindsBlocks returns true if the query finds blocks, and false if it finds
+// pages. The same as in Logseq, a query finds blocks if one or more of its
+// filters match blocks, such as TaskFilter or PageRefFilter. It finds pages if
+// all of its filters match pages, such as PagePropertyFilter, or if it has no
+// filters.
+func (q *Query) FindsBlocks() bool {
+	return findsBlocks(q.Filter)
+}
+
+func findsBlocks(filter Filter) bool {
+	switch f := filter.(type) {
+	case *AndFilter:
+		return anyFindsBlocks(f.Filters)
+	case *OrFilter:
+		return anyFindsBlocks(f.Filters)
+	case *NotFilter:
+		return findsBlocks(f.Filter)
+	case *PageRefFilter, *FullTextFilter, *TaskFilter, *PriorityFilter,
+		*PageFilter, *PropertyFilter, *DateFilter:
+		return true
+	}
+
+	return false
+}
+
+func anyFindsBlocks(filters []Filter) bool {
+	for _, filter := range filters {
+		if findsBlocks(filter) {
+			return true
+		}
+	}
+
+	return false
+}
+
 // Sort is one value to sort the results of a query by.
 type Sort struct {
 	// Field is what to sort by.

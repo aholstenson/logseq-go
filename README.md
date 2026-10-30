@@ -388,6 +388,20 @@ for _, block := range results.Blocks {
 }
 ```
 
+Advanced queries, the Datalog between `#+BEGIN_QUERY` and `#+END_QUERY`, can
+be translated into the same model with `query.ParseAdvanced`. Common forms are
+translated, such as task markers, priorities, task dates, journal days, page
+references, properties and a `:result-transform` that sorts. Other forms
+return an error that wraps `query.ErrUnsupported` and names the clause:
+
+```go
+advanced, err := query.ParseAdvanced(text)
+
+advanced.Title          // "Overdue"
+advanced.Query.String() // (and (task LATER TODO) (or (scheduled < today) ...
+results, err := graph.Query(ctx, advanced.Query)
+```
+
 See the documentation of the `query` package for the full syntax.
 
 ## Limitations

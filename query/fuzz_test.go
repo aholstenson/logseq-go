@@ -41,3 +41,29 @@ func FuzzParse(f *testing.F) {
 		}
 	})
 }
+
+// FuzzParseAdvanced checks that any text either fails to translate or
+// translates into a query that is written as text that Parse reads.
+func FuzzParseAdvanced(f *testing.F) {
+	seeds := []string{
+		`{:query [:find (pull ?b [*]) :in $ ?day :where [?b :block/marker ?m] [(contains? #{"LATER" "TODO"} ?m)] (or-join [?b ?d] [?b :block/scheduled ?d] [?b :block/deadline ?d]) [(< ?d ?day)]] :inputs [:today]}`,
+		`{:query [:find (pull ?p [*]) :where [?b :block/page ?p] [?p :page/properties ?props] [(get ?props :type) ?t] [(get ?t "x")]]}`,
+		`{:query [:find ?b :where (not [?b :block/path-refs [:block/name "x"]]) [?b :block/page ?p] [?p :block/journal-day ?d] [(> ?d 20240101)]]}`,
+		`{:title [:b "x"] :query (and (task TODO) #_ignored [[x]]) :result-transform (fn [r] (reverse (sort-by #(get % :block/priority) r)))}`,
+	}
+	for _, seed := range seeds {
+		f.Add(seed)
+	}
+
+	f.Fuzz(func(t *testing.T, text string) {
+		advanced, err := query.ParseAdvanced(text)
+		if err != nil {
+			return
+		}
+
+		written := advanced.Query.String()
+		if _, err := query.Parse(written); err != nil {
+			t.Fatalf("translating %q, written as %q: %v", text, written, err)
+		}
+	})
+}
