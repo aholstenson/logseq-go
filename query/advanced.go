@@ -242,6 +242,9 @@ var queryFence = regexp.MustCompile(`(?im)^\s*#\+(BEGIN|END)_QUERY\s*$`)
 //   - a value in a set, such as `[(contains? #{"book" "film"} ?value)]`, for
 //     values and for the titles of pages that blocks are on or refer to
 //   - a property that is set, such as `[(get ?props :key)]`
+//   - a property compared as a number or a date with <, <=, > and >=, or
+//     with = and a date input, such as `[(< ?due ?today)]`, see
+//     PropertyCompareFilter
 //   - `[(missing? $ ?b :block/scheduled)]`, also for :block/marker,
 //     :block/priority, :block/deadline and the :block/journal-day of the page
 //   - conditions on a page that a block refers to, such as
@@ -2811,6 +2814,15 @@ func (t *translator) sourceFilter(src *source, conditions []*condition) (Filter,
 
 		var filters []Filter
 		for _, c := range conditions {
+			compare, isComparison, err := t.propertyComparison(c, src, isPage)
+			if err != nil {
+				return nil, err
+			}
+			if isComparison {
+				filters = append(filters, compare)
+				continue
+			}
+
 			var values []string
 			if c.fn == "contains?" && len(c.args) == 2 && c.args[1].isSymbol(c.subject) {
 				// One of a set of values, such as (contains? #{"a" "b"} ?v).
@@ -2853,6 +2865,65 @@ func (t *translator) sourceFilter(src *source, conditions []*condition) (Filter,
 	}
 
 	return nil, fmt.Errorf("query: unknown source %d", src.kind)
+}
+
+// propertyComparison translates a condition that compares the value of a
+// property as a number or a date, such as `[(> ?rating 7)]` or
+// `[(< ?due ?today)]`, into a PropertyCompareFilter. Returns false for other
+// conditions, which includes `=` with a value that is not a date input, as
+// that compares the text of the value.
+func (t *translator) propertyComparison(c *condition, src *source, isPage bool) (Filter, bool, error) {
+	op, ok := ops[c.fn]
+	if !ok || len(c.args) != 2 {
+		return nil, false, nil
+	}
+
+	other := c.args[1]
+	switch {
+	case c.args[1].isSymbol(c.subject):
+		op, other = flippedOps[op], c.args[0]
+	case !c.args[0].isSymbol(c.subject):
+		return nil, false, nil
+	}
+
+	resolved := t.resolve(other)
+	isDateInput := resolved.kind == ednKeyword
+	if isDateInput {
+		_, isDateInput = utils.ParseQueryDateInput(resolved.text, time.Now())
+	}
+	if op == Equal && !isDateInput {
+		return nil, false, nil
+	}
+
+	if src.hasDefault {
+		return nil, false, t.unsupported(c.node, "comparing a property that has a default value is not supported")
+	}
+
+	filter := &PropertyCompareFilter{Name: src.key, Op: op, Page: isPage}
+	switch {
+	case isDateInput:
+		date, err := t.date(other)
+		if err != nil {
+			return nil, false, err
+		}
+		filter.Date = date
+	case resolved.kind == ednNumber:
+		number, err := strconv.ParseFloat(resolved.text, 64)
+		if err != nil {
+			return nil, false, t.unsupported(c.node, "expected a number to compare with")
+		}
+		filter.Number = number
+	case resolved.kind == ednString:
+		date, err := time.ParseInLocation("2006-01-02", resolved.text, time.Local)
+		if err != nil {
+			return nil, false, t.unsupported(c.node, "expected a number or a date such as \"2024-01-15\" to compare with")
+		}
+		filter.Date = On(date)
+	default:
+		return nil, false, t.unsupported(c.node, "expected a number or a date to compare with")
+	}
+
+	return filter, true, nil
 }
 
 // comparedValue returns the value a condition such as `[(= ?t "book")]`

@@ -178,6 +178,19 @@ func blockFilterString(name string, block string, page string, location []int) s
 	return list(name, "(("+block+"))")
 }
 
+func (f *PropertyCompareFilter) String() string {
+	name := "property"
+	if f.Page {
+		name = "page-property"
+	}
+
+	value := strconv.FormatFloat(f.Number, 'f', -1, 64)
+	if !f.Date.IsZero() {
+		value = f.Date.String()
+	}
+	return list(name, f.Name, opNames[f.Op], value)
+}
+
 func (f *PropertyFilter) String() string {
 	return propertyString("property", f.Name, f.Value)
 }

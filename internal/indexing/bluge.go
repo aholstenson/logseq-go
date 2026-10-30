@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/aholstenson/logseq-go/content"
 	"github.com/aholstenson/logseq-go/internal/utils"
@@ -30,7 +31,7 @@ func (i idTerm) Term() []byte {
 // Increase it when the way pages or blocks are indexed changes, so that an
 // index stored on disk is built again with the new fields. Without that the
 // pages that did not change since they were indexed keep their old documents.
-const indexVersion = 9
+const indexVersion = 10
 
 // versionDocID is the id of the document that stores the version of the
 // index. It does not have a type, so searches for pages and blocks never
@@ -46,10 +47,23 @@ type BlugeIndex struct {
 
 	currentBatch     *index.Batch
 	currentBatchSize int
+
+	// journalTitles reads the titles of journals, so that a property that
+	// references a journal can be compared as a date. Nil if the format is
+	// not known.
+	journalTitles *utils.DateFormat
 }
 
 func NewBlugeIndex(graphConfig *utils.GraphConfig, indexDirectory string) (*BlugeIndex, error) {
-	return newBlugeIndex(indexDirectory, indexVersion)
+	idx, err := newBlugeIndex(indexDirectory, indexVersion)
+	if err != nil {
+		return nil, err
+	}
+
+	if graphConfig != nil && graphConfig.JournalPageTitleFormat != "" {
+		idx.journalTitles = utils.NewDateFormat(graphConfig.JournalPageTitleFormat)
+	}
+	return idx, nil
 }
 
 func newBlugeIndex(indexDirectory string, version int) (*BlugeIndex, error) {
@@ -808,10 +822,53 @@ func (i *BlugeIndex) transferProperties(doc *bluge.Document, properties *content
 		}
 		doc.AddField(value)
 		doc.AddField(bluge.NewKeywordField(SortFieldProperty(prop.Name), sortableValue(s)).Sortable())
+
+		// Numbers and dates are also indexed as such, so that they can be
+		// compared.
+		if numberPattern.MatchString(s) {
+			if f, err := strconv.ParseFloat(s, 64); err == nil {
+				doc.AddField(bluge.NewNumericField("prop:"+prop.Name+":number", f))
+			}
+		}
+
+		if date, ok := i.propertyDate(prop, s); ok {
+			doc.AddField(bluge.NewDateTimeField("prop:"+prop.Name+":date", date))
+		}
 	}
 }
 
 var numberPattern = regexp.MustCompile(`^-?\d+(\.\d+)?$`)
+
+var journalDayPattern = regexp.MustCompile(`^(\d{4})(\d{2})(\d{2})$`)
+
+// propertyDate returns the date that the value of a property is, at midnight
+// in the local time zone: a date such as 2024-01-15, a journal day such as
+// 20240115, or a reference to a journal such as [[Jan 15th, 2024]]. text is
+// the value as plain text.
+func (i *BlugeIndex) propertyDate(prop *content.Property, text string) (time.Time, bool) {
+	if date, err := time.ParseInLocation("2006-01-02", text, time.Local); err == nil {
+		return date, true
+	}
+
+	if m := journalDayPattern.FindStringSubmatch(text); m != nil {
+		year, _ := strconv.Atoi(m[1])
+		month, _ := strconv.Atoi(m[2])
+		day, _ := strconv.Atoi(m[3])
+		date := time.Date(year, time.Month(month), day, 0, 0, 0, 0, time.Local)
+		if date.Year() == year && int(date.Month()) == month && date.Day() == day {
+			return date, true
+		}
+	}
+
+	refs := prop.Children().PageReferences()
+	if i.journalTitles != nil && len(refs) == 1 {
+		if date, err := i.journalTitles.Parse(refs[0].(content.PageRef).GetTo()); err == nil {
+			return date, true
+		}
+	}
+
+	return time.Time{}, false
+}
 
 // sortableValue returns the value of a property in a form that sorts in the
 // correct order as bytes. Numbers sort by their value and before text, and
@@ -1069,6 +1126,8 @@ func mapQuery(q Query) bluge.Query {
 		return bluge.NewTermQuery(value).SetField(query.field)
 	case *fieldPattern:
 		return bluge.NewRegexpQuery(query.pattern).SetField(query.field)
+	case *numberRange:
+		return bluge.NewNumericRangeInclusiveQuery(query.min, query.max, query.minInclusive, query.maxInclusive).SetField(query.field)
 	case *dateRange:
 		return bluge.NewDateRangeQuery(query.start, query.end).SetField(query.field)
 	case *fieldRefs:

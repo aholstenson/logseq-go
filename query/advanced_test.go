@@ -332,6 +332,34 @@ var _ = Describe("Advanced queries", func() {
 			"(has-block (refs (page-tags [[project]])))")
 	})
 
+	Describe("Comparisons of property values", func() {
+		withRating := func(clauses string) string {
+			return where(`[?b :block/properties ?p] [(get ?p :rating) ?r] ` + clauses)
+		}
+
+		Translates("a number", withRating(`[(> ?r 7)]`), "(property rating > 7)")
+		Translates("a number on the other side", withRating(`[(< 7 ?r)]`), "(property rating > 7)")
+		Translates("a range of numbers", withRating(`[(>= ?r 6)] [(< ?r 10)]`), "(and (property rating >= 6) (property rating < 10))")
+		Translates("a number in a not", withRating(`(not [(> ?r 7)])`), "(and (property rating) (not (property rating > 7)))")
+		Translates("a number as an input",
+			`{:query [:find (pull ?b [*]) :in $ ?min :where [?b :block/properties ?p] [(get ?p :rating) ?r] [(>= ?r ?min)]] :inputs [8]}`,
+			"(property rating >= 8)")
+		Translates("= with a number compares the text", withRating(`[(= ?r 8)]`), "(property rating 8)")
+		Translates("a date input",
+			`{:query [:find (pull ?b [*]) :in $ ?today :where [?b :block/properties ?p] [(get ?p :due) ?d] [(< ?d ?today)]] :inputs [:today]}`,
+			"(property due < today)")
+		Translates("= with a date input",
+			`{:query [:find (pull ?b [*]) :in $ ?today :where [?b :block/properties ?p] [(get ?p :due) ?d] [(= ?d ?today)]] :inputs [:today]}`,
+			"(property due = today)")
+		Translates("a date as text", where(`[?b :block/properties ?p] [(get ?p :due) ?d] [(>= ?d "2024-01-12")]`), "(property due >= 2024-01-12)")
+		Translates("a page property",
+			`{:query [:find (pull ?p [*]) :where [?p :block/name] [?p :block/properties ?pp] [(get ?pp :pages) ?n] [(> ?n 300)]]}`,
+			"(page-property pages > 300)")
+
+		Unsupported("a property with a default", where(`[?b :block/properties ?p] [(get ?p :rating 0) ?r] [(< ?r 7)]`), "has a default value")
+		Unsupported("text", withRating(`[(< ?r "m")]`), "expected a number or a date")
+	})
+
 	Describe("Blocks related to other blocks", func() {
 		below := `:rules [[(below ?b ?a) [?b :block/parent ?a]] [(below ?b ?a) [?b :block/parent ?c] (below ?c ?a)]]`
 

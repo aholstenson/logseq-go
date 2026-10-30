@@ -3,6 +3,7 @@ package logseq
 import (
 	"context"
 	"fmt"
+	"math"
 	"math/rand"
 	"sort"
 	"time"
@@ -261,6 +262,12 @@ func (r *queryRunner) compile(filter query.Filter, blocks bool) (indexing.Query,
 		return blockQuery("ancestor", f.Block, f.Page, f.Location, indexing.AncestorIs, indexing.AncestorAt)
 	case *query.PropertyFilter:
 		return propertyQuery(f.Name, f.Value), nil
+	case *query.PropertyCompareFilter:
+		compareQuery, err := r.propertyCompareQuery(f)
+		if err != nil || !f.Page || !blocks {
+			return compareQuery, err
+		}
+		return r.blocksOnPages(compareQuery)
 	case *query.DateFilter:
 		return r.dateQuery(f)
 	case *query.TitleFilter:
@@ -620,21 +627,7 @@ func (r *queryRunner) dateQuery(f *query.DateFilter) (indexing.Query, error) {
 		return nil, err
 	}
 
-	// Dates are matched as whole days, as a date can have a time of day, such
-	// as `SCHEDULED: <2024-01-15 Mon 09:00>`.
-	nextDay := date.AddDate(0, 0, 1)
-
 	switch f.Op {
-	case query.Equal:
-		return between(date, nextDay), nil
-	case query.Less:
-		return between(time.Time{}, date), nil
-	case query.LessOrEqual:
-		return between(time.Time{}, nextDay), nil
-	case query.Greater:
-		return between(nextDay, time.Time{}), nil
-	case query.GreaterOrEqual:
-		return between(date, time.Time{}), nil
 	case query.Range:
 		end, err := r.resolveDate(f.End)
 		if err != nil {
@@ -649,7 +642,70 @@ func (r *queryRunner) dateQuery(f *query.DateFilter) (indexing.Query, error) {
 		return between(date, end.AddDate(0, 0, 1)), nil
 	}
 
-	return nil, fmt.Errorf("query: unknown date operation %d", f.Op)
+	start, end, err := dayBounds(f.Op, date)
+	if err != nil {
+		return nil, err
+	}
+	return between(start, end), nil
+}
+
+// dayBounds returns the start, inclusive, and end, exclusive, of the times
+// that compare with a date. Dates are matched as whole days, as a date can
+// have a time of day, such as `SCHEDULED: <2024-01-15 Mon 09:00>`. A zero time
+// leaves that end open.
+func dayBounds(op query.Op, date time.Time) (time.Time, time.Time, error) {
+	nextDay := date.AddDate(0, 0, 1)
+
+	switch op {
+	case query.Equal:
+		return date, nextDay, nil
+	case query.Less:
+		return time.Time{}, date, nil
+	case query.LessOrEqual:
+		return time.Time{}, nextDay, nil
+	case query.Greater:
+		return nextDay, time.Time{}, nil
+	case query.GreaterOrEqual:
+		return date, time.Time{}, nil
+	}
+
+	return time.Time{}, time.Time{}, fmt.Errorf("query: unknown date operation %d", op)
+}
+
+// propertyCompareQuery matches the property when its value is a number or a
+// date that compares with the value of the filter.
+func (r *queryRunner) propertyCompareQuery(f *query.PropertyCompareFilter) (indexing.Query, error) {
+	if !f.Date.IsZero() {
+		date, err := r.resolveDate(f.Date)
+		if err != nil {
+			return nil, err
+		}
+
+		start, end, err := dayBounds(f.Op, date)
+		if err != nil {
+			return nil, err
+		}
+		return indexing.PropertyDateBetween(f.Name, start, end), nil
+	}
+
+	min, max := math.Inf(-1), math.Inf(1)
+	minInclusive, maxInclusive := false, false
+	switch f.Op {
+	case query.Equal:
+		min, max, minInclusive, maxInclusive = f.Number, f.Number, true, true
+	case query.Less:
+		max = f.Number
+	case query.LessOrEqual:
+		max, maxInclusive = f.Number, true
+	case query.Greater:
+		min = f.Number
+	case query.GreaterOrEqual:
+		min, minInclusive = f.Number, true
+	default:
+		return nil, fmt.Errorf("query: unknown comparison %d", f.Op)
+	}
+
+	return indexing.PropertyNumberBetween(f.Name, min, max, minInclusive, maxInclusive), nil
 }
 
 // resolveDate returns midnight of a date in the local time zone.

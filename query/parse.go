@@ -344,6 +344,10 @@ func parseFilter(e *expr) (Filter, error) {
 		}
 		return Namespace(name), nil
 	case "property", "page-property":
+		if len(args) == 3 && args[1].kind == exprSymbol {
+			return parsePropertyCompare(op, args)
+		}
+
 		if len(args) == 0 || len(args) > 2 {
 			return nil, errorAt(e.pos, "%s takes a name and an optional value", op)
 		}
@@ -524,6 +528,35 @@ var (
 	fixedDate     = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
 	offsetNoUnits = regexp.MustCompile(`^[+-]\d+$`)
 )
+
+var numberValue = regexp.MustCompile(`^-?\d+(\.\d+)?$`)
+
+// parsePropertyCompare reads a comparison of a property, such as
+// `(property rating > 7)` or `(property due < today)`.
+func parsePropertyCompare(op string, args []*expr) (Filter, error) {
+	name, err := parseKey(args[0])
+	if err != nil {
+		return nil, err
+	}
+	name = strings.ReplaceAll(name, "_", "-")
+
+	compare, ok := ops[args[1].text]
+	if !ok {
+		return nil, errorAt(args[1].pos, "expected =, <, <=, > or >=")
+	}
+
+	filter := &PropertyCompareFilter{Name: name, Op: compare, Page: op == "page-property"}
+	if value := args[2]; value.kind == exprSymbol && numberValue.MatchString(value.text) {
+		filter.Number, _ = strconv.ParseFloat(value.text, 64)
+		return filter, nil
+	}
+
+	filter.Date, err = parseDate(args[2])
+	if err != nil {
+		return nil, errorAt(args[2].pos, "expected a number or a date, such as 7, `today` or `2024-01-15`")
+	}
+	return filter, nil
+}
 
 func parseDate(e *expr) (Date, error) {
 	switch e.kind {

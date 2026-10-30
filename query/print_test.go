@@ -43,6 +43,8 @@ var _ = Describe("Writing queries", func() {
 		Prints("has-block", query.New(query.HasBlock(query.Task(content.TaskStatusTodo))), "(has-block (task TODO))")
 		Prints("refs to pages", query.New(query.RefsTo(query.PageTags("project"))), "(refs (page-tags [[project]]))")
 		Prints("blocks on pages", query.New(query.OnPage(query.Alias("x"))), "(page (alias [[x]]))")
+		Prints("property number", query.New(query.PropertyNumber("rating", query.Greater, 7.5)), "(property rating > 7.5)")
+		Prints("page property date", query.New(query.PagePropertyDate("due", query.Less, query.Relative("today"))), "(page-property due < today)")
 		Prints("children", query.New(query.ChildOf(query.Task(content.TaskStatusTodo))), "(parent (task TODO))")
 		Prints("descendants", query.New(query.DescendantOf(query.Task(content.TaskStatusTodo))), "(ancestor (task TODO))")
 		Prints("has-child", query.New(query.HasChild(query.Task(content.TaskStatusTodo))), "(has-child (task TODO))")

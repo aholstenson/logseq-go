@@ -65,6 +65,8 @@ func findsBlocks(filter Filter) bool {
 		return findsBlocks(f.Filter)
 	case *DateFilter:
 		return f.Field != FieldJournalPage
+	case *PropertyCompareFilter:
+		return !f.Page
 	case *PageRefFilter, *RefsFilter, *ReferencesFilter, *FullTextFilter, *TaskFilter, *PriorityFilter,
 		*PageFilter, *ParentFilter, *AncestorFilter, *PropertyFilter,
 		*OnPageFilter, *BelowFilter, *HasChildFilter:
@@ -416,6 +418,56 @@ func HasProperty(name string) *PropertyFilter {
 	return &PropertyFilter{Name: name}
 }
 
+// PropertyCompareFilter matches the blocks with a property that is a number or
+// a date that compares with the value in the filter. It is written as
+// `(property rating > 7)` or `(property due < today)`, and for the properties
+// of pages as `(page-property rating > 7)`.
+//
+// A value of the property is a date when it is a date such as `2024-01-15`, a
+// journal day such as `20240115`, or a reference to a journal such as
+// `[[Jan 15th, 2024]]`. Values that are not numbers or dates do not match.
+type PropertyCompareFilter struct {
+	// Name is the name of the property.
+	Name string
+
+	// Op is how to compare the value: Equal, Less, LessOrEqual, Greater or
+	// GreaterOrEqual.
+	Op Op
+
+	// Number is the number to compare with, when Date is not set.
+	Number float64
+
+	// Date is the date to compare with.
+	Date Date
+
+	// Page is true to match pages by their properties instead of blocks.
+	Page bool
+}
+
+// PropertyNumber creates a filter that matches the blocks with a property
+// that is a number that compares with the number.
+func PropertyNumber(name string, op Op, number float64) *PropertyCompareFilter {
+	return &PropertyCompareFilter{Name: name, Op: op, Number: number}
+}
+
+// PropertyDate creates a filter that matches the blocks with a property that
+// is a date that compares with the date.
+func PropertyDate(name string, op Op, date Date) *PropertyCompareFilter {
+	return &PropertyCompareFilter{Name: name, Op: op, Date: date}
+}
+
+// PagePropertyNumber creates a filter that matches the pages with a property
+// that is a number that compares with the number.
+func PagePropertyNumber(name string, op Op, number float64) *PropertyCompareFilter {
+	return &PropertyCompareFilter{Name: name, Op: op, Number: number, Page: true}
+}
+
+// PagePropertyDate creates a filter that matches the pages with a property
+// that is a date that compares with the date.
+func PagePropertyDate(name string, op Op, date Date) *PropertyCompareFilter {
+	return &PropertyCompareFilter{Name: name, Op: op, Date: date, Page: true}
+}
+
 // PagePropertyFilter matches the pages with a property. If Value is set, the
 // property must have that value, or reference a page with that title.
 type PagePropertyFilter struct {
@@ -526,27 +578,28 @@ func HasBlock(filter Filter) *HasBlockFilter {
 	return &HasBlockFilter{Filter: filter}
 }
 
-func (*AndFilter) isFilter()          {}
-func (*OrFilter) isFilter()           {}
-func (*NotFilter) isFilter()          {}
-func (*TaskFilter) isFilter()         {}
-func (*PriorityFilter) isFilter()     {}
-func (*PageRefFilter) isFilter()      {}
-func (*RefsFilter) isFilter()         {}
-func (*ReferencesFilter) isFilter()   {}
-func (*FullTextFilter) isFilter()     {}
-func (*PageFilter) isFilter()         {}
-func (*ParentFilter) isFilter()       {}
-func (*OnPageFilter) isFilter()       {}
-func (*BelowFilter) isFilter()        {}
-func (*HasChildFilter) isFilter()     {}
-func (*AncestorFilter) isFilter()     {}
-func (*PropertyFilter) isFilter()     {}
-func (*PagePropertyFilter) isFilter() {}
-func (*PageTagsFilter) isFilter()     {}
-func (*AllPageTagsFilter) isFilter()  {}
-func (*NamespaceFilter) isFilter()    {}
-func (*DateFilter) isFilter()         {}
-func (*TitleFilter) isFilter()        {}
-func (*AliasFilter) isFilter()        {}
-func (*HasBlockFilter) isFilter()     {}
+func (*AndFilter) isFilter()             {}
+func (*OrFilter) isFilter()              {}
+func (*NotFilter) isFilter()             {}
+func (*TaskFilter) isFilter()            {}
+func (*PriorityFilter) isFilter()        {}
+func (*PageRefFilter) isFilter()         {}
+func (*RefsFilter) isFilter()            {}
+func (*ReferencesFilter) isFilter()      {}
+func (*FullTextFilter) isFilter()        {}
+func (*PageFilter) isFilter()            {}
+func (*ParentFilter) isFilter()          {}
+func (*OnPageFilter) isFilter()          {}
+func (*BelowFilter) isFilter()           {}
+func (*HasChildFilter) isFilter()        {}
+func (*AncestorFilter) isFilter()        {}
+func (*PropertyFilter) isFilter()        {}
+func (*PropertyCompareFilter) isFilter() {}
+func (*PagePropertyFilter) isFilter()    {}
+func (*PageTagsFilter) isFilter()        {}
+func (*AllPageTagsFilter) isFilter()     {}
+func (*NamespaceFilter) isFilter()       {}
+func (*DateFilter) isFilter()            {}
+func (*TitleFilter) isFilter()           {}
+func (*AliasFilter) isFilter()           {}
+func (*HasBlockFilter) isFilter()        {}

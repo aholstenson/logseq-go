@@ -46,9 +46,13 @@ var _ = Describe("Query", func() {
 				"- TODO No dates\n" +
 				"- [[Reading List]]\n  - TODO Read a book\n    SCHEDULED: <2024-01-15 Mon>\n" +
 				"- A note\n  status:: draft\n",
-			"recipe one.md":       "type:: [[Cognitive Recipe]]\n\n- step one\n",
-			"recipe two.md":       "type:: Cognitive Recipe\n\n- step two\n",
-			"book.md":             "type:: book\ntags:: reading\n\n- TODO Finish chapter\n",
+			"recipe one.md": "type:: [[Cognitive Recipe]]\n\n- step one\n",
+			"recipe two.md": "type:: Cognitive Recipe\n\n- step two\n",
+			"book.md":       "type:: book\ntags:: reading\npages:: 320\n\n- TODO Finish chapter\n",
+			"deadlines.md": "- Report\n  due:: 2024-01-10\n" +
+				"- Review\n  due:: 20240120\n" +
+				"- Party\n  due:: [[Jan 15th, 2024]]\n" +
+				"- Someday\n  due:: later\n",
 			"projects___alpha.md": "- alpha\n",
 			"reading.md":          "- About reading\n",
 			"acme.md":             "alias:: ACME Corp\n\n- A company\n",
@@ -267,6 +271,26 @@ var _ = Describe("Query", func() {
 
 		It("finds the blocks about the pages", func() {
 			Expect(blocks("(page-ref (page-tags [[reading]]))")).To(ContainElements("Review book", "Finish chapter"))
+		})
+	})
+
+	Describe("Comparisons of property values", func() {
+		It("compares numbers", func() {
+			Expect(blocks("(property rating > 7)")).To(ConsistOf("Good film", "Great film"))
+			Expect(blocks("(property rating <= 8)")).To(ConsistOf("Good film", "Fine film"))
+			Expect(blocks("(property rating = 10)")).To(ConsistOf("Great film"))
+			Expect(blocks("(property due > 20240112)")).To(ConsistOf("Review"))
+		})
+
+		It("compares dates in each form", func() {
+			Expect(blocks("(property due < today)")).To(ConsistOf("Report"))
+			Expect(blocks("(property due >= today)")).To(ConsistOf("Review", "Party"))
+			Expect(blocks("(property due = 2024-01-15)")).To(ConsistOf("Party"))
+		})
+
+		It("compares the properties of pages", func() {
+			Expect(pages("(page-property pages > 300)")).To(ConsistOf("book"))
+			Expect(blocks("(and (task TODO) (page-property pages > 300))")).To(ConsistOf("Finish chapter"))
 		})
 	})
 
@@ -493,6 +517,13 @@ var _ = Describe("Query", func() {
 			results := runAdvanced(`{:query [:find (pull ?b [*])
 				:where [?b :block/page ?p] [?p :block/name ?n] [(clojure.string/starts-with? ?n "meet")]]}`)
 			Expect(blockPreviews(results)).To(HaveLen(6))
+		})
+
+		It("finds the blocks that are due before today", func() {
+			results := runAdvanced(`{:query [:find (pull ?b [*]) :in $ ?today
+				:where [?b :block/properties ?p] [(get ?p :due) ?d] [(< ?d ?today)]]
+				:inputs [:today]}`)
+			Expect(blockPreviews(results)).To(ConsistOf("Report"))
 		})
 
 		It("finds the people of the current page", func() {

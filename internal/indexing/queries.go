@@ -72,6 +72,17 @@ type fieldPattern struct {
 
 func (f *fieldPattern) isQuery() {}
 
+// numberRange matches a numeric field from min to max. Infinite bounds leave
+// that end open.
+type numberRange struct {
+	field        string
+	min, max     float64
+	minInclusive bool
+	maxInclusive bool
+}
+
+func (n *numberRange) isQuery() {}
+
 // dateRange matches a date field from start, inclusive, to end, exclusive. A
 // zero time leaves that end of the range open.
 type dateRange struct {
@@ -186,6 +197,29 @@ func PropertyEquals(property string, value string) Query {
 	return &fieldEquals{
 		field: "prop:" + property,
 		value: value,
+	}
+}
+
+// PropertyNumberBetween matches the property when its value is a number from
+// min to max. Use math.Inf to leave an end open.
+func PropertyNumberBetween(property string, min float64, max float64, minInclusive bool, maxInclusive bool) Query {
+	return &numberRange{
+		field:        "prop:" + property + ":number",
+		min:          min,
+		max:          max,
+		minInclusive: minInclusive,
+		maxInclusive: maxInclusive,
+	}
+}
+
+// PropertyDateBetween matches the property when its value is a date from
+// start, inclusive, to end, exclusive. A zero time leaves that end open.
+// Dates are values such as 2024-01-15, 20240115 or a reference to a journal.
+func PropertyDateBetween(property string, start time.Time, end time.Time) Query {
+	return &dateRange{
+		field: "prop:" + property + ":date",
+		start: start,
+		end:   end,
 	}
 }
 
