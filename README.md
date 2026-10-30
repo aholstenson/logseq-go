@@ -223,6 +223,10 @@ graph, err := logseq.Open(ctx, "path/to/graph", logseq.WithInMemoryIndex())
 graph, err := logseq.Open(ctx, "path/to/graph", logseq.WithIndex("path/to/index"))
 ```
 
+A persistent index is built again from all pages when it was made by a version
+of `logseq-go` that indexes pages in another way, so the first open after an
+upgrade can take longer.
+
 Opening a graph with an index can take some time, as pages that changed since
 the last open are indexed again. Use `WithListener` to show the progress:
 

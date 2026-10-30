@@ -24,6 +24,17 @@ func (i idTerm) Term() []byte {
 	return []byte(i)
 }
 
+// indexVersion is the version of the documents and fields in the index.
+// Increase it when the way pages or blocks are indexed changes, so that an
+// index stored on disk is built again with the new fields. Without that the
+// pages that did not change since they were indexed keep their old documents.
+const indexVersion = 1
+
+// versionDocID is the id of the document that stores the version of the
+// index. It does not have a type, so searches for pages and blocks never
+// return it.
+const versionDocID = "_logseq-go:index-version"
+
 type BlugeIndex struct {
 	mu sync.Mutex
 
@@ -36,6 +47,10 @@ type BlugeIndex struct {
 }
 
 func NewBlugeIndex(graphConfig *utils.GraphConfig, indexDirectory string) (*BlugeIndex, error) {
+	return newBlugeIndex(indexDirectory, indexVersion)
+}
+
+func newBlugeIndex(indexDirectory string, version int) (*BlugeIndex, error) {
 	var config bluge.Config
 	if indexDirectory == "" {
 		config = bluge.InMemoryOnlyConfig()
@@ -48,9 +63,101 @@ func NewBlugeIndex(graphConfig *utils.GraphConfig, indexDirectory string) (*Blug
 		return nil, fmt.Errorf("error opening index writer: %w", err)
 	}
 
-	return &BlugeIndex{
+	idx := &BlugeIndex{
 		writer: writer,
-	}, nil
+	}
+
+	if err := idx.ensureVersion(version); err != nil {
+		writer.Close()
+		return nil, err
+	}
+
+	return idx, nil
+}
+
+// ensureVersion empties the index if it was built with another version, or
+// before the index stored a version, and then stores the given version. The
+// pages are then indexed again when the graph is synced, as none of them are
+// in the index any more.
+func (i *BlugeIndex) ensureVersion(version int) error {
+	reader, err := i.writer.Reader()
+	if err != nil {
+		return fmt.Errorf("error opening index reader: %w", err)
+	}
+	defer reader.Close()
+
+	ctx := context.Background()
+	it, err := reader.Search(ctx, bluge.NewTopNSearch(1, bluge.NewTermQuery(versionDocID).SetField("_id")))
+	if err != nil {
+		return fmt.Errorf("error reading index version: %w", err)
+	}
+
+	match, err := it.Next()
+	if err != nil {
+		return fmt.Errorf("error reading index version: %w", err)
+	}
+
+	stored := ""
+	if match != nil {
+		err = match.VisitStoredFields(func(field string, value []byte) bool {
+			if field == "version" {
+				stored = string(value)
+				return false
+			}
+
+			return true
+		})
+		if err != nil {
+			return fmt.Errorf("error reading index version: %w", err)
+		}
+	}
+
+	current := strconv.Itoa(version)
+	if stored == current {
+		return nil
+	}
+
+	batch := index.NewBatch()
+
+	it, err = reader.Search(ctx, bluge.NewAllMatches(bluge.NewMatchAllQuery()))
+	if err != nil {
+		return fmt.Errorf("error listing documents in index: %w", err)
+	}
+
+	for {
+		match, err := it.Next()
+		if err != nil {
+			return fmt.Errorf("error listing documents in index: %w", err)
+		}
+
+		if match == nil {
+			break
+		}
+
+		err = match.VisitStoredFields(func(field string, value []byte) bool {
+			if field == "_id" {
+				if id := string(value); id != versionDocID {
+					batch.Delete(idTerm(id))
+				}
+				return false
+			}
+
+			return true
+		})
+		if err != nil {
+			return fmt.Errorf("error listing documents in index: %w", err)
+		}
+	}
+
+	versionDoc := bluge.NewDocument(versionDocID).
+		AddField(bluge.NewKeywordField("version", current).StoreValue())
+	batch.Update(versionDoc.ID(), versionDoc)
+
+	if err := i.writer.Batch(batch); err != nil {
+		return fmt.Errorf("error storing index version: %w", err)
+	}
+
+	return nil
 }
 
 func (i *BlugeIndex) Close() error {
