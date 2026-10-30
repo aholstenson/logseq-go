@@ -63,7 +63,7 @@ func Parse(text string) (*Query, error) {
 
 	q := &Query{}
 
-	if e.isList("sort-by") || e.isList("sample") {
+	if isOption(e) {
 		if err := q.readOption(e); err != nil {
 			return nil, err
 		}
@@ -80,12 +80,12 @@ func Parse(text string) (*Query, error) {
 		return q, nil
 	}
 
-	// The sort order and sample are read from the top-level `and`, which is
-	// where Logseq reads them.
+	// The sort order, sample and limit are read from the top-level `and`,
+	// which is where Logseq reads the sort order and sample.
 	filters := make([]Filter, 0, len(e.items)-1)
 	hasOptions := false
 	for _, item := range e.items[1:] {
-		if item.isList("sort-by") || item.isList("sample") {
+		if isOption(item) {
 			if err := q.readOption(item); err != nil {
 				return nil, err
 			}
@@ -107,6 +107,12 @@ func Parse(text string) (*Query, error) {
 	}
 
 	return q, nil
+}
+
+// isOption returns true for the parts of a query that are not filters, such
+// as `(sort-by priority)`.
+func isOption(e *expr) bool {
+	return e.isList("sort-by") || e.isList("sample") || e.isList("limit")
 }
 
 func (q *Query) readOption(e *expr) error {
@@ -160,6 +166,18 @@ func (q *Query) readOption(e *expr) error {
 		}
 
 		q.Sample = n
+		return nil
+	case "limit":
+		if len(args) != 1 || args[0].kind != exprSymbol {
+			return errorAt(e.pos, "limit takes a number")
+		}
+
+		n, err := strconv.Atoi(args[0].text)
+		if err != nil || n <= 0 {
+			return errorAt(args[0].pos, "limit takes a number above zero")
+		}
+
+		q.Limit = n
 		return nil
 	}
 
@@ -449,7 +467,7 @@ func parseFilter(e *expr) (Filter, error) {
 			return nil, err
 		}
 		return HasBlock(filter), nil
-	case "sort-by", "sample":
+	case "sort-by", "sample", "limit":
 		return nil, errorAt(e.pos, "%s can only be used at the top of a query or in its top-level `and`", op)
 	}
 

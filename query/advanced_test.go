@@ -614,7 +614,25 @@ var _ = Describe("Advanced queries", func() {
 			`{:query [:find (pull ?p [*]) :where [?p :block/name]] :result-transform (fn [r] (filter (fn [p] (= "book" (get-in p [:block/properties :type]))) r))}`,
 			"(page-property type book)")
 
-		Unsupported("other transforms", withTransform(`(fn [r] (take 5 r))`), "only a :result-transform that sorts")
+		Translates("take", withTransform(`(fn [r] (take 5 r))`), "(and (task TODO) (limit 5))")
+		Translates("take after sort-by and reverse", withTransform(`(fn [r] (take 3 (reverse (sort-by :block/priority r))))`),
+			"(and (task TODO) (sort-by priority desc) (limit 3))")
+		Translates("take in ->>", withTransform(`(fn [r] (->> r (filter :block/scheduled) (sort-by :block/scheduled) (take 2)))`),
+			"(and (task TODO) (scheduled) (sort-by scheduled asc) (limit 2))")
+		Translates("take of take", withTransform(`(fn [r] (take 5 (take 2 r)))`), "(and (task TODO) (limit 2))")
+		Translates("take on a query with a sample", `{:query (and (task TODO) (sample 10)) :result-transform (fn [r] (take 2 r))}`,
+			"(and (task TODO) (sample 10) (limit 2))")
+
+		Unsupported("other transforms", withTransform(`(fn [r] (map :block/content r))`), "only a :result-transform that sorts")
+		Unsupported("take before sort-by", withTransform(`(fn [r] (sort-by :block/priority (take 5 r)))`), "take is only supported as the last step")
+		Unsupported("take before filter", withTransform(`(fn [r] (filter :block/scheduled (take 5 r)))`), "take is only supported as the last step")
+		Unsupported("take before reverse", withTransform(`(fn [r] (reverse (take 5 (sort-by :block/priority r))))`),
+			"take is only supported as the last step")
+		Unsupported("take with a count that is not a number", withTransform(`(fn [r] (take 0 r))`), "expected a number above zero")
+		Unsupported("filter on a query with a sample", `{:query (and (task TODO) (sample 10)) :result-transform (fn [r] (filter :block/scheduled r))}`,
+			"not supported for a query with sample or limit")
+		Unsupported("sort-by on a query with a limit", `{:query (and (task TODO) (limit 10)) :result-transform (fn [r] (sort-by :block/priority r))}`,
+			"sort-by is not supported for a query with limit")
 		Unsupported("other sort keys", withTransform(`(fn [r] (sort-by :block/content r))`), "only sorting by")
 		Unsupported("reverse without a sort", withTransform(`(fn [r] (reverse (filter :block/scheduled r)))`), "reverse is only supported")
 		Unsupported("two values of the result",

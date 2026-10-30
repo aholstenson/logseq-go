@@ -277,8 +277,9 @@ var queryFence = regexp.MustCompile(`(?im)^\s*#\+(BEGIN|END)_QUERY\s*$`)
 //   - and, or, or-join, not and not-join
 //   - the rules of simple queries, such as `(task ?b #{"TODO"})`
 //   - a :query that is a simple query, such as `(and (task TODO) [[page]])`
-//   - a :result-transform that sorts with sort-by and reverse, and keeps
-//     results with filter or remove, also with ->>; the function of filter or
+//   - a :result-transform that sorts with sort-by and reverse, keeps
+//     results with filter or remove, and takes the first results with take
+//     as the last step, also with ->>, see Query.Limit; the function of filter or
 //     remove can use and, or, not, not=, nil?, some? and the conditions of
 //     :where on values such as `(:block/marker b)` or
 //     `(get-in b [:block/properties :type])`
@@ -401,12 +402,25 @@ func parseAdvanced(text string, options *parseOptions) (*AdvancedQuery, error) {
 	}
 
 	if transformNode != nil {
-		sorts, filter, err := t.resultTransform(transformNode, q.FindsBlocks())
+		transform, err := t.resultTransform(transformNode, q.FindsBlocks())
 		if err != nil {
 			return nil, err
 		}
-		q.Sort = append(q.Sort, sorts...)
-		q.Filter = withFilter(q.Filter, filter)
+
+		// The transform runs on the results of the query, so a filter in it
+		// can not run before a sample or limit of the query.
+		if len(transform.filters) > 0 && (q.Sample > 0 || q.Limit > 0) {
+			return nil, t.unsupported(transformNode, "filter and remove are not supported for a query with sample or limit")
+		}
+		if len(transform.sorts) > 0 && q.Limit > 0 {
+			return nil, t.unsupported(transformNode, "sort-by is not supported for a query with limit")
+		}
+
+		q.Sort = append(q.Sort, transform.sorts...)
+		q.Filter = withFilter(q.Filter, andOf(transform.filters))
+		if transform.limit > 0 && (q.Limit == 0 || transform.limit < q.Limit) {
+			q.Limit = transform.limit
+		}
 	}
 
 	result.Query = q
@@ -3440,20 +3454,20 @@ func shiftDate(date Date, days int) (Date, bool) {
 // resultTransform translates a :result-transform that sorts the results, such
 // as `(fn [result] (sort-by (fn [b] (get b :block/priority "Z")) result))`,
 // or that keeps some of them, such as
-// `(fn [result] (filter (fn [b] (= "TODO" (:block/marker b))) result))`. It
-// returns the sort order and the filter for the results that are kept.
-// findsBlocks tells if the results are blocks or pages.
-func (t *translator) resultTransform(node *ednNode, findsBlocks bool) ([]Sort, Filter, error) {
+// `(fn [result] (filter (fn [b] (= "TODO" (:block/marker b))) result))` or
+// `(fn [result] (take 10 result))`. findsBlocks tells if the results are
+// blocks or pages.
+func (t *translator) resultTransform(node *ednNode, findsBlocks bool) (*transform, error) {
 	if node.head() != "fn" || len(node.items) != 3 || node.items[1].kind != ednVector ||
 		len(node.items[1].items) != 1 || node.items[1].items[0].kind != ednSymbol {
-		return nil, nil, t.unsupported(node, "only a :result-transform that sorts with sort-by or keeps results with filter or remove is supported")
+		return nil, t.unsupported(node, "only a :result-transform that sorts with sort-by, keeps results with filter or remove, or takes the first results with take is supported")
 	}
 
 	transform := &transform{t: t, results: node.items[1].items[0].text, findsBlocks: findsBlocks}
 	if err := transform.body(node.items[2]); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	return transform.sorts, andOf(transform.filters), nil
+	return transform, nil
 }
 
 // transform holds what a :result-transform does to the results.
@@ -3469,6 +3483,20 @@ type transform struct {
 
 	sorts   []Sort
 	filters []Filter
+
+	// limit is the number of results that take keeps, or zero for all of
+	// them.
+	limit int
+}
+
+// checkAfterTake returns an error if take came before the function in body.
+// The limit is applied after the sort and the filter, so take must be the
+// last step.
+func (tr *transform) checkAfterTake(body *ednNode) error {
+	if tr.limit > 0 {
+		return tr.t.unsupported(body, "take is only supported as the last step of a :result-transform")
+	}
+	return nil
 }
 
 // body reads the body of the function, which is the results or the results
@@ -3493,6 +3521,9 @@ func (tr *transform) body(body *ednNode) error {
 		if err := tr.body(body.items[1]); err != nil {
 			return err
 		}
+		if err := tr.checkAfterTake(body); err != nil {
+			return err
+		}
 		if len(tr.sorts) == before {
 			return tr.t.unsupported(body, "reverse is only supported for the results of sort-by")
 		}
@@ -3515,6 +3546,9 @@ func (tr *transform) body(body *ednNode) error {
 		if err := tr.body(body.items[2]); err != nil {
 			return err
 		}
+		if err := tr.checkAfterTake(body); err != nil {
+			return err
+		}
 
 		sort, err := tr.t.sortKey(body.items[1])
 		if err != nil {
@@ -3531,6 +3565,9 @@ func (tr *transform) body(body *ednNode) error {
 		if err := tr.body(body.items[2]); err != nil {
 			return err
 		}
+		if err := tr.checkAfterTake(body); err != nil {
+			return err
+		}
 
 		filter, err := tr.predicate(body.items[1])
 		if err != nil {
@@ -3541,9 +3578,26 @@ func (tr *transform) body(body *ednNode) error {
 		}
 		tr.filters = append(tr.filters, filter)
 		return nil
+	case "take":
+		if len(body.items) != 3 {
+			break
+		}
+
+		if err := tr.body(body.items[2]); err != nil {
+			return err
+		}
+
+		n, err := strconv.Atoi(body.items[1].text)
+		if body.items[1].kind != ednNumber || err != nil || n <= 0 {
+			return tr.t.unsupported(body.items[1], "expected a number above zero")
+		}
+		if tr.limit == 0 || n < tr.limit {
+			tr.limit = n
+		}
+		return nil
 	}
 
-	return tr.t.unsupported(body, "only a :result-transform that sorts with sort-by or keeps results with filter or remove is supported")
+	return tr.t.unsupported(body, "only a :result-transform that sorts with sort-by, keeps results with filter or remove, or takes the first results with take is supported")
 }
 
 // threadLast rewrites `(->> r (filter f) (sort-by k))` as

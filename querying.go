@@ -117,7 +117,7 @@ func (g *Graph) runQuery(ctx context.Context, q *query.Query, opts []QueryOption
 			return nil, err
 		}
 
-		results.Blocks = sample(results.Blocks, q.Sample)
+		results.Blocks = limit(sample(results.Blocks, q.Sample), q.Limit)
 	} else {
 		results.Type = QueryResultPages
 
@@ -136,7 +136,7 @@ func (g *Graph) runQuery(ctx context.Context, q *query.Query, opts []QueryOption
 			return nil, err
 		}
 
-		results.Pages = sample(results.Pages, q.Sample)
+		results.Pages = limit(sample(results.Pages, q.Sample), q.Limit)
 	}
 
 	return results, nil
@@ -754,6 +754,14 @@ func (r *queryRunner) resolveDate(date query.Date) (time.Time, error) {
 	}
 
 	return time.Time{}, fmt.Errorf("query: a date is missing")
+}
+
+// limit returns the first n items, or all of them if n is zero.
+func limit[T any](items []T, n int) []T {
+	if n <= 0 || len(items) <= n {
+		return items
+	}
+	return items[:n]
 }
 
 // sample picks n random items, in the order they have in items. All of the

@@ -8,9 +8,9 @@ import (
 	"github.com/aholstenson/logseq-go/content"
 )
 
-// String returns the query in the text form that Parse reads. The sort order
-// and sample are written at the end of a top-level `and`, which is where
-// Logseq reads them. A query that matches everything and has no sort order is
+// String returns the query in the text form that Parse reads. The sort order,
+// sample and limit are written at the end of a top-level `and`, which is
+// where Logseq reads the sort order and sample. A query that matches everything and has no sort order is
 // an empty string.
 func (q *Query) String() string {
 	var extras []string
@@ -19,6 +19,9 @@ func (q *Query) String() string {
 	}
 	if q.Sample > 0 {
 		extras = append(extras, "(sample "+strconv.Itoa(q.Sample)+")")
+	}
+	if q.Limit > 0 {
+		extras = append(extras, "(limit "+strconv.Itoa(q.Limit)+")")
 	}
 
 	if len(extras) == 0 {

@@ -101,6 +101,7 @@ var _ = Describe("Writing queries", func() {
 		)
 		Prints("sort without a filter", query.New(nil).SortBy(query.SortPriority, query.Asc), "(sort-by priority asc)")
 		Prints("sample", &query.Query{Filter: query.PageRef("a"), Sample: 5}, "(and [[a]] (sample 5))")
+		Prints("limit", &query.Query{Filter: query.PageRef("a"), Sample: 5, Limit: 2}, "(and [[a]] (sample 5) (limit 2))")
 		Prints("nothing", query.New(nil), "")
 	})
 })

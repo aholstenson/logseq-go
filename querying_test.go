@@ -364,6 +364,22 @@ var _ = Describe("Query", func() {
 				To(Equal([]string{"Great film", "Good film", "Fine film"}))
 		})
 
+		It("returns the first results after they are sorted", func() {
+			Expect(blocks("(and (property rating) (sort-by rating desc) (limit 2))")).To(Equal([]string{"Great film", "Good film"}))
+			Expect(blocks("(and (property rating) (sort-by rating asc) (limit 10))")).To(Equal([]string{"Fine film", "Good film", "Great film"}))
+		})
+
+		It("returns the first results of take in an advanced query", func() {
+			advanced, err := query.ParseAdvanced(`{:query (property rating)
+				:result-transform (fn [r] (->> r (sort-by (fn [b] (get-in b [:block/properties :rating]))) reverse (take 1)))}`)
+			Expect(err).ToNot(HaveOccurred())
+
+			results, err := graph.Query(ctx, advanced.Query, logseq.QueryAt(now))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(results.Blocks).To(HaveLen(1))
+			Expect(results.Blocks[0].Preview()).To(Equal("Great film"))
+		})
+
 		It("sorts pages by a page property", func() {
 			Expect(pages("(and (page-property type) (sort-by type asc))")[0]).To(Equal("book"))
 			Expect(pages("(and (page-property type) (sort-by type desc))")[2]).To(Equal("book"))

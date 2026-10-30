@@ -17,6 +17,10 @@ type Query struct {
 	// Sample is the number of random results to pick, or zero for all of
 	// them.
 	Sample int
+
+	// Limit is the most results to return, or zero for all of them. The
+	// results are limited after they are sorted and sampled.
+	Limit int
 }
 
 // New creates a query with the given filter.

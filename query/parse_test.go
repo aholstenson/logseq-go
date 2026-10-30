@@ -150,6 +150,8 @@ var _ = Describe("Parsing queries", func() {
 			query.New(nil).SortBy(query.SortScheduled, query.Asc).SortBy(query.SortDeadline, query.Asc))
 		Parses("(sort-by priority asc)", query.New(nil).SortBy(query.SortPriority, query.Asc))
 		Parses("(and [[a]] (sample 5))", &query.Query{Filter: query.And(query.PageRef("a")), Sample: 5})
+		Parses("(and [[a]] (limit 5))", &query.Query{Filter: query.And(query.PageRef("a")), Limit: 5})
+		Parses("(limit 5)", &query.Query{Limit: 5})
 	})
 
 	Describe("Whitespace and comments", func() {
@@ -200,6 +202,9 @@ var _ = Describe("Parsing queries", func() {
 		Fails("(or [[a]] (sort-by priority))", 10, "sort-by can only be used at the top")
 		Fails("(and (sort-by priority up))", 23, "expected `asc` or `desc`")
 		Fails("(sample 0)", 8, "above zero")
+		Fails("(limit 0)", 7, "above zero")
+		Fails("(limit)", 0, "limit takes a number")
+		Fails("(or (limit 1) [[a]])", 4, "can only be used at the top")
 		Fails("(and #)", 5, "expected a tag")
 		Fails("(and ])", 5, "unexpected `]`")
 		Fails("(and [[ ]])", 5, "expected a page title")
@@ -225,6 +230,7 @@ var _ = Describe("Parsing queries", func() {
 		RoundTrips("next 3 days", "(and (task TODO LATER) (or (and (between +1d +3d) (not (scheduled))) (scheduled +1d +3d) (deadline +1d +3d)) (sort-by priority asc))")
 		RoundTrips("all recipes", `(page-property type "Cognitive Recipe")`)
 		RoundTrips("sample", "(and (task NOW) (sample 3))")
+		RoundTrips("limit", "(and (task NOW) (sort-by priority asc) (limit 3))")
 		RoundTrips("text", `"needle"`)
 	})
 })

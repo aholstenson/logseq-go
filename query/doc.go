@@ -82,6 +82,9 @@
 //	                         `page-ref` does the same for blocks about them
 //	(sort-by priority asc)   sort by a built-in value: `priority`,
 //	                         `scheduled`, `deadline`, `journal-day` or `title`
+//	(limit 10)               the first results, after they are sorted and
+//	                         sampled; like `sort-by` it is read from the
+//	                         top-level `and`
 //
 // A date is `today`, `yesterday`, `tomorrow`, an offset from today such as
 // `-7d`, `+2w`, `+1m` or `-1y`, a date such as `2024-01-15`, or the title of a
