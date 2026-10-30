@@ -373,6 +373,25 @@ var _ = Describe("Queries", func() {
 			}))
 		})
 
+		It("returns the tags of found pages", func() {
+			indexPage(idx, "pages/a.md", "Page A",
+				content.NewBlock(
+					content.NewProperties(
+						content.NewProperty("tags",
+							content.NewPageLink("Reading"),
+							content.NewText(", "),
+							content.NewHashtag("books"),
+						),
+						content.NewProperty("type", content.NewPageLink("book")),
+					),
+				),
+			)
+
+			results := searchPages(idx, indexing.HasProperty("tags"))
+			Expect(results).To(HaveLen(1))
+			Expect(results[0].Tags).To(Equal([]string{"reading", "books"}))
+		})
+
 		It("returns no property values for pages without properties", func() {
 			indexPage(idx, "pages/a.md", "Page A",
 				content.NewBlock(content.NewParagraph(content.NewText("content"))),

@@ -2,7 +2,6 @@ package logseq_test
 
 import (
 	"context"
-	"errors"
 	"os"
 	"path/filepath"
 	"time"
@@ -51,6 +50,7 @@ var _ = Describe("Query", func() {
 			"recipe two.md":       "type:: Cognitive Recipe\n\n- step two\n",
 			"book.md":             "type:: book\ntags:: reading\n\n- TODO Finish chapter\n",
 			"projects___alpha.md": "- alpha\n",
+			"reading.md": "- About reading\n",
 			"films.md": "- Good film\n  rating:: 8\n" +
 				"- Great film\n  rating:: 10\n" +
 				"- Fine film\n  rating:: 6\n",
@@ -173,6 +173,14 @@ var _ = Describe("Query", func() {
 
 		It("finds pages by tags", func() {
 			Expect(pages("(page-tags reading)")).To(ConsistOf("book"))
+		})
+
+		It("finds the pages that other pages use as tags", func() {
+			Expect(pages("(all-page-tags)")).To(ConsistOf("reading"))
+		})
+
+		It("finds the blocks on the pages that other pages use as tags", func() {
+			Expect(blocks(`(and "about" (all-page-tags))`)).To(ConsistOf("About reading"))
 		})
 
 		It("finds pages in a namespace", func() {
@@ -392,10 +400,6 @@ var _ = Describe("Query", func() {
 	})
 
 	Describe("Errors", func() {
-		It("does not run all-page-tags yet", func() {
-			Expect(errors.Is(queryError("(all-page-tags)"), logseq.ErrUnsupportedQuery)).To(BeTrue())
-		})
-
 		It("reports a sort by a property without a name in a query built in code", func() {
 			_, err := graph.Query(ctx, query.New(nil).SortByProperty("", query.Asc))
 			Expect(err).To(MatchError(ContainSubstring("has no name")))

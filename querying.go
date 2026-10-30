@@ -299,10 +299,36 @@ func (r *queryRunner) compilePageFilter(filter query.Filter) (indexing.Query, er
 	case *query.NamespaceFilter:
 		return indexing.InNamespace(f.Namespace), nil
 	case *query.AllPageTagsFilter:
-		return nil, fmt.Errorf("%w: all-page-tags", ErrUnsupportedQuery)
+		return r.allPageTags()
 	}
 
 	return nil, fmt.Errorf("query: unknown page filter %T", filter)
+}
+
+// allPageTags returns a query that matches the pages that other pages use as
+// tags. The index has no joins, so the tags of all pages are found first. Tags
+// for pages that do not have a file are not in the index, and do not match.
+func (r *queryRunner) allPageTags() (indexing.Query, error) {
+	seen := make(map[string]bool)
+	var clauses []indexing.Query
+	err := eachResult(func(opts indexing.SearchOptions) (indexing.SearchResults[*indexing.Page], error) {
+		return r.graph.index.SearchPages(r.ctx, indexing.HasProperty("tags"), opts)
+	}, func(page *indexing.Page) {
+		for _, tag := range page.Tags {
+			if !seen[tag] {
+				seen[tag] = true
+				clauses = append(clauses, indexing.PageTitleIs(tag))
+			}
+		}
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if len(clauses) == 0 {
+		return indexing.None(), nil
+	}
+	return indexing.Or(clauses...), nil
 }
 
 // blocksOnPages finds the pages that match a query, and returns a query that

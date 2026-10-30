@@ -143,6 +143,10 @@ type Page struct {
 	// property name. Nil if the page has no properties. Only used when
 	// searching.
 	PropertyValues map[string]string
+
+	// Tags is the titles of the pages in the `tags` property of the page, in
+	// lower case. Only used when searching.
+	Tags []string
 }
 
 type Block struct {

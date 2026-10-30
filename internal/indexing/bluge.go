@@ -30,7 +30,7 @@ func (i idTerm) Term() []byte {
 // Increase it when the way pages or blocks are indexed changes, so that an
 // index stored on disk is built again with the new fields. Without that the
 // pages that did not change since they were indexed keep their old documents.
-const indexVersion = 6
+const indexVersion = 7
 
 // versionDocID is the id of the document that stores the version of the
 // index. It does not have a type, so searches for pages and blocks never
@@ -425,6 +425,14 @@ func (i *BlugeIndex) pageToDocument(doc *Page) (*bluge.Document, error) {
 	if doc.Properties != nil {
 		i.transferProperties(blugeDoc, doc.Properties, true)
 		i.transferRefs(blugeDoc, "pages", doc.Properties.Children())
+
+		// The tags are stored so that a query can find the pages that other
+		// pages use as tags, as the index can not join pages with pages.
+		if tags := doc.Properties.GetAsNode("tags"); tags != nil {
+			for _, ref := range tags.Children().PageReferences() {
+				blugeDoc.AddField(bluge.NewKeywordField("tags", normalizeRef(ref.(content.PageRef).GetTo())).StoreValue())
+			}
+		}
 	}
 
 	// References in the block a page opens with are references of the page
@@ -1092,6 +1100,8 @@ func mapMatchToPage(match *search.DocumentMatch) *Page {
 			}
 
 			page.Date = t
+		case "tags":
+			page.Tags = append(page.Tags, string(value))
 		default:
 			if name, ok := storedPropertyName(field); ok {
 				if page.PropertyValues == nil {
