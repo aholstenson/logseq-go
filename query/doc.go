@@ -63,7 +63,7 @@
 //	                         ContentFilter
 //	(alias [[name]])         pages with the alias
 //	(has-block (task TODO))  pages with one or more blocks that match the
-//	                         filter
+//	                         filter; `(has-block)` for pages with blocks
 //	(property rating > 7)    blocks with a property that is a number or a
 //	                         date that compares with the value, also with
 //	                         `=`, `<`, `<=`, `>=` and dates such as `today`;

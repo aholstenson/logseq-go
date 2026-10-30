@@ -279,6 +279,14 @@ func (r *queryRunner) compile(filter query.Filter, blocks bool) (indexing.Query,
 		// the pages as well.
 		return titleQuery(f)
 	case *query.HasBlockFilter:
+		if f.Filter == nil {
+			if blocks {
+				// Every block is on a page with a block.
+				return indexing.All(), nil
+			}
+			return indexing.HasBlocks(), nil
+		}
+
 		subPaths, err := r.pagesWithBlocks(f.Filter)
 		if err != nil {
 			return nil, err

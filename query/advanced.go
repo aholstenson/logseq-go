@@ -229,7 +229,8 @@ var queryFence = regexp.MustCompile(`(?im)^\s*#\+(BEGIN|END)_QUERY\s*$`)
 //   - :find with one variable or `(pull ?b [*])`, for blocks or pages; a
 //     query for pages with clauses about the blocks on them, such as
 //     `[?b :block/page ?p] [?b :block/marker "TODO"]`, finds the pages with
-//     one or more of these blocks, see HasBlockFilter
+//     one or more of these blocks, see HasBlockFilter; with only
+//     `[?b :block/page ?p]` it finds the pages with one or more blocks
 //   - :in and :inputs with date inputs such as `:today` or `:-7d`, page names
 //     and numbers
 //   - the attributes :block/marker, :block/priority, :block/scheduled,
@@ -656,7 +657,7 @@ func (t *translator) translate(queryNode *ednNode, inputsNode *ednNode) (*Query,
 	}
 
 	if t.findsPages {
-		filter = pagesWithBlocks(filter)
+		filter = pagesWithBlocks(filter, t.block != "")
 	} else if filter != nil && !findsBlocks(filter) {
 		// A query for blocks with only conditions on their page.
 		filter = OnPage(filter)
@@ -677,9 +678,15 @@ func (t *translator) translate(queryNode *ednNode, inputsNode *ednNode) (*Query,
 // into a filter for these pages, with a HasBlockFilter for the parts that
 // match blocks. In an `and`, the parts that only match pages are kept out of
 // it, so that `(and (title = "x") (task TODO))` becomes
-// `(and (title = "x") (has-block (task TODO)))`.
-func pagesWithBlocks(filter Filter) Filter {
+// `(and (title = "x") (has-block (task TODO)))`. If hasBlock is true the
+// query has a block on the page, such as ?b in `[?b :block/page ?p]`, so a
+// filter without conditions on blocks gets `(has-block)` for the pages with
+// one or more blocks.
+func pagesWithBlocks(filter Filter, hasBlock bool) Filter {
 	if !findsBlocks(filter) {
+		if hasBlock {
+			return withFilter(filter, HasBlock(nil))
+		}
 		return filter
 	}
 
@@ -1199,7 +1206,7 @@ func (t *translator) conjunction(clauses []*ednNode, pending []*condition) (Filt
 		if err != nil {
 			return nil, err
 		}
-		return pagesWithBlocks(filter), nil
+		return pagesWithBlocks(filter, true), nil
 	}
 
 	return t.translateConjunction(clauses, pending)

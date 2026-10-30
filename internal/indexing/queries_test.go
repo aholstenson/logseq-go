@@ -236,6 +236,17 @@ var _ = Describe("Queries", func() {
 		})
 	})
 
+	Describe("HasBlocks", func() {
+		It("matches the pages with one or more blocks", func() {
+			indexPage(idx, "pages/a.md", "Page A", content.NewBlock(content.NewParagraph(content.NewText("text"))))
+			indexPage(idx, "pages/b.md", "Page B")
+
+			results := searchPages(idx, indexing.HasBlocks())
+			Expect(results).To(HaveLen(1))
+			Expect(results[0].Title).To(Equal("Page A"))
+		})
+	})
+
 	Describe("TextIs and TextMatches", func() {
 		BeforeEach(func() {
 			indexPage(idx, "pages/a.md", "Page A",

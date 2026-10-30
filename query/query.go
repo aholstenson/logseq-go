@@ -618,7 +618,10 @@ func Alias(alias string) *AliasFilter {
 }
 
 // HasBlockFilter matches the pages that have one or more blocks that match
-// its filter. It is written as `(has-block (task TODO))`.
+// its filter. It is written as `(has-block (task TODO))`. Without a filter it
+// matches the pages with one or more blocks, and is written as `(has-block)`.
+// A page with only properties has a block, as Logseq keeps the properties
+// of a page in its first block.
 type HasBlockFilter struct {
 	Filter Filter
 }

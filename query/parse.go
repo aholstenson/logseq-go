@@ -458,8 +458,11 @@ func parseFilter(e *expr) (Filter, error) {
 		}
 		return Alias(name), nil
 	case "has-block":
+		if len(args) == 0 {
+			return HasBlock(nil), nil
+		}
 		if len(args) != 1 {
-			return nil, errorAt(e.pos, "has-block takes one filter")
+			return nil, errorAt(e.pos, "has-block takes one filter or none")
 		}
 
 		filter, err := parseFilter(args[0])

@@ -65,6 +65,7 @@ var _ = Describe("Query", func() {
 				"    - TODO Follow up with finance\n" +
 				"- TODO Plan offsite\n" +
 				"  - Book venue\n",
+			"empty.md": "",
 			"films.md": "- Good film\n  rating:: 8\n" +
 				"- Great film\n  rating:: 10\n" +
 				"- Fine film\n  rating:: 6\n" +
@@ -272,6 +273,13 @@ var _ = Describe("Query", func() {
 
 		It("finds pages by their alias", func() {
 			Expect(pages("(alias [[acme corp]])")).To(ConsistOf("acme"))
+		})
+
+		It("finds the pages with blocks, also when they only have properties", func() {
+			withBlocks := pages("(has-block)")
+			Expect(withBlocks).To(ContainElements("tasks", "recipe one", "Jan 15th, 2024"))
+			Expect(withBlocks).ToNot(ContainElement("empty"))
+			Expect(pages("(not (has-block))")).To(ConsistOf("empty"))
 		})
 
 		It("finds pages by the blocks on them", func() {
@@ -496,6 +504,18 @@ var _ = Describe("Query", func() {
 			results := runAdvanced(`{:query [:find (pull ?b [*])
 				:where [?b :block/marker "TODO"] [?b :block/page ?p] [?p :block/journal? true] [?b :block/parent ?p]]}`)
 			Expect(blockPreviews(results)).To(ConsistOf("Call the bank", "Moved task", "Old journal task"))
+		})
+
+		It("finds the pages with a block", func() {
+			results := runAdvanced(`{:query [:find (pull ?p [*]) :where [?b :block/page ?p]]}`)
+			Expect(results.Type).To(Equal(logseq.QueryResultPages))
+
+			titles := make([]string, 0, len(results.Pages))
+			for _, page := range results.Pages {
+				titles = append(titles, page.Title())
+			}
+			Expect(titles).To(ContainElement("tasks"))
+			Expect(titles).ToNot(ContainElement("empty"))
 		})
 
 		It("finds the recipes", func() {

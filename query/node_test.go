@@ -73,7 +73,7 @@ var _ = Describe("Queries in nodes", func() {
 				[(get ?t ?me)]]
 				:inputs [:current-page]}`, query.WithCurrentPage("Acme"))
 			Expect(err).ToNot(HaveOccurred())
-			Expect(advanced.Query.String()).To(Equal("(page-property organization Acme)"))
+			Expect(advanced.Query.String()).To(Equal("(and (page-property organization Acme) (has-block))"))
 		})
 
 		It("reads the title before the clause that names the page", func() {

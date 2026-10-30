@@ -132,7 +132,7 @@ var _ = Describe("Advanced queries", func() {
 		Translates("next 3 days", nextDaysQuery,
 			"(and (task LATER TODO) (or (and (between +1d +3d) (not (scheduled))) (scheduled +1d +3d) (deadline +1d +3d)) (sort-by priority asc))")
 		Translates("all recipes", recipesQuery,
-			`(page-property type "Cognitive Recipe")`)
+			`(and (page-property type "Cognitive Recipe") (has-block))`)
 
 		It("finds pages for the recipes and blocks for the others", func() {
 			for _, text := range []string{overdueQuery, todayQuery, nextDaysQuery} {
@@ -301,6 +301,10 @@ var _ = Describe("Advanced queries", func() {
 		Translates("pages by alias", pagesWhere(`[?p :block/alias ?a] [?a :block/name "acme corp"]`), "(alias [[acme corp]])")
 		Translates("pages by alias with a lookup", pagesWhere(`[?p :block/alias [:block/name "acme corp"]]`), "(alias [[acme corp]])")
 		Translates("pages by their blocks", pagesWhere(`[?b :block/page ?p] [?b :block/marker "TODO"]`), "(has-block (task TODO))")
+		Translates("pages with a block", pagesWhere(`[?b :block/page ?p]`), "(has-block)")
+		Translates("pages with a block and a condition", pagesWhere(`[?b :block/page ?p] [?p :block/journal? true]`), "(and (journal-page) (has-block))")
+		Translates("pages without a block", pagesWhere(`[?p :block/name] (not [?b :block/page ?p])`), "(not (has-block))")
+		Translates("pages without a condition on blocks", pagesWhere(`[?p :block/name]`), "")
 		Translates("pages by their blocks in an or",
 			pagesWhere(`[?b :block/page ?p] (or [?b :block/marker "TODO"] [?b :block/marker "DOING"])`),
 			"(has-block (or (task TODO) (task DOING)))")

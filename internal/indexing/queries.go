@@ -172,6 +172,14 @@ func ParentAt(location []int) Query {
 	}
 }
 
+// HasBlocks matches the pages with one or more blocks.
+func HasBlocks() Query {
+	return &fieldEquals{
+		field: "has",
+		value: "blocks",
+	}
+}
+
 // TopLevel matches the blocks at the top of their page, which have no block
 // above them.
 func TopLevel() Query {
