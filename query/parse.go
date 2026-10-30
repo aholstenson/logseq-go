@@ -416,20 +416,17 @@ func parseFilter(e *expr) (Filter, error) {
 	case "journal", "scheduled", "deadline", "journal-page":
 		return parseDateFilter(e, op, args)
 	case "title":
-		if len(args) != 2 || args[0].kind != exprSymbol {
-			return nil, errorAt(e.pos, "title takes a comparison and a text, such as (title starts-with \"projects/\")")
-		}
-
-		titleOp, ok := titleOps[strings.ToLower(args[0].text)]
-		if !ok {
-			return nil, errorAt(args[0].pos, "expected =, starts-with, ends-with or includes")
-		}
-
-		text, err := parseName(args[1])
+		titleOp, text, err := parseTextComparison(e, args, `(title starts-with "projects/")`)
 		if err != nil {
 			return nil, err
 		}
 		return Title(titleOp, text), nil
+	case "content":
+		contentOp, text, err := parseTextComparison(e, args, `(content starts-with "TODO")`)
+		if err != nil {
+			return nil, err
+		}
+		return Content(contentOp, text), nil
 	case "alias":
 		name, err := parseSingleName(e, args)
 		if err != nil {
@@ -465,6 +462,25 @@ var titleOps = map[string]TitleOp{
 	"starts-with": TitleStartsWith,
 	"ends-with":   TitleEndsWith,
 	"includes":    TitleIncludes,
+}
+
+// parseTextComparison reads the comparison and the text of a filter such as
+// `(title starts-with "projects/")`. The example is used in the error.
+func parseTextComparison(e *expr, args []*expr, example string) (TitleOp, string, error) {
+	if len(args) != 2 || args[0].kind != exprSymbol {
+		return 0, "", errorAt(e.pos, "%s takes a comparison and a text, such as %s", e.op(), example)
+	}
+
+	op, ok := titleOps[strings.ToLower(args[0].text)]
+	if !ok {
+		return 0, "", errorAt(args[0].pos, "expected =, starts-with, ends-with or includes")
+	}
+
+	text, err := parseName(args[1])
+	if err != nil {
+		return 0, "", err
+	}
+	return op, text, nil
 }
 
 var ops = map[string]Op{

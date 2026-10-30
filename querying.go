@@ -254,6 +254,8 @@ func (r *queryRunner) compile(filter query.Filter, blocks bool) (indexing.Query,
 		return r.hasChildQuery(f)
 	case *query.FullTextFilter:
 		return indexing.ContentMatches(f.Text), nil
+	case *query.ContentFilter:
+		return contentQuery(f)
 	case *query.PageFilter:
 		return indexing.PageTitleIs(f.Page), nil
 	case *query.ParentFilter:
@@ -484,8 +486,22 @@ func titleQuery(f *query.TitleFilter) (indexing.Query, error) {
 	return indexing.PageTitleMatches(match, f.Text), nil
 }
 
-// textMatch returns how the index compares a part of a title, for the
-// comparisons of a TitleFilter other than TitleEquals.
+// contentQuery matches the blocks with a text that compares with the text of
+// the filter.
+func contentQuery(f *query.ContentFilter) (indexing.Query, error) {
+	if f.Op == query.TitleEquals {
+		return indexing.TextIs(f.Text), nil
+	}
+
+	match, err := textMatch(f.Op)
+	if err != nil {
+		return nil, err
+	}
+	return indexing.TextMatches(match, f.Text), nil
+}
+
+// textMatch returns how the index compares a part of a title or the text of a
+// block, for the comparisons other than TitleEquals.
 func textMatch(op query.TitleOp) (indexing.TextMatch, error) {
 	switch op {
 	case query.TitleStartsWith:
@@ -496,7 +512,7 @@ func textMatch(op query.TitleOp) (indexing.TextMatch, error) {
 		return indexing.MatchIncludes, nil
 	}
 
-	return 0, fmt.Errorf("query: unknown title comparison %d", op)
+	return 0, fmt.Errorf("query: unknown text comparison %d", op)
 }
 
 // referencesQuery matches the blocks that reference one or more of the pages

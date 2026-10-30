@@ -149,6 +149,18 @@ var _ = Describe("Query", func() {
 			Expect(blocks(`"bank"`)).To(ConsistOf("Call the bank"))
 		})
 
+		It("finds blocks by their text with regard for case", func() {
+			Expect(blocks(`(content starts-with "TODO [#")`)).To(ConsistOf("Call the bank", "Overdue scheduled", "In two days"))
+			Expect(blocks(`(content starts-with "todo [#")`)).To(BeEmpty())
+			Expect(blocks(`(content = "Book venue")`)).To(ConsistOf("Book venue"))
+			Expect(blocks(`(content ends-with "rating:: 8")`)).To(ConsistOf("Good film"))
+		})
+
+		It("finds blocks by the dates and properties in their text", func() {
+			Expect(blocks(`(content includes "SCHEDULED: <2024-01-17")`)).To(ConsistOf("Moved task", "In two days"))
+			Expect(blocks(`(content includes "[[Reading List]]")`)).To(ConsistOf("Reading List"))
+		})
+
 		It("finds blocks on a page", func() {
 			Expect(blocks("(and (page [[Book]]) (task TODO))")).To(ConsistOf("Finish chapter"))
 		})
@@ -406,6 +418,12 @@ var _ = Describe("Query", func() {
 				:inputs [:3d-after :today]
 				:result-transform (fn [result] (sort-by (fn [b] (get b :block/priority "Z")) result))}`)
 			Expect(blockPreviews(results)).To(Equal([]string{"In two days", "Moved task"}))
+		})
+
+		It("finds the blocks with content that starts with a text", func() {
+			results := runAdvanced(`{:query [:find (pull ?b [*])
+				:where [?b :block/content ?c] [(clojure.string/starts-with? ?c "TODO [#")]]}`)
+			Expect(blockPreviews(results)).To(ConsistOf("Call the bank", "Overdue scheduled", "In two days"))
 		})
 
 		It("finds the recipes", func() {

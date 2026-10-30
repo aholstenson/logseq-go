@@ -239,6 +239,8 @@ var queryFence = regexp.MustCompile(`(?im)^\s*#\+(BEGIN|END)_QUERY\s*$`)
 //   - the conditions =, not=, <, <=, >, >=, contains?, get and
 //     clojure.string/includes?, and `[(get ?props :key) ?value]` with or
 //     without a default value
+//   - the content of a block compared with =, clojure.string/starts-with?,
+//     ends-with? and includes?, with regard for case, see ContentFilter
 //   - a value in a set, such as `[(contains? #{"book" "film"} ?value)]`, for
 //     values and for the titles of pages that blocks are on or refer to
 //   - a property that is set, such as `[(get ?props :key)]`
@@ -1953,6 +1955,29 @@ func (t *translator) titleMatches(page string, conditions []*condition) ([]title
 	return matches, nil
 }
 
+// contentFilter translates a condition on the content of a block, such as
+// `[(clojure.string/starts-with? ?c "TODO")]` with `[?b :block/content ?c]`.
+func (t *translator) contentFilter(c *condition) (Filter, error) {
+	if c.fn == "=" {
+		value, err := t.comparedValue(c, "=")
+		if err != nil {
+			return nil, err
+		}
+		return Content(TitleEquals, value), nil
+	}
+
+	op, isFunction := titleFunctions[c.fn]
+	if !isFunction || len(c.args) != 2 || !c.args[0].isSymbol(c.subject) {
+		return nil, t.unsupported(c.node, "only =, clojure.string/starts-with?, ends-with? and includes? are supported for the content")
+	}
+
+	text, ok := t.scalar(c.args[1])
+	if !ok {
+		return nil, t.unsupported(c.node, "expected the text to compare the content with")
+	}
+	return Content(op, text), nil
+}
+
 // propertyCondition translates a condition on the properties of a block or
 // page itself, such as `[(get ?props :type)]` or `[(contains? ?props :type)]`,
 // which match when the property is set.
@@ -2803,15 +2828,11 @@ func (t *translator) sourceFilter(src *source, conditions []*condition) (Filter,
 	case sourceContent:
 		var filters []Filter
 		for _, c := range conditions {
-			if c.fn != "clojure.string/includes?" || len(c.args) != 2 || !c.args[0].isSymbol(c.subject) {
-				return nil, t.unsupported(c.node, "only clojure.string/includes? is supported for the content")
+			filter, err := t.contentFilter(c)
+			if err != nil {
+				return nil, err
 			}
-
-			text, ok := t.scalar(c.args[1])
-			if !ok {
-				return nil, t.unsupported(c.node, "expected the text to search for")
-			}
-			filters = append(filters, FullText(text))
+			filters = append(filters, filter)
 		}
 		return andOf(filters), nil
 	case sourceProperty:

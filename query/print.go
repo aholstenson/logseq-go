@@ -219,6 +219,10 @@ func (f *TitleFilter) String() string {
 	return list("title", titleOpNames[f.Op], formatString(f.Text))
 }
 
+func (f *ContentFilter) String() string {
+	return list("content", titleOpNames[f.Op], formatString(f.Text))
+}
+
 func (f *AliasFilter) String() string {
 	return list("alias", formatPageRef(f.Alias))
 }

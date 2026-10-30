@@ -40,6 +40,7 @@ var _ = Describe("Writing queries", func() {
 		Prints("page as the parent", query.New(query.ParentAt("Outline")), "(parent [[Outline]])")
 		Prints("journal page", query.New(query.JournalPage(query.Less, query.Relative("today"))), "(journal-page < today)")
 		Prints("title", query.New(query.Title(query.TitleIncludes, "a\"b")), `(title includes "a\"b")`)
+		Prints("content", query.New(query.Content(query.TitleEndsWith, "a\nb")), `(content ends-with "a\nb")`)
 		Prints("alias", query.New(query.Alias("ACME Corp")), "(alias [[ACME Corp]])")
 		Prints("has-block", query.New(query.HasBlock(query.Task(content.TaskStatusTodo))), "(has-block (task TODO))")
 		Prints("refs to pages", query.New(query.RefsTo(query.PageTags("project"))), "(refs (page-tags [[project]]))")

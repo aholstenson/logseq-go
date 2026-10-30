@@ -191,6 +191,25 @@ func AncestorAt(location []int) Query {
 	}
 }
 
+// TextIs matches the blocks with the text, with regard for case. The text of
+// a block is its Markdown, the same as :block/content in Logseq, see
+// blockText.
+func TextIs(text string) Query {
+	return &fieldEquals{
+		field: "text",
+		value: text,
+	}
+}
+
+// TextMatches matches the blocks with a text that matches the text, with
+// regard for case, the same as TextIs does for the whole text.
+func TextMatches(match TextMatch, text string) Query {
+	return &fieldPattern{
+		field:   "text",
+		pattern: textPattern(match, text),
+	}
+}
+
 func ContentMatches(text string) Query {
 	return &fieldMatches{
 		field: "content",
@@ -348,30 +367,36 @@ func PagesAt(subPaths ...string) Query {
 	return Or(clauses...)
 }
 
-// TextMatch is how a title is compared with a text, for the queries that
-// match a part of a title.
+// TextMatch is how a title or the text of a block is compared with a text,
+// for the queries that match a part of it.
 type TextMatch int
 
 const (
-	// MatchPrefix matches the titles that start with the text.
+	// MatchPrefix matches the values that start with the text.
 	MatchPrefix TextMatch = iota
-	// MatchSuffix matches the titles that end with the text.
+	// MatchSuffix matches the values that end with the text.
 	MatchSuffix
-	// MatchIncludes matches the titles that include the text.
+	// MatchIncludes matches the values that include the text.
 	MatchIncludes
 )
+
+// textPattern returns the regular expression for the values that match the
+// text. The values can have more than one line.
+func textPattern(match TextMatch, text string) string {
+	quoted := regexp.QuoteMeta(text)
+	switch match {
+	case MatchPrefix:
+		return "(?s)" + quoted + ".*"
+	case MatchSuffix:
+		return "(?s).*" + quoted
+	}
+	return "(?s).*" + quoted + ".*"
+}
 
 // titlePattern returns the regular expression for the titles that match the
 // text. Titles are stored in lower case, see normalizeRef.
 func titlePattern(match TextMatch, text string) string {
-	quoted := regexp.QuoteMeta(normalizeRef(text))
-	switch match {
-	case MatchPrefix:
-		return quoted + ".*"
-	case MatchSuffix:
-		return ".*" + quoted
-	}
-	return ".*" + quoted + ".*"
+	return textPattern(match, normalizeRef(text))
 }
 
 // PageTitleMatches matches the pages with a title that matches the text, and

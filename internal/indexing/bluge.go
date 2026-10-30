@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/aholstenson/logseq-go/content"
+	"github.com/aholstenson/logseq-go/internal/markdown"
 	"github.com/aholstenson/logseq-go/internal/utils"
 	"github.com/blugelabs/bluge"
 	"github.com/blugelabs/bluge/index"
@@ -31,7 +32,7 @@ func (i idTerm) Term() []byte {
 // Increase it when the way pages or blocks are indexed changes, so that an
 // index stored on disk is built again with the new fields. Without that the
 // pages that did not change since they were indexed keep their old documents.
-const indexVersion = 11
+const indexVersion = 12
 
 // versionDocID is the id of the document that stores the version of the
 // index. It does not have a type, so searches for pages and blocks never
@@ -685,10 +686,69 @@ func (i *BlugeIndex) blockToDocument(page *Page, id string, block *content.Block
 	plainText0(block.Content(), &fullText)
 	blugeDoc.AddField(bluge.NewTextField("content", fullText.String()))
 
+	text, err := blockText(block)
+	if err != nil {
+		return nil, err
+	}
+	blugeDoc.AddField(bluge.NewKeywordField("text", text))
+
 	preview := generatePreview(block.Content())
 	blugeDoc.AddField(bluge.NewTextField("preview", preview).StoreValue())
 
 	return blugeDoc, nil
+}
+
+// hiddenProperties are the properties that Logseq removes from the content
+// of a block, in lower case.
+var hiddenProperties = map[string]struct{}{
+	"id": {}, "custom-id": {}, "background-color": {}, "background_color": {}, "heading": {},
+	"collapsed": {}, "created-at": {}, "updated-at": {}, "last-modified-at": {},
+	"created_at": {}, "last_modified_at": {}, "query-table": {}, "query-properties": {},
+	"query-sort-by": {}, "query-sort-desc": {}, "ls-type": {}, "hl-type": {}, "hl-page": {},
+	"hl-stamp": {}, "hl-color": {}, "logseq.macro-name": {}, "logseq.macro-arguments": {},
+	"logseq.order-list-type": {}, "logseq.tldraw.page": {}, "logseq.tldraw.shape": {},
+	"todo": {}, "doing": {}, "now": {}, "later": {}, "done": {},
+}
+
+// blockText returns the text of a block the same as Logseq has it in
+// :block/content: the Markdown of the block without the bullet, the
+// indentation, the blocks below it and the hidden properties. It is case
+// sensitive, and is used to compare the text with
+// clojure.string/starts-with? and similar functions.
+func blockText(block *content.Block) (string, error) {
+	var parts []string
+	for _, node := range block.Content() {
+		text, err := markdown.AsString(node)
+		if err != nil {
+			return "", fmt.Errorf("error writing the text of a block: %w", err)
+		}
+
+		if _, isProperties := node.(*content.Properties); isProperties {
+			text = withoutHiddenProperties(text)
+		}
+
+		if text != "" {
+			parts = append(parts, text)
+		}
+	}
+
+	return strings.Join(parts, "\n"), nil
+}
+
+// withoutHiddenProperties removes the lines of the hidden properties from the
+// Markdown of properties.
+func withoutHiddenProperties(text string) string {
+	lines := strings.Split(text, "\n")
+	kept := lines[:0]
+	for _, line := range lines {
+		name, _, isProperty := strings.Cut(line, "::")
+		if _, hidden := hiddenProperties[strings.ToLower(strings.TrimSpace(name))]; isProperty && hidden {
+			continue
+		}
+		kept = append(kept, line)
+	}
+
+	return strings.Join(kept, "\n")
 }
 
 // transferTask indexes the status, priority and dates of a task so that

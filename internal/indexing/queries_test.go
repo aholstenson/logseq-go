@@ -236,6 +236,49 @@ var _ = Describe("Queries", func() {
 		})
 	})
 
+	Describe("TextIs and TextMatches", func() {
+		BeforeEach(func() {
+			indexPage(idx, "pages/a.md", "Page A",
+				content.NewBlock(
+					content.NewParagraph(content.NewText("Pay the Bank")),
+					content.NewProperties(
+						content.NewProperty("id", content.NewText("6513a7d2-0000-0000-0000-000000000000")),
+						content.NewProperty("type", content.NewText("bill")),
+					),
+				),
+				content.NewBlock(content.NewParagraph(content.NewText("pay the rent"))),
+			)
+		})
+
+		texts := func(query indexing.Query) []string {
+			var previews []string
+			for _, block := range searchBlocks(idx, query) {
+				previews = append(previews, block.Preview)
+			}
+			return previews
+		}
+
+		It("matches the whole text, without the hidden properties", func() {
+			Expect(texts(indexing.TextIs("Pay the Bank\ntype:: bill"))).To(ConsistOf("Pay the Bank"))
+			Expect(texts(indexing.TextIs("Pay the Bank"))).To(BeEmpty())
+		})
+
+		It("matches the start, the end and a part of the text with regard for case", func() {
+			Expect(texts(indexing.TextMatches(indexing.MatchPrefix, "Pay"))).To(ConsistOf("Pay the Bank"))
+			Expect(texts(indexing.TextMatches(indexing.MatchSuffix, "type:: bill"))).To(ConsistOf("Pay the Bank"))
+			Expect(texts(indexing.TextMatches(indexing.MatchIncludes, "the "))).To(ConsistOf("Pay the Bank", "pay the rent"))
+			Expect(texts(indexing.TextMatches(indexing.MatchIncludes, "bank"))).To(BeEmpty())
+		})
+
+		It("matches text over more than one line", func() {
+			Expect(texts(indexing.TextMatches(indexing.MatchIncludes, "Bank\ntype"))).To(ConsistOf("Pay the Bank"))
+		})
+
+		It("does not read the text as a regular expression", func() {
+			Expect(texts(indexing.TextMatches(indexing.MatchIncludes, "the.*"))).To(BeEmpty())
+		})
+	})
+
 	Describe("PropertyMatches", func() {
 		It("matches pages by property text", func() {
 			indexPage(idx, "pages/a.md", "Page A",

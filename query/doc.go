@@ -53,6 +53,10 @@
 //	                         `journal`; it matches pages, not blocks
 //	(title starts-with "x")  pages with a title that starts with the text,
 //	                         also with `=`, `ends-with` and `includes`
+//	(content includes "x")   blocks with a text that includes the text,
+//	                         with regard for case, also with `=`,
+//	                         `starts-with` and `ends-with`, see
+//	                         ContentFilter
 //	(alias [[name]])         pages with the alias
 //	(has-block (task TODO))  pages with one or more blocks that match the
 //	                         filter

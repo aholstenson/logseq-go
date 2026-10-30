@@ -67,7 +67,7 @@ func findsBlocks(filter Filter) bool {
 		return f.Field != FieldJournalPage
 	case *PropertyCompareFilter:
 		return !f.Page
-	case *PageRefFilter, *RefsFilter, *ReferencesFilter, *FullTextFilter, *TaskFilter, *PriorityFilter,
+	case *PageRefFilter, *RefsFilter, *ReferencesFilter, *FullTextFilter, *ContentFilter, *TaskFilter, *PriorityFilter,
 		*PageFilter, *ParentFilter, *AncestorFilter, *PropertyFilter,
 		*OnPageFilter, *BelowFilter, *HasChildFilter:
 		return true
@@ -259,6 +259,25 @@ type FullTextFilter struct {
 // FullText creates a filter that matches the blocks that contain the text.
 func FullText(text string) *FullTextFilter {
 	return &FullTextFilter{Text: text}
+}
+
+// ContentFilter matches the blocks with a text that compares with the text in
+// the filter. Unlike FullTextFilter it compares the text of the block as it is
+// in the file, with regard for case, the same as `clojure.string/includes?`
+// and similar functions on `:block/content` in Logseq. The text of a block is
+// its Markdown without the bullet, the indentation, the blocks below it and the
+// properties that Logseq hides, such as `id::`. It is written as
+// `(content starts-with "TODO")`, with `=`, `starts-with`, `ends-with` or
+// `includes`.
+type ContentFilter struct {
+	Op   TitleOp
+	Text string
+}
+
+// Content creates a filter that matches the blocks with a text that compares
+// with the text.
+func Content(op TitleOp, text string) *ContentFilter {
+	return &ContentFilter{Op: op, Text: text}
 }
 
 // PageFilter matches the blocks on a page.
@@ -534,7 +553,8 @@ type TitleFilter struct {
 	Text string
 }
 
-// TitleOp is how a TitleFilter compares a title.
+// TitleOp is how a TitleFilter compares a title, and how a ContentFilter
+// compares the text of a block.
 type TitleOp int
 
 const (
@@ -593,6 +613,7 @@ func (*PageRefFilter) isFilter()         {}
 func (*RefsFilter) isFilter()            {}
 func (*ReferencesFilter) isFilter()      {}
 func (*FullTextFilter) isFilter()        {}
+func (*ContentFilter) isFilter()         {}
 func (*PageFilter) isFilter()            {}
 func (*ParentFilter) isFilter()          {}
 func (*OnPageFilter) isFilter()          {}
