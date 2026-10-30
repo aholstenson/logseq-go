@@ -87,7 +87,7 @@ func (g *Graph) runQuery(ctx context.Context, q *query.Query, opts []QueryOption
 		opt(options)
 	}
 
-	sortBy, err := querySortFields(q.Sort)
+	sortBy, err := querySortFields(q.Sort, q.FindsBlocks())
 	if err != nil {
 		return nil, err
 	}
@@ -142,7 +142,10 @@ func (g *Graph) runQuery(ctx context.Context, q *query.Query, opts []QueryOption
 	return results, nil
 }
 
-func querySortFields(sorts []query.Sort) ([]indexing.SortField, error) {
+// querySortFields returns the fields of the index to sort by. findsBlocks tells
+// if the query finds blocks or pages, as some values are in other fields for
+// pages.
+func querySortFields(sorts []query.Sort, findsBlocks bool) ([]indexing.SortField, error) {
 	fields := make([]indexing.SortField, 0, len(sorts))
 	for _, s := range sorts {
 		var name string
@@ -157,6 +160,11 @@ func querySortFields(sorts []query.Sort) ([]indexing.SortField, error) {
 			name = indexing.SortFieldJournalDate
 		case query.SortTitle:
 			name = indexing.SortFieldTitle
+		case query.SortUpdatedAt:
+			name = indexing.SortFieldModified
+			if findsBlocks {
+				name = indexing.SortFieldProperty(timestampProperties[query.UpdatedAt])
+			}
 		case query.SortProperty:
 			if s.Property == "" {
 				return nil, fmt.Errorf("query: the property to sort by has no name")
@@ -274,6 +282,12 @@ func (r *queryRunner) compile(filter query.Filter, blocks bool) (indexing.Query,
 		return r.blocksOnPages(compareQuery)
 	case *query.DateFilter:
 		return r.dateQuery(f)
+	case *query.TimestampFilter:
+		timestampQuery, err := r.timestampQuery(f)
+		if err != nil || !f.Page || !blocks {
+			return timestampQuery, err
+		}
+		return r.blocksOnPages(timestampQuery)
 	case *query.TitleFilter:
 		// Blocks have the title of their page, so this matches the blocks on
 		// the pages as well.
@@ -707,6 +721,76 @@ func dayBounds(op query.Op, date time.Time) (time.Time, time.Time, error) {
 	}
 
 	return time.Time{}, time.Time{}, fmt.Errorf("query: unknown date operation %d", op)
+}
+
+// timestampProperties are the properties that hold the times of a block, in
+// milliseconds since 1970.
+var timestampProperties = map[query.TimestampField]string{
+	query.CreatedAt: "created-at",
+	query.UpdatedAt: "updated-at",
+}
+
+// timestampQuery matches the blocks or pages with a time that compares with
+// the time of the filter. See query.TimestampFilter for where the times come
+// from.
+func (r *queryRunner) timestampQuery(f *query.TimestampFilter) (indexing.Query, error) {
+	if f.Page && f.Field == query.CreatedAt {
+		return nil, fmt.Errorf("query: the time a page was created is not known, only the time its file was last changed")
+	}
+
+	if f.Op == query.Exists {
+		if f.Page {
+			return indexing.All(), nil
+		}
+		return indexing.HasProperty(timestampProperties[f.Field]), nil
+	}
+
+	t, err := r.resolveTime(f.Time)
+	if err != nil {
+		return nil, err
+	}
+
+	if f.Page {
+		var start, end time.Time
+		switch f.Op {
+		case query.Equal:
+			start, end = t, t.Add(time.Millisecond)
+		case query.Less:
+			end = t
+		case query.LessOrEqual:
+			end = t.Add(time.Millisecond)
+		case query.Greater:
+			start = t.Add(time.Millisecond)
+		case query.GreaterOrEqual:
+			start = t
+		default:
+			return nil, fmt.Errorf("query: unknown comparison %d", f.Op)
+		}
+		return indexing.ModifiedBetween(start, end), nil
+	}
+
+	compare := &query.PropertyCompareFilter{
+		Name:   timestampProperties[f.Field],
+		Op:     f.Op,
+		Number: float64(t.UnixMilli()),
+	}
+	return r.propertyCompareQuery(compare)
+}
+
+// resolveTime returns the time that a time in a query stands for.
+func (r *queryRunner) resolveTime(t query.Time) (time.Time, error) {
+	switch {
+	case t.Input != "":
+		input, ok := utils.ParseQueryDateInput(t.Input, r.now)
+		if !ok || !input.HasTime {
+			return time.Time{}, fmt.Errorf("query: %q is not an input with a time of day", t.Input)
+		}
+		return input.Time, nil
+	case !t.Fixed.IsZero():
+		return t.Fixed, nil
+	}
+
+	return time.Time{}, fmt.Errorf("query: a time is missing")
 }
 
 // propertyCompareQuery matches the property when its value is a number or a

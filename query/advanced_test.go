@@ -453,6 +453,25 @@ var _ = Describe("Advanced queries", func() {
 			where(`[?b :block/parent ?p] [?p :block/journal? true]`), "or a page with a title")
 	})
 
+	Describe("Timestamps", func() {
+		Translates("pages changed recently",
+			`{:query [:find (pull ?p [*]) :in $ ?since :where [?p :block/name] [?p :block/updated-at ?u] [(> ?u ?since)]] :inputs [:-7d-ms]}`,
+			"(page-updated-at > -7d-ms)")
+		Translates("blocks created before now",
+			`{:query [:find (pull ?b [*]) :in $ ?now :where [?b :block/created-at ?c] [(< ?c ?now)]] :inputs [:right-now-ms]}`,
+			"(created-at < right-now-ms)")
+		Translates("blocks with a time", where(`[?b :block/updated-at]`), "(updated-at)")
+		Translates("blocks on pages changed recently",
+			`{:query [:find (pull ?b [*]) :in $ ?since :where [?b :block/marker "TODO"] [?b :block/page ?p] [?p :block/updated-at ?u] [(>= ?u ?since)]] :inputs [:today-start]}`,
+			"(and (task TODO) (page-updated-at >= today-start))")
+		Translates("a range of times",
+			`{:query [:find (pull ?b [*]) :in $ ?a ?z :where [?b :block/updated-at ?u] [(>= ?u ?a)] [(< ?u ?z)]] :inputs [:-7d-ms :right-now-ms]}`,
+			"(and (updated-at >= -7d-ms) (updated-at < right-now-ms))")
+		Translates("sorted by the time of the last change",
+			`{:query (page-updated-at >= -7d-ms) :result-transform (fn [r] (reverse (sort-by :block/updated-at r)))}`,
+			"(and (page-updated-at >= -7d-ms) (sort-by updated-at desc))")
+	})
+
 	Describe("Inputs", func() {
 		Translates("older date inputs",
 			`{:query [:find (pull ?b [*]) :in $ ?start ?end :where [?b :block/scheduled ?d] [(>= ?d ?start)] [(<= ?d ?end)]] :inputs [:14d :7d-after]}`,
@@ -693,6 +712,11 @@ var _ = Describe("Advanced queries", func() {
 	Describe("Unsupported", func() {
 		Unsupported("current page", `{:query [:find (pull ?b [*]) :in $ ?p :where [?b :block/page ?p]] :inputs [:current-page]}`, "the input :current-page")
 		Unsupported("time inputs", `{:query [:find (pull ?b [*]) :in $ ?t :where [?b :block/scheduled ?d] [(< ?d ?t)]] :inputs [:right-now-ms]}`, "time of day")
+		Unsupported("dates for times", `{:query [:find (pull ?b [*]) :in $ ?t :where [?b :block/updated-at ?u] [(> ?u ?t)]] :inputs [:today]}`,
+			"only compared with inputs that have a time of day")
+		Translates("times of referenced pages",
+			`{:query [:find (pull ?b [*]) :in $ ?since :where [?b :block/refs ?p] [?p :block/updated-at ?u] [(> ?u ?since)]] :inputs [:-7d-ms]}`,
+			"(refs (page-updated-at > -7d-ms))")
 		Unsupported("two variables in find", `{:query [:find ?b ?p :where [?b :block/page ?p]]}`, "one variable or pull")
 		Unsupported("comparing variables", where(`[?b :block/scheduled ?s] [?b :block/deadline ?d] [(< ?s ?d)]`), "two variables")
 		Unsupported("parents that are not inputs", where(`[?b :block/parent ?parent]`), "expected a block")

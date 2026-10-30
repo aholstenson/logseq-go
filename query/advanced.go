@@ -232,9 +232,12 @@ var queryFence = regexp.MustCompile(`(?im)^\s*#\+(BEGIN|END)_QUERY\s*$`)
 //     one or more of these blocks, see HasBlockFilter; with only
 //     `[?b :block/page ?p]` it finds the pages with one or more blocks
 //   - :in and :inputs with date inputs such as `:today` or `:-7d`, page names
-//     and numbers
+//     and numbers; inputs with a time of day, such as `:-7d-ms` or
+//     `:right-now-ms`, are compared with :block/created-at and
+//     :block/updated-at, see TimestampFilter
 //   - the attributes :block/marker, :block/priority, :block/scheduled,
-//     :block/deadline, :block/content, :block/page, :block/parent,
+//     :block/deadline, :block/content, :block/created-at, :block/updated-at,
+//     :block/page, :block/parent,
 //     :block/refs, :block/path-refs, :block/properties, :block/name, :block/original-name,
 //     :block/journal-day, :block/journal?, :block/tags, :block/namespace,
 //     :block/alias and :page/properties
@@ -467,6 +470,7 @@ const (
 	sourceJournalDay
 	sourceContent
 	sourceProperty
+	sourceTimestamp
 )
 
 // source is where a variable gets its value from, such as the marker of a
@@ -486,6 +490,9 @@ type source struct {
 
 	// hasDefault is true if def is set.
 	hasDefault bool
+
+	// timestamp is the time for sourceTimestamp.
+	timestamp TimestampField
 }
 
 // condition is a clause such as `[(< ?d ?today)]` that compares the value of
@@ -1863,6 +1870,23 @@ func (t *translator) binding(clause *ednNode, conditions []*condition) (Filter, 
 			return t.sourceFilter(src, []*condition{equalTo(value)})
 		}
 		return t.bind(value, src, conditions)
+	case "block/created-at", "block/updated-at":
+		if entity.text != t.block && entity.text != t.page {
+			return nil, t.unsupported(clause, "times of other blocks or pages are not supported")
+		}
+		if entity.text == t.block && t.result != t.block {
+			return nil, t.unsupported(clause, "finding pages by the blocks on them is not supported")
+		}
+
+		src := &source{kind: sourceTimestamp, entity: entity.text, timestamp: CreatedAt}
+		if attribute == "block/updated-at" {
+			src.timestamp = UpdatedAt
+		}
+
+		if !isVar(value) && !value.isSymbol("_") {
+			return t.sourceFilter(src, []*condition{equalTo(value)})
+		}
+		return t.bind(value, src, conditions)
 	case "block/properties", "page/properties":
 		if entity.text != t.block && entity.text != t.page {
 			return nil, t.unsupported(clause, "properties of other blocks or pages are not supported")
@@ -3150,6 +3174,8 @@ func (t *translator) sourceFilter(src *source, conditions []*condition) (Filter,
 		return t.valueFilter(src, conditions)
 	case sourceScheduled, sourceDeadline, sourceJournalDay:
 		return t.dateFilter(src, conditions)
+	case sourceTimestamp:
+		return t.timestampFilter(src, conditions)
 	case sourceContent:
 		var filters []Filter
 		for _, c := range conditions {
@@ -3481,6 +3507,59 @@ func (t *translator) dateFilter(src *source, conditions []*condition) (Filter, e
 		result = append(result, f)
 	}
 	return andOf(result), nil
+}
+
+// timestampFilter returns the filter for conditions on the time a block or
+// page was created or last changed, such as `[(> ?u ?since)]` with
+// `:inputs [:-7d-ms]`. Logseq stores these times in milliseconds, so they are
+// compared with inputs that have a time of day, or with numbers.
+func (t *translator) timestampFilter(src *source, conditions []*condition) (Filter, error) {
+	isPage := src.entity == t.page
+	if len(conditions) == 0 {
+		return &TimestampFilter{Field: src.timestamp, Op: Exists, Page: isPage}, nil
+	}
+
+	var filters []Filter
+	for _, c := range conditions {
+		op, ok := ops[c.fn]
+		if !ok || len(c.args) != 2 {
+			return nil, t.unsupported(c.node, "only =, <, <=, > and >= are supported for times")
+		}
+
+		other := c.args[1]
+		if c.args[1].isSymbol(c.subject) {
+			op = flippedOps[op]
+			other = c.args[0]
+		} else if !c.args[0].isSymbol(c.subject) {
+			return nil, t.unsupported(c.node, "expected %s in the comparison", c.subject)
+		}
+
+		var at Time
+		resolved := t.resolve(other)
+		switch resolved.kind {
+		case ednKeyword:
+			input, ok := utils.ParseQueryDateInput(resolved.text, time.Now())
+			if !ok {
+				return nil, t.unsupported(other, "expected a time, such as :-7d-ms or :right-now-ms")
+			}
+			if !input.HasTime {
+				return nil, t.unsupported(other, "times are only compared with inputs that have a time of day, such as :-7d-ms or :today-start, as Logseq stores them in milliseconds")
+			}
+			at = TimeInput(resolved.text)
+		case ednNumber:
+			ms, err := strconv.ParseInt(resolved.text, 10, 64)
+			if err != nil {
+				return nil, t.unsupported(other, "expected a time in milliseconds")
+			}
+			at = At(time.UnixMilli(ms))
+		default:
+			return nil, t.unsupported(other, "expected a time, such as :-7d-ms or :right-now-ms")
+		}
+
+		filters = append(filters, &TimestampFilter{Field: src.timestamp, Op: op, Time: at, Page: isPage})
+	}
+
+	return andOf(filters), nil
 }
 
 // asRange combines a lower and an upper bound into one range, such as
@@ -3931,7 +4010,7 @@ func (t *translator) sortKey(node *ednNode) (Sort, error) {
 		return sort, nil
 	}
 
-	return Sort{}, t.unsupported(node, "only sorting by priority, scheduled, deadline, journal day, page title or a property is supported")
+	return Sort{}, t.unsupported(node, "only sorting by priority, scheduled, deadline, journal day, page title, the time of the last change or a property is supported")
 }
 
 // keyPath returns the keys that an expression such as `(get b :k "default")`,
@@ -3984,6 +4063,8 @@ func sortForPath(path []*ednNode) (Sort, bool) {
 			return Sort{Field: SortScheduled}, true
 		case "block/deadline":
 			return Sort{Field: SortDeadline}, true
+		case "block/updated-at":
+			return Sort{Field: SortUpdatedAt}, true
 		}
 	case 2:
 		switch {

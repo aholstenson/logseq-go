@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	logseq "github.com/aholstenson/logseq-go"
@@ -881,5 +882,99 @@ var _ = Describe("Query", func() {
 			_, err := graph.Query(ctx, query.New(query.Scheduled(query.Less, query.Date{})))
 			Expect(err).To(MatchError(ContainSubstring("date is missing")))
 		})
+	})
+})
+
+var _ = Describe("Query timestamps", func() {
+	var (
+		graph *logseq.Graph
+		ctx   context.Context
+	)
+
+	// now is a Monday afternoon. `-7d-ms` is the start of the Monday before.
+	now := time.Date(2024, time.January, 15, 14, 0, 0, 0, time.Local)
+	recent := time.Date(2024, time.January, 14, 12, 0, 0, 0, time.Local)
+	old := time.Date(2024, time.January, 1, 12, 0, 0, 0, time.Local)
+
+	BeforeEach(func() {
+		dir := setupGraph()
+		ctx = context.Background()
+
+		pages := map[string]time.Time{
+			"recent.md": recent,
+			"old.md":    old,
+		}
+		for name, modified := range pages {
+			path := filepath.Join(dir, "pages", name)
+			text := "- TODO a task\n" +
+				"- Changed recently\n  updated-at:: " + strconv.FormatInt(recent.UnixMilli(), 10) + "\n" +
+				"- Changed long ago\n  updated-at:: " + strconv.FormatInt(old.UnixMilli(), 10) + "\n"
+			Expect(os.WriteFile(path, []byte(text), 0o644)).To(Succeed())
+			Expect(os.Chtimes(path, modified, modified)).To(Succeed())
+		}
+
+		var err error
+		graph, err = logseq.Open(ctx, dir, logseq.WithInMemoryIndex())
+		Expect(err).ToNot(HaveOccurred())
+	})
+
+	AfterEach(func() {
+		graph.Close()
+	})
+
+	run := func(q *query.Query) *logseq.QueryResults {
+		results, err := graph.Query(ctx, q, logseq.QueryAt(now))
+		Expect(err).ToNot(HaveOccurred())
+		return results
+	}
+
+	titles := func(results *logseq.QueryResults) []string {
+		var titles []string
+		for _, page := range results.Pages {
+			titles = append(titles, page.Title())
+		}
+		return titles
+	}
+
+	parse := func(text string) *query.Query {
+		q, err := query.Parse(text)
+		Expect(err).ToNot(HaveOccurred())
+		return q
+	}
+
+	It("finds the pages with a file that changed after a time", func() {
+		Expect(titles(run(parse("(page-updated-at > -7d-ms)")))).To(ConsistOf("recent"))
+		Expect(titles(run(parse("(page-updated-at < 2024-01-02T00:00)")))).To(ConsistOf("old"))
+	})
+
+	It("sorts pages by the time their file changed", func() {
+		Expect(titles(run(parse("(and (page-updated-at) (sort-by updated-at desc))")))).To(Equal([]string{"recent", "old"}))
+		Expect(titles(run(parse("(and (page-updated-at) (sort-by updated-at asc))")))).To(Equal([]string{"old", "recent"}))
+	})
+
+	It("finds the blocks on pages that changed recently in an advanced query", func() {
+		advanced, err := query.ParseAdvanced(`{:query [:find (pull ?b [*]) :in $ ?since
+			:where [?b :block/marker "TODO"] [?b :block/page ?p] [?p :block/updated-at ?u] [(> ?u ?since)]]
+			:inputs [:-7d-ms]}`)
+		Expect(err).ToNot(HaveOccurred())
+
+		results := run(advanced.Query)
+		Expect(results.Blocks).To(HaveLen(1))
+		Expect(results.Blocks[0].PageTitle()).To(Equal("recent"))
+	})
+
+	It("finds the blocks by their updated-at property", func() {
+		results := run(parse("(and (page [[old]]) (updated-at > -7d-ms))"))
+		Expect(results.Blocks).To(HaveLen(1))
+		Expect(results.Blocks[0].Preview()).To(Equal("Changed recently"))
+
+		results = run(parse("(and (page [[old]]) (between updated-at 2024-01-01 2024-01-01))"))
+		Expect(results.Blocks).To(HaveLen(1))
+		Expect(results.Blocks[0].Preview()).To(Equal("Changed long ago"))
+	})
+
+	It("returns an error for the time a page was created", func() {
+		_, err := graph.Query(ctx, parse("(page-created-at > -7d-ms)"), logseq.QueryAt(now))
+		Expect(err).To(MatchError(ContainSubstring("the time a page was created is not known")))
 	})
 })

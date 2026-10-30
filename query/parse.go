@@ -422,7 +422,7 @@ func parseFilter(e *expr) (Filter, error) {
 		return TopLevel(), nil
 	case "between":
 		if len(args) == 3 {
-			return nil, errorAt(e.pos, "between with a timestamp property is not supported")
+			return parseTimestampBetween(e, args)
 		}
 
 		if len(args) != 2 {
@@ -442,6 +442,8 @@ func parseFilter(e *expr) (Filter, error) {
 		return Between(start, end), nil
 	case "journal", "scheduled", "deadline", "journal-page":
 		return parseDateFilter(e, op, args)
+	case "created-at", "updated-at", "page-created-at", "page-updated-at":
+		return parseTimestampFilter(e, op, args)
 	case "title":
 		titleOp, text, err := parseTextComparison(e, args, `(title starts-with "projects/")`)
 		if err != nil {

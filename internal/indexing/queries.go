@@ -613,6 +613,16 @@ func ScheduledBetween(start time.Time, end time.Time) Query {
 	}
 }
 
+// ModifiedBetween matches the pages with a file that was last changed from
+// start, inclusive, to end, exclusive. A zero time leaves that end open.
+func ModifiedBetween(start time.Time, end time.Time) Query {
+	return &dateRange{
+		field: "lastModified",
+		start: start,
+		end:   end,
+	}
+}
+
 func JournalBetween(start time.Time, end time.Time) Query {
 	return &dateRange{
 		field: "date",

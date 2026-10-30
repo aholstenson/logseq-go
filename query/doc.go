@@ -6,7 +6,8 @@
 //
 // The text form is the simple query syntax of Logseq, the part inside
 // `{{query ...}}`, with some additions. Every simple query that Logseq can
-// read can be read by Parse, except for `between` with a timestamp property.
+// read can be read by Parse. `(between created-at -7d today)` is read as two
+// comparisons of the time, see TimestampFilter.
 //
 // Filters from Logseq:
 //
@@ -71,6 +72,12 @@
 //	                         `=`, `<`, `<=`, `>=` and dates such as `today`;
 //	                         `page-property` for pages, see
 //	                         PropertyCompareFilter
+//	(updated-at > -7d-ms)    blocks changed after the time, also with
+//	                         `created-at`, the other comparisons, and
+//	                         `page-updated-at` for pages; the time is an
+//	                         input with a time of day, such as
+//	                         `right-now-ms`, or a time such as
+//	                         `2024-01-15T10:30`, see TimestampFilter
 //	(page (title = "x"))     blocks on the pages that the filter matches,
 //	                         see OnPageFilter
 //	(parent (task TODO))     blocks directly below a block that the filter
@@ -83,7 +90,8 @@
 //	                         that the filter matches, see ReferencesFilter;
 //	                         `page-ref` does the same for blocks about them
 //	(sort-by priority asc)   sort by a built-in value: `priority`,
-//	                         `scheduled`, `deadline`, `journal-day` or `title`
+//	                         `scheduled`, `deadline`, `journal-day`, `title`
+//	                         or `updated-at`
 //	(limit 10)               the first results, after they are sorted and
 //	                         sampled; like `sort-by` it is read from the
 //	                         top-level `and`

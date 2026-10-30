@@ -68,6 +68,8 @@ const (
 	// SortFieldTitle sorts pages by title, and blocks by the title of their
 	// page, without regard for case.
 	SortFieldTitle = "title:sort"
+	// SortFieldModified sorts pages by the time their file was last changed.
+	SortFieldModified = "lastModified"
 )
 
 // SortFieldProperty returns the field that sorts pages and blocks by the value

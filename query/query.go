@@ -71,6 +71,8 @@ func findsBlocks(filter Filter) bool {
 		return f.Field != FieldJournalPage
 	case *PropertyCompareFilter:
 		return !f.Page
+	case *TimestampFilter:
+		return !f.Page
 	case *PageRefFilter, *RefsFilter, *ReferencesFilter, *FullTextFilter, *ContentFilter, *TaskFilter, *PriorityFilter,
 		*PageFilter, *ParentFilter, *AncestorFilter, *PropertyFilter,
 		*OnPageFilter, *BelowFilter, *HasChildFilter, *TopLevelFilter:
@@ -120,6 +122,10 @@ const (
 	SortTitle
 	// SortProperty sorts by the property named in Sort.Property.
 	SortProperty
+	// SortUpdatedAt sorts by the time a block or page was last changed,
+	// written as `updated-at`. See TimestampFilter for where the times come
+	// from.
+	SortUpdatedAt
 )
 
 var sortFieldNames = map[SortField]string{
@@ -128,6 +134,7 @@ var sortFieldNames = map[SortField]string{
 	SortDeadline:   "deadline",
 	SortJournalDay: "journal-day",
 	SortTitle:      "title",
+	SortUpdatedAt:  "updated-at",
 }
 
 // Order is the direction to sort in.

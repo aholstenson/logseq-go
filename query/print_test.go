@@ -58,6 +58,10 @@ var _ = Describe("Writing queries", func() {
 		Prints("refs with brackets", query.New(query.Refs("a ]] b")), `(refs "a ]] b")`)
 		Prints("namespace", query.New(query.Namespace("Projects")), "(namespace [[Projects]])")
 		Prints("namespace at any depth", query.New(query.UnderNamespace("Projects")), "(under-namespace [[Projects]])")
+		Prints("timestamp with milliseconds",
+			query.New(query.Timestamp(query.UpdatedAt, query.Less, query.At(time.Date(2024, time.January, 15, 10, 30, 0, 5e6, time.Local)))),
+			"(updated-at < 2024-01-15T10:30:00.005)")
+		Prints("timestamp that exists", query.New(&query.TimestampFilter{Field: query.CreatedAt, Op: query.Exists, Page: true}), "(page-created-at)")
 		Prints("page ref with brackets", query.New(query.PageRef("a ]] b")), `(page-ref "a ]] b")`)
 		Prints("page with brackets", query.New(query.Page("a]")), `(page "a]")`)
 	})

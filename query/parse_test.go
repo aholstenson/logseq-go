@@ -107,6 +107,18 @@ var _ = Describe("Parsing queries", func() {
 		ParsesFilter("(and (task TODO) (parent ((abc))))", query.And(query.Task(content.TaskStatusTodo), query.Parent("abc")))
 		ParsesFilter("(namespace [[Projects]])", query.Namespace("Projects"))
 		ParsesFilter("(under-namespace [[Projects]])", query.UnderNamespace("Projects"))
+		ParsesFilter("(updated-at > -7d-ms)", query.Timestamp(query.UpdatedAt, query.Greater, query.TimeInput("-7d-ms")))
+		ParsesFilter("(page-updated-at >= :right-now-ms)", query.PageTimestamp(query.UpdatedAt, query.GreaterOrEqual, query.Now()))
+		ParsesFilter("(created-at)", &query.TimestampFilter{Field: query.CreatedAt, Op: query.Exists})
+		ParsesFilter("(created-at < 2024-01-15T10:30)",
+			query.Timestamp(query.CreatedAt, query.Less, query.At(time.Date(2024, time.January, 15, 10, 30, 0, 0, time.Local))))
+		ParsesFilter("(updated-at > 1705312800000)", query.Timestamp(query.UpdatedAt, query.Greater, query.At(time.UnixMilli(1705312800000))))
+		ParsesFilter("(between created-at -7d today)", query.And(
+			query.Timestamp(query.CreatedAt, query.GreaterOrEqual, query.TimeInput("-7d-start")),
+			query.Timestamp(query.CreatedAt, query.LessOrEqual, query.TimeInput("today-end"))))
+		ParsesFilter("(between updated-at 2024-01-01 2024-01-31)", query.And(
+			query.Timestamp(query.UpdatedAt, query.GreaterOrEqual, query.At(time.Date(2024, time.January, 1, 0, 0, 0, 0, time.Local))),
+			query.Timestamp(query.UpdatedAt, query.LessOrEqual, query.At(time.Date(2024, time.February, 1, 0, 0, 0, 0, time.Local).Add(-time.Millisecond)))))
 		ParsesFilter("(between -7d today)", query.Between(query.Relative("-7d"), query.Today()))
 		ParsesFilter("(between -7 +7)", query.Between(query.Relative("-7d"), query.Relative("+7d")))
 		ParsesFilter("(between :-2w :+1m)", query.Between(query.Relative("-2w"), query.Relative("+1m")))
@@ -146,6 +158,8 @@ var _ = Describe("Parsing queries", func() {
 			query.New(query.And(query.Task(content.TaskStatusTodo))).
 				SortByProperty("created-at", query.Desc).
 				SortBy(query.SortTitle, query.Asc))
+		Parses("(and (task TODO) (sort-by updated-at desc))",
+			query.New(query.And(query.Task(content.TaskStatusTodo))).SortBy(query.SortUpdatedAt, query.Desc))
 		Parses("(and (task TODO) (sort-by :journal-day :asc))",
 			query.New(query.And(query.Task(content.TaskStatusTodo))).SortBy(query.SortJournalDay, query.Asc))
 		Parses("(and (sort-by scheduled asc) (sort-by deadline asc))",
@@ -196,7 +210,10 @@ var _ = Describe("Parsing queries", func() {
 		Fails("(parent [[page]] -1)", 17, "expected the position of a block")
 		Fails("((abc))", 0, "expected a filter")
 		Fails("(between today)", 0, "between takes two dates")
-		Fails("(between created-at -7d today)", 0, "timestamp property is not supported")
+		Fails("(between rating -7d today)", 9, "expected created-at or updated-at")
+		Fails("(between created-at [[Jan 1st, 2024]] today)", 20, "expected a date such as")
+		Fails("(updated-at > today)", 14, "expected a time")
+		Fails("(updated-at today)", 0, "updated-at takes a comparison and a time")
 		Fails("(scheduled < soon)", 13, `"soon" is not a date`)
 		Fails("(scheduled < right-now-ms)", 13, "is not a date")
 		Fails("(scheduled < today tomorrow)", 0, "scheduled takes")
@@ -233,6 +250,7 @@ var _ = Describe("Parsing queries", func() {
 		RoundTrips("all recipes", `(page-property type "Cognitive Recipe")`)
 		RoundTrips("sample", "(and (task NOW) (sample 3))")
 		RoundTrips("limit", "(and (task NOW) (sort-by priority asc) (limit 3))")
+		RoundTrips("timestamps", "(and (updated-at > -7d-ms) (page-created-at <= 2024-01-15T10:30:00) (sort-by updated-at desc))")
 		RoundTrips("text", `"needle"`)
 	})
 })
