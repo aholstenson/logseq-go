@@ -113,6 +113,14 @@ func (f *PageFilter) String() string {
 	return list("page", formatPageRef(f.Page))
 }
 
+func (f *ParentFilter) String() string {
+	if !isBlockID(f.Block) {
+		return list("parent", formatString(f.Block))
+	}
+
+	return list("parent", "(("+f.Block+"))")
+}
+
 func (f *PropertyFilter) String() string {
 	return propertyString("property", f.Name, f.Value)
 }

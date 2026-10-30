@@ -247,6 +247,11 @@ func (r *queryRunner) compile(filter query.Filter, blocks bool) (indexing.Query,
 		return indexing.ContentMatches(f.Text), nil
 	case *query.PageFilter:
 		return indexing.PageTitleIs(f.Page), nil
+	case *query.ParentFilter:
+		if f.Block == "" {
+			return nil, fmt.Errorf("query: the parent block has no UUID")
+		}
+		return indexing.ParentIs(f.Block), nil
 	case *query.PropertyFilter:
 		return propertyQuery(f.Name, f.Value), nil
 	case *query.DateFilter:

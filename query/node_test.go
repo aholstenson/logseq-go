@@ -65,11 +65,39 @@ var _ = Describe("Queries in nodes", func() {
 			Expect(err).To(MatchError(ContainSubstring("given with WithQueryPage")))
 		})
 
-		It("does not read :current-block", func() {
-			_, err := query.ParseAdvanced(`{:query [:find ?b :in $ ?c :where [?b :block/parent ?c]] :inputs [:current-block]}`,
-				query.WithCurrentPage("Project"))
+	})
+
+	Describe("Inputs for blocks", func() {
+		children := `{:query [:find (pull ?b [*]) :in $ ?c :where [?b :block/parent ?c]] :inputs [:current-block]}`
+		siblings := `{:query [:find (pull ?b [*]) :in $ ?p :where [?b :block/marker "TODO"] [?b :block/parent ?p]] :inputs [:parent-block]}`
+
+		It("reads :current-block as the parent of the blocks", func() {
+			advanced, err := query.ParseAdvanced(children, query.WithCurrentBlock("6523a0f8-1111-4c3b-9b1e-000000000001"))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(advanced.Query.String()).To(Equal("(parent ((6523a0f8-1111-4c3b-9b1e-000000000001)))"))
+		})
+
+		It("reads :parent-block as the parent of the blocks", func() {
+			advanced, err := query.ParseAdvanced(siblings, query.WithParentBlock("abc"))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(advanced.Query.String()).To(Equal("(and (task TODO) (parent ((abc))))"))
+		})
+
+		It("names the option when the block is not given", func() {
+			_, err := query.ParseAdvanced(children, query.WithCurrentPage("Project"))
 			Expect(errors.Is(err, query.ErrUnsupported)).To(BeTrue())
-			Expect(err).To(MatchError(ContainSubstring("the input :current-block is not supported")))
+			Expect(err).To(MatchError(ContainSubstring("needs the UUID of the block, given with WithCurrentBlock")))
+
+			_, err = query.ParseAdvanced(siblings)
+			Expect(err).To(MatchError(ContainSubstring("given with WithParentBlock")))
+		})
+
+		It("does not read the block in other clauses", func() {
+			_, err := query.ParseAdvanced(`{:query [:find (pull ?b [*]) :in $ ?c
+				:where [?c :block/page ?p] [?b :block/page ?p]] :inputs [:current-block]}`,
+				query.WithCurrentBlock("abc"))
+			Expect(errors.Is(err, query.ErrUnsupported)).To(BeTrue())
+			Expect(err).To(MatchError(ContainSubstring("only supported as the parent")))
 		})
 	})
 })

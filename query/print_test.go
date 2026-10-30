@@ -32,6 +32,8 @@ var _ = Describe("Writing queries", func() {
 		Prints("page tags", query.New(query.PageTags("book", "to read")), "(page-tags [[book]] [[to read]])")
 		Prints("all page tags", query.New(query.AllPageTags()), "(all-page-tags)")
 		Prints("refs", query.New(query.Refs("My Page")), "(refs [[My Page]])")
+		Prints("parent", query.New(query.Parent("abc-123")), "(parent ((abc-123)))")
+		Prints("parent that is not a UUID", query.New(query.Parent("a b")), `(parent "a b")`)
 		Prints("refs with brackets", query.New(query.Refs("a ]] b")), `(refs "a ]] b")`)
 		Prints("namespace", query.New(query.Namespace("Projects")), "(namespace [[Projects]])")
 		Prints("page ref with brackets", query.New(query.PageRef("a ]] b")), `(page-ref "a ]] b")`)

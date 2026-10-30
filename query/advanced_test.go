@@ -172,6 +172,7 @@ var _ = Describe("Advanced queries", func() {
 		Translates("content", where(`[?b :block/content ?c] [(clojure.string/includes? ?c "bank")]`), `"bank"`)
 		Translates("path refs with a name", where(`[?b :block/path-refs ?p] [?p :block/name "project"]`), "[[project]]")
 		Translates("path refs with a lookup", where(`[?b :block/path-refs [:block/original-name "Project"]]`), "[[Project]]")
+		Translates("parent with a lookup", where(`[?b :block/parent [:block/uuid #uuid "abc-123"]]`), "(parent ((abc-123)))")
 		Translates("refs with a name", where(`[?b :block/refs ?p] [?p :block/name "project"]`), "(refs [[project]])")
 		Translates("refs with a lookup", where(`[?b :block/refs [:block/name "project"]]`), "(refs [[project]])")
 		Translates("page by name", where(`[?b :block/page ?p] [?p :block/name "project"] [?b :block/marker "TODO"]`),
@@ -288,7 +289,8 @@ var _ = Describe("Advanced queries", func() {
 		Unsupported("custom rules", `{:query [:find ?b :where (my-rule ?b)] :rules [[(my-rule ?b) [?b :block/marker "TODO"]]]}`, "custom rules")
 		Unsupported("two variables in find", `{:query [:find ?b ?p :where [?b :block/page ?p]]}`, "one variable or pull")
 		Unsupported("comparing variables", where(`[?b :block/scheduled ?s] [?b :block/deadline ?d] [(< ?s ?d)]`), "two variables")
-		Unsupported("other attributes", where(`[?b :block/parent ?parent]`), "attribute :block/parent")
+		Unsupported("parents that are not inputs", where(`[?b :block/parent ?parent]`), "expected a block")
+		Unsupported("other attributes", where(`[?b :block/left ?left]`), "attribute :block/left")
 		Unsupported("other blocks", where(`[?b :block/page ?p] [?c :block/page ?p] [?c :block/marker "TODO"]`), "other blocks")
 		Unsupported("pages by their blocks", `{:query [:find (pull ?p [*]) :where [?b :block/page ?p] [?b :block/marker "TODO"]]}`, "pages by the blocks")
 		Unsupported("unknown rules", where(`(my-rule ?b)`), "rule my-rule")

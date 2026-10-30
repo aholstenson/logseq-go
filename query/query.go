@@ -64,7 +64,7 @@ func findsBlocks(filter Filter) bool {
 	case *NotFilter:
 		return findsBlocks(f.Filter)
 	case *PageRefFilter, *RefsFilter, *FullTextFilter, *TaskFilter, *PriorityFilter,
-		*PageFilter, *PropertyFilter, *DateFilter:
+		*PageFilter, *ParentFilter, *PropertyFilter, *DateFilter:
 		return true
 	}
 
@@ -240,6 +240,19 @@ func Page(page string) *PageFilter {
 	return &PageFilter{Page: page}
 }
 
+// ParentFilter matches the blocks directly below a block. The block is named
+// by its UUID, which is the value of its `id::` property, so only a block with
+// that property can be the parent. It is written as `(parent ((uuid)))`.
+type ParentFilter struct {
+	Block string
+}
+
+// Parent creates a filter that matches the blocks directly below the block
+// with the UUID.
+func Parent(block string) *ParentFilter {
+	return &ParentFilter{Block: block}
+}
+
 // PropertyFilter matches the blocks with a property. If Value is set, the
 // property must have that value, or reference a page with that title.
 type PropertyFilter struct {
@@ -319,6 +332,7 @@ func (*PageRefFilter) isFilter()      {}
 func (*RefsFilter) isFilter()         {}
 func (*FullTextFilter) isFilter()     {}
 func (*PageFilter) isFilter()         {}
+func (*ParentFilter) isFilter()       {}
 func (*PropertyFilter) isFilter()     {}
 func (*PagePropertyFilter) isFilter() {}
 func (*PageTagsFilter) isFilter()     {}

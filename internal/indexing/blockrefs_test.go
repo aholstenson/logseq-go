@@ -48,6 +48,25 @@ var _ = Describe("References of blocks", func() {
 		Expect(previewsOf(searchBlocks(idx, indexing.PathReferences("tagged")))).To(ConsistOf("tag #tagged", "#tagged", "child"))
 	})
 
+	It("matches the blocks directly below a block with an id", func() {
+		withID := func(id string, value string, children ...*content.Block) *content.Block {
+			block := textBlock(text(value), children...)
+			block.Properties().Set("id", content.NewText(id))
+			return block
+		}
+
+		indexPage(idx, "pages/b.md", "Page B",
+			withID("parent-id", "parent",
+				textBlock(text("first child"), textBlock(text("grandchild"))),
+				withID("second-id", "second child"),
+			),
+			textBlock(text("no id"), textBlock(text("child of no id"))),
+		)
+
+		Expect(previewsOf(searchBlocks(idx, indexing.ParentIs("parent-id")))).To(ConsistOf("first child", "second child"))
+		Expect(previewsOf(searchBlocks(idx, indexing.ParentIs("second-id")))).To(BeEmpty())
+	})
+
 	It("still matches the page with references in child blocks of its first block", func() {
 		Expect(searchPages(idx, indexing.References("Target"))).To(HaveLen(1))
 	})

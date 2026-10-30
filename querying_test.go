@@ -366,6 +366,61 @@ var _ = Describe("Query", func() {
 		})
 	})
 
+	Describe("Queries for the blocks around the query", func() {
+		BeforeEach(func() {
+			Expect(os.WriteFile(filepath.Join(graph.Directory(), "pages", "outline.md"), []byte(
+				"- Section\n"+
+					"  id:: 6523a0f8-0000-4c3b-9b1e-000000000001\n"+
+					"  - Children {{query (task TODO)}}\n"+
+					"    id:: 6523a0f8-0000-4c3b-9b1e-000000000002\n"+
+					"    - TODO First child\n"+
+					"      - TODO Grandchild\n"+
+					"    - TODO Second child\n"+
+					"  - TODO Sibling\n"+
+					"- TODO Not below\n",
+			), 0o644)).To(Succeed())
+			graph.Close()
+
+			var err error
+			graph, err = logseq.Open(ctx, graph.Directory(), logseq.WithInMemoryIndex())
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		run := func(text string) []string {
+			page, err := graph.OpenPage("outline")
+			Expect(err).ToNot(HaveOccurred())
+
+			nodes := page.Blocks()[0].Children().FilterDeep(content.IsQuery())
+			Expect(nodes).To(HaveLen(1))
+			block := content.BlockOf(nodes[0])
+			parent := block.Parent().(*content.Block)
+
+			advanced, err := query.ParseAdvanced(text,
+				query.WithCurrentBlock(block.ID()),
+				query.WithParentBlock(parent.ID()))
+			Expect(err).ToNot(HaveOccurred())
+
+			results, err := graph.Query(ctx, advanced.Query, logseq.QueryAt(now))
+			Expect(err).ToNot(HaveOccurred())
+
+			previews := make([]string, 0, len(results.Blocks))
+			for _, result := range results.Blocks {
+				previews = append(previews, result.Preview())
+			}
+			return previews
+		}
+
+		It("finds the blocks below the block with the query", func() {
+			Expect(run(`{:query [:find (pull ?b [*]) :in $ ?c :where [?b :block/parent ?c]] :inputs [:current-block]}`)).
+				To(ConsistOf("First child", "Second child"))
+		})
+
+		It("finds the blocks next to the block with the query", func() {
+			Expect(run(`{:query [:find (pull ?b [*]) :in $ ?p :where [?b :block/marker "TODO"] [?b :block/parent ?p]] :inputs [:parent-block]}`)).
+				To(ConsistOf("Sibling"))
+		})
+	})
+
 	Describe("Results", func() {
 		It("picks a sample of the results", func() {
 			results := blocks("(and (task TODO) (sort-by priority asc) (sample 2))")

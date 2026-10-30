@@ -30,8 +30,10 @@ type AdvancedQuery struct {
 type ParseOption func(*parseOptions)
 
 type parseOptions struct {
-	currentPage string
-	queryPage   string
+	currentPage  string
+	queryPage    string
+	currentBlock string
+	parentBlock  string
 }
 
 // WithCurrentPage gives the title of the page that the input `:current-page`
@@ -52,9 +54,32 @@ func WithQueryPage(title string) ParseOption {
 	}
 }
 
-var pageOptionNames = map[string]string{
-	"current-page": "WithCurrentPage",
-	"query-page":   "WithQueryPage",
+// WithCurrentBlock gives the UUID of the block that the input `:current-block`
+// of an advanced query stands for, which is the block the query is written in.
+// The UUID is the value of the `id::` property of the block, see
+// content.Block.WithID. The block must have the property in the index for the
+// query to find the blocks below it.
+func WithCurrentBlock(id string) ParseOption {
+	return func(o *parseOptions) {
+		o.currentBlock = id
+	}
+}
+
+// WithParentBlock gives the UUID of the block that the input `:parent-block`
+// of an advanced query stands for, which is the parent of the block the query
+// is written in. The UUID is the value of the `id::` property of the parent,
+// the same as for WithCurrentBlock.
+func WithParentBlock(id string) ParseOption {
+	return func(o *parseOptions) {
+		o.parentBlock = id
+	}
+}
+
+var inputOptionNames = map[string]string{
+	"current-page":  "WithCurrentPage",
+	"query-page":    "WithQueryPage",
+	"current-block": "WithCurrentBlock",
+	"parent-block":  "WithParentBlock",
 }
 
 // ParseNode reads the query in a node of a page: a simple query written as
@@ -122,8 +147,8 @@ var queryFence = regexp.MustCompile(`(?im)^\s*#\+(BEGIN|END)_QUERY\s*$`)
 //   - :in and :inputs with date inputs such as `:today` or `:-7d`, page names
 //     and numbers
 //   - the attributes :block/marker, :block/priority, :block/scheduled,
-//     :block/deadline, :block/content, :block/page, :block/refs,
-//     :block/path-refs, :block/properties, :block/name, :block/original-name,
+//     :block/deadline, :block/content, :block/page, :block/parent,
+//     :block/refs, :block/path-refs, :block/properties, :block/name, :block/original-name,
 //     :block/journal-day, :block/journal?, :block/tags, :block/namespace and
 //     :page/properties
 //   - the conditions =, not=, <, <=, >, >=, contains?, get and
@@ -135,9 +160,11 @@ var queryFence = regexp.MustCompile(`(?im)^\s*#\+(BEGIN|END)_QUERY\s*$`)
 //
 // The inputs `:current-page` and `:query-page` depend on where the query is,
 // and are supported when the page is given with WithCurrentPage and
-// WithQueryPage. The inputs `:current-block` and `:parent-block`, and :rules
-// are not supported. Keys that only change how Logseq shows the results, such
-// as :view and :table-view?, are ignored. Errors in the EDN itself are
+// WithQueryPage. The inputs `:current-block` and `:parent-block` are supported
+// when the UUID of the block is given with WithCurrentBlock and
+// WithParentBlock, as the parent of the blocks in `[?b :block/parent ?block]`.
+// :rules are not supported. Keys that only change how Logseq shows the
+// results, such as :view and :table-view?, are ignored. Errors in the EDN itself are
 // returned as *ParseError.
 func ParseAdvanced(text string, opts ...ParseOption) (*AdvancedQuery, error) {
 	options := &parseOptions{}
@@ -174,6 +201,11 @@ func ParseAdvanced(text string, opts ...ParseOption) (*AdvancedQuery, error) {
 			"current-page": options.currentPage,
 			"query-page":   options.queryPage,
 		},
+		blocks: map[string]string{
+			"current-block": options.currentBlock,
+			"parent-block":  options.parentBlock,
+		},
+		blockInputs: make(map[string]string),
 	}
 
 	result := &AdvancedQuery{}
@@ -311,6 +343,14 @@ type translator struct {
 	// :query-page stand for, empty if they are not known.
 	pages map[string]string
 
+	// blocks are the UUIDs of the blocks that the inputs :current-block and
+	// :parent-block stand for, empty if they are not known.
+	blocks map[string]string
+
+	// blockInputs maps the variables in :in that are blocks to their UUIDs.
+	// They are kept out of inputs, as they can not be read as values.
+	blockInputs map[string]string
+
 	kinds map[string]entityKind
 	// pageOf maps the variable of a page to the variable of a block on it,
 	// from `[?b :block/page ?p]`.
@@ -367,6 +407,12 @@ func (t *translator) translate(queryNode *ednNode, inputsNode *ednNode) (*Query,
 
 	if err := t.readInputs(queryNode, sections["in"], inputsNode); err != nil {
 		return nil, err
+	}
+
+	for _, clause := range sections["where"] {
+		if err := t.checkBlockInputs(clause); err != nil {
+			return nil, err
+		}
 	}
 
 	find := sections["find"]
@@ -444,12 +490,21 @@ func (t *translator) readInputs(queryNode *ednNode, in []*ednNode, inputsNode *e
 		input := inputs[i]
 		if title, isPage := t.pages[input.text]; isPage && input.kind == ednKeyword {
 			if title == "" {
-				return t.unsupported(input, "the input :%s needs the title of the page, given with %s", input.text, pageOptionNames[input.text])
+				return t.unsupported(input, "the input :%s needs the title of the page, given with %s", input.text, inputOptionNames[input.text])
 			}
 
 			// The input is read as the title of the page, the same as an
 			// input such as "[[page]]".
 			t.inputs[v.text] = &ednNode{kind: ednString, text: title, pos: input.pos, end: input.end}
+			continue
+		}
+
+		if id, isBlock := t.blocks[input.text]; isBlock && input.kind == ednKeyword {
+			if id == "" {
+				return t.unsupported(input, "the input :%s needs the UUID of the block, given with %s", input.text, inputOptionNames[input.text])
+			}
+
+			t.blockInputs[v.text] = id
 			continue
 		}
 
@@ -460,6 +515,27 @@ func (t *translator) readInputs(queryNode *ednNode, in []*ednNode, inputsNode *e
 		}
 
 		t.inputs[v.text] = input
+	}
+
+	return nil
+}
+
+// checkBlockInputs returns an error if a variable for a block from :in, such
+// as :current-block, is used in other ways than as the parent in
+// `[?b :block/parent ?block]`.
+func (t *translator) checkBlockInputs(node *ednNode) error {
+	if isDataPattern(node) && len(node.items) == 3 && node.items[1].text == "block/parent" {
+		return nil
+	}
+
+	if _, isBlock := t.blockInputs[node.text]; isBlock && isVar(node) {
+		return t.unsupported(node, "a block from :in is only supported as the parent in [?b :block/parent %s]", node.text)
+	}
+
+	for _, item := range node.items {
+		if err := t.checkBlockInputs(item); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -703,6 +779,30 @@ func (t *translator) pageRefName(node *ednNode) (string, bool) {
 	}
 
 	return t.name(node)
+}
+
+// blockID returns the UUID of the block that a value of :block/parent points
+// at: a variable for :current-block or :parent-block, or a lookup such as
+// `[:block/uuid #uuid "..."]`.
+func (t *translator) blockID(node *ednNode) (string, bool) {
+	if isVar(node) {
+		id, ok := t.blockInputs[node.text]
+		return id, ok
+	}
+
+	if node.kind != ednVector || len(node.items) != 2 || !(node.items[0].kind == ednKeyword && node.items[0].text == "block/uuid") {
+		return "", false
+	}
+
+	value := node.items[1]
+	if value.kind == ednTagged && value.text == "uuid" && len(value.items) == 1 {
+		value = value.items[0]
+	}
+
+	if value.kind != ednString || value.text == "" {
+		return "", false
+	}
+	return value.text, true
 }
 
 // conjunction translates clauses that must all match. The conditions in
@@ -983,6 +1083,16 @@ func (t *translator) binding(clause *ednNode, conditions []*condition) (Filter, 
 
 		t.props[value.text] = entity.text
 		return nil, nil
+	case "block/parent":
+		if err := t.checkBlock(clause, entity); err != nil {
+			return nil, err
+		}
+
+		id, ok := t.blockID(value)
+		if !ok {
+			return nil, t.unsupported(clause, "expected a block, such as :current-block or [:block/uuid #uuid \"...\"]")
+		}
+		return Parent(id), nil
 	case "block/refs", "block/path-refs":
 		if err := t.checkBlock(clause, entity); err != nil {
 			return nil, err

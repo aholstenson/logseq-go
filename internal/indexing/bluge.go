@@ -30,7 +30,7 @@ func (i idTerm) Term() []byte {
 // Increase it when the way pages or blocks are indexed changes, so that an
 // index stored on disk is built again with the new fields. Without that the
 // pages that did not change since they were indexed keep their old documents.
-const indexVersion = 7
+const indexVersion = 8
 
 // versionDocID is the id of the document that stores the version of the
 // index. It does not have a type, so searches for pages and blocks never
@@ -623,6 +623,14 @@ func (i *BlugeIndex) blockToDocument(page *Page, id string, block *content.Block
 		blugeDoc.AddField(bluge.NewKeywordField("id", id).StoreValue())
 	}
 
+	// Blocks are found by their parent through the id of the parent, so only
+	// the blocks below a parent with an id get the field.
+	if parent, ok := block.Parent().(*content.Block); ok {
+		if id := findID(parent); id != "" {
+			blugeDoc.AddField(bluge.NewKeywordField("parent", id))
+		}
+	}
+
 	// Look up the properties without creating them, as indexing should not
 	// modify the block.
 	if props := block.FindProperties(); props != nil {
@@ -643,6 +651,25 @@ func (i *BlugeIndex) blockToDocument(page *Page, id string, block *content.Block
 	blugeDoc.AddField(bluge.NewTextField("preview", preview).StoreValue())
 
 	return blugeDoc, nil
+}
+
+// findID returns the `id` property of a block, or an empty string if it has
+// none. Unlike Block.ID it does not add properties to the block.
+func findID(block *content.Block) string {
+	props := block.FindProperties()
+	if props == nil {
+		return ""
+	}
+
+	id := props.GetAsNode("id")
+	if id == nil {
+		return ""
+	}
+
+	if text, ok := id.FirstChild().(*content.Text); ok {
+		return text.Value
+	}
+	return ""
 }
 
 // transferTask indexes the status, priority and dates of a task so that

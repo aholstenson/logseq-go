@@ -43,6 +43,8 @@
 //	                         brackets
 //	(refs [[page]])          blocks that reference the page themselves,
 //	                         without the blocks below them, see RefsFilter
+//	(parent ((uuid)))        blocks directly below the block with the
+//	                         `id::` property, see ParentFilter
 //	(sort-by priority asc)   sort by a built-in value: `priority`,
 //	                         `scheduled`, `deadline`, `journal-day` or `title`
 //

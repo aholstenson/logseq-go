@@ -262,6 +262,16 @@ func parseFilter(e *expr) (Filter, error) {
 			return nil, err
 		}
 		return PageRef(name), nil
+	case "parent":
+		if len(args) != 1 {
+			return nil, errorAt(e.pos, "parent takes one block, such as ((uuid))")
+		}
+
+		switch args[0].kind {
+		case exprBlockRef, exprString, exprSymbol:
+			return Parent(args[0].text), nil
+		}
+		return nil, errorAt(args[0].pos, "expected a block, such as ((uuid))")
 	case "refs":
 		name, err := parseSingleName(e, args)
 		if err != nil {
@@ -544,13 +554,15 @@ const (
 	exprSymbol
 	exprString
 	exprPageRef
+	exprBlockRef
 )
 
 // expr is an expression read from the text of a query, before it is turned
 // into filters.
 type expr struct {
 	kind exprKind
-	// text is the value of a symbol, a string, or the title of a page ref.
+	// text is the value of a symbol, a string, the title of a page ref, or the
+	// UUID of a block ref.
 	text string
 	// items are the expressions in a list or vector.
 	items []*expr
@@ -572,7 +584,7 @@ func (e *expr) isList(op string) bool {
 }
 
 // reader reads expressions in the EDN-like syntax of Logseq queries, with
-// `[[page]]` and `#tag` read as page refs.
+// `[[page]]` and `#tag` read as page refs, and `((uuid))` as a block ref.
 type reader struct {
 	input string
 	pos   int
@@ -610,6 +622,14 @@ func (r *reader) read() (*expr, error) {
 	start := r.pos
 	switch c := r.input[r.pos]; c {
 	case '(':
+		if strings.HasPrefix(r.input[r.pos:], "((") {
+			id, err := r.readBlockRef()
+			if err != nil {
+				return nil, err
+			}
+			return &expr{kind: exprBlockRef, text: id, pos: start}, nil
+		}
+
 		r.pos++
 		items, err := r.readUntil(')', start)
 		if err != nil {
@@ -707,6 +727,31 @@ func (r *reader) readPageRef() (string, error) {
 	}
 
 	return "", errorAt(start, "missing `]]`")
+}
+
+// readBlockRef reads `((uuid))` and returns the UUID. A list can not start
+// with a list in a query, so `((` always starts a block ref.
+func (r *reader) readBlockRef() (string, error) {
+	start := r.pos
+	end := strings.Index(r.input[start:], "))")
+	if end < 0 {
+		return "", errorAt(start, "missing `))`")
+	}
+
+	id := r.input[start+2 : start+end]
+	if !isBlockID(id) {
+		return "", errorAt(start, "expected the UUID of a block in `(())`")
+	}
+
+	r.pos = start + end + 2
+	return id, nil
+}
+
+// isBlockID returns true for text that can be written in `((uuid))`.
+func isBlockID(id string) bool {
+	return id != "" && !strings.ContainsFunc(id, func(c rune) bool {
+		return isSpace(c) || strings.ContainsRune("()[]\";", c)
+	})
 }
 
 func (r *reader) readString() (string, error) {

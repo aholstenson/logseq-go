@@ -120,6 +120,15 @@ func BlockIDEquals(id string) Query {
 	}
 }
 
+// ParentIs matches the blocks directly below the block with the id, which is
+// the value of its `id` property.
+func ParentIs(id string) Query {
+	return &fieldEquals{
+		field: "parent",
+		value: id,
+	}
+}
+
 func ContentMatches(text string) Query {
 	return &fieldMatches{
 		field: "content",
