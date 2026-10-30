@@ -348,6 +348,14 @@ Results are sorted by how well they match, unless `WithSort` is used. Results
 can be sorted by priority, scheduled date, deadline, journal date and title.
 Results without a value, such as tasks without a priority, come last.
 
+The date inputs of Logseq queries, such as `:today`, `:+1w` or `:3d-after`,
+can be read with `ParseDateInput`:
+
+```go
+next, ok := logseq.ParseDateInput(":3d-after", time.Now())
+// next.Time is midnight three days from today
+```
+
 ## Limitations
 
 This library is limited to working with Markdown files. As the library provides

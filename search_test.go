@@ -389,6 +389,30 @@ var _ = Describe("Search", func() {
 			Expect(results.Results()[0].Preview()).To(Equal("Call the bank"))
 		})
 
+		It("finds tasks for the next days with date inputs", func() {
+			graph = openGraphWithPages(dir, map[string]string{
+				"tasks.md": "- TODO Today\n  SCHEDULED: <2024-01-15 Mon>\n" +
+					"- TODO In three days\n  SCHEDULED: <2024-01-18 Thu>\n" +
+					"- TODO In four days\n  SCHEDULED: <2024-01-19 Fri>\n",
+			})
+
+			// The same range as `[(<= ?d ?next)] [(> ?d ?today)]` with
+			// `:inputs [:3d-after :today]`, where ?d is a date.
+			now := time.Date(2024, time.January, 15, 14, 0, 0, 0, time.Local)
+			today, ok := logseq.ParseDateInput(":today", now)
+			Expect(ok).To(BeTrue())
+			next, ok := logseq.ParseDateInput(":3d-after", now)
+			Expect(ok).To(BeTrue())
+
+			results, err := graph.SearchBlocks(ctx, logseq.WithQuery(logseq.And(
+				logseq.IsOpenTask(),
+				logseq.ScheduledBetween(today.Time.AddDate(0, 0, 1), next.Time.AddDate(0, 0, 1)),
+			)))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(results.Size()).To(Equal(1))
+			Expect(results.Results()[0].Preview()).To(Equal("In three days"))
+		})
+
 		It("sorts tasks by priority with tasks without a priority last", func() {
 			graph = openGraphWithPages(dir, map[string]string{
 				"tasks.md": "- TODO No priority\n" +
