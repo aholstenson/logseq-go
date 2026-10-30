@@ -174,6 +174,18 @@ func ScheduledBetween(start, end time.Time) Query {
 	return indexing.ScheduledBetween(start, end)
 }
 
+// JournalBetween matches the journal pages with a date from start, inclusive,
+// to end, exclusive, and the blocks on these journals. A zero time leaves that
+// end of the range open, so passing two zero times matches all journals and
+// all blocks on journals.
+//
+// The date of a journal is midnight in the local time zone, so a range that
+// covers a whole day matches it. Logseq calls this date the journal day of a
+// page.
+func JournalBetween(start, end time.Time) Query {
+	return indexing.JournalBetween(start, end)
+}
+
 // DeadlineBetween matches the blocks with a `DEADLINE` date from start,
 // inclusive, to end, exclusive. A zero time leaves that end of the range open,
 // so passing two zero times matches every block with a deadline.

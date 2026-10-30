@@ -323,6 +323,27 @@ tasks, err := graph.SearchBlocks(ctx, logseq.WithQuery(logseq.And(
 )))
 ```
 
+`JournalBetween` matches journals by date, and the blocks on them. Together
+with the task dates it finds the tasks for a day:
+
+```go
+// Open tasks for today: on today's journal and not scheduled for another
+// day, or scheduled for today, or with a deadline today
+today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
+tomorrow := today.AddDate(0, 0, 1)
+tasks, err := graph.SearchBlocks(ctx, logseq.WithQuery(logseq.And(
+  logseq.IsOpenTask(),
+  logseq.Or(
+    logseq.And(
+      logseq.JournalBetween(today, tomorrow),
+      logseq.Not(logseq.ScheduledBetween(time.Time{}, time.Time{})),
+    ),
+    logseq.ScheduledBetween(today, tomorrow),
+    logseq.DeadlineBetween(today, tomorrow),
+  ),
+)))
+```
+
 ## Limitations
 
 This library is limited to working with Markdown files. As the library provides

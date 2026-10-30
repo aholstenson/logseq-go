@@ -367,6 +367,28 @@ var _ = Describe("Search", func() {
 			Expect(search(logseq.DeadlineBetween(time.Time{}, jan15))).To(ConsistOf("Buy soil"))
 		})
 
+		It("finds tasks on a journal", func() {
+			Expect(os.WriteFile(
+				filepath.Join(dir, "journals", "2024_01_15.md"),
+				[]byte("- TODO Call the bank\n- DONE Walk the dog\n"),
+				0o644,
+			)).To(Succeed())
+
+			graph = openGraphWithPages(dir, map[string]string{
+				"tasks.md": "- TODO Not on a journal\n",
+			})
+
+			jan15 := time.Date(2024, time.January, 15, 0, 0, 0, 0, time.Local)
+
+			results, err := graph.SearchBlocks(ctx, logseq.WithQuery(logseq.And(
+				logseq.IsOpenTask(),
+				logseq.JournalBetween(jan15, jan15.AddDate(0, 0, 1)),
+			)))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(results.Size()).To(Equal(1))
+			Expect(results.Results()[0].Preview()).To(Equal("Call the bank"))
+		})
+
 		It("leaves out tasks below a tagged block", func() {
 			graph = openGraphWithPages(dir, map[string]string{
 				"tasks.md": "- #shopping\n  - TODO Buy milk\n" +

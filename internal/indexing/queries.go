@@ -275,6 +275,14 @@ func ScheduledBetween(start time.Time, end time.Time) Query {
 	}
 }
 
+func JournalBetween(start time.Time, end time.Time) Query {
+	return &dateRange{
+		field: "date",
+		start: start,
+		end:   end,
+	}
+}
+
 func DeadlineBetween(start time.Time, end time.Time) Query {
 	return &dateRange{
 		field: "deadline",
