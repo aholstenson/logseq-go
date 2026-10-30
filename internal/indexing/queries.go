@@ -138,6 +138,26 @@ func AncestorIs(id string) Query {
 	}
 }
 
+// ParentAt matches the blocks directly below the block at the location on a
+// page, see utils.LocationOf. It matches on every page, so combine it with a query
+// for the page.
+func ParentAt(location []int) Query {
+	return &fieldEquals{
+		field: "parent:location",
+		value: formatLocation(location),
+	}
+}
+
+// AncestorAt matches the blocks below the block at the location on a page at
+// any depth, see utils.LocationOf. It matches on every page, so combine it with a
+// query for the page.
+func AncestorAt(location []int) Query {
+	return &fieldEquals{
+		field: "ancestor:location",
+		value: formatLocation(location),
+	}
+}
+
 func ContentMatches(text string) Query {
 	return &fieldMatches{
 		field: "content",

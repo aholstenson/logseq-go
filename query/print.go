@@ -114,19 +114,29 @@ func (f *PageFilter) String() string {
 }
 
 func (f *ParentFilter) String() string {
-	if !isBlockID(f.Block) {
-		return list("parent", formatString(f.Block))
-	}
-
-	return list("parent", "(("+f.Block+"))")
+	return blockFilterString("parent", f.Block, f.Page, f.Location)
 }
 
 func (f *AncestorFilter) String() string {
-	if !isBlockID(f.Block) {
-		return list("ancestor", formatString(f.Block))
+	return blockFilterString("ancestor", f.Block, f.Page, f.Location)
+}
+
+// blockFilterString writes a filter for a block, which is named by its UUID
+// or by its page and location.
+func blockFilterString(name string, block string, page string, location []int) string {
+	if block == "" && page != "" {
+		args := []string{formatPageRef(page)}
+		for _, idx := range location {
+			args = append(args, strconv.Itoa(idx))
+		}
+		return list(name, args...)
 	}
 
-	return list("ancestor", "(("+f.Block+"))")
+	if !isBlockID(block) {
+		return list(name, formatString(block))
+	}
+
+	return list(name, "(("+block+"))")
 }
 
 func (f *PropertyFilter) String() string {

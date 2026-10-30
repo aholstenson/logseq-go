@@ -106,7 +106,7 @@ var _ = Describe("Queries in nodes", func() {
 		It("names the option when the block is not given", func() {
 			_, err := query.ParseAdvanced(children, query.WithCurrentPage("Project"))
 			Expect(errors.Is(err, query.ErrUnsupported)).To(BeTrue())
-			Expect(err).To(MatchError(ContainSubstring("needs the UUID of the block, given with WithCurrentBlock")))
+			Expect(err).To(MatchError(ContainSubstring("needs the block, given with WithCurrentBlock")))
 
 			_, err = query.ParseAdvanced(siblings)
 			Expect(err).To(MatchError(ContainSubstring("given with WithParentBlock")))
@@ -120,6 +120,66 @@ var _ = Describe("Queries in nodes", func() {
 				:inputs [:parent-block]}`, query.WithParentBlock("abc"))
 			Expect(err).ToNot(HaveOccurred())
 			Expect(advanced.Query.String()).To(Equal("(and (refs [[action]]) (ancestor ((abc))))"))
+		})
+
+		Describe("found by ParseNode", func() {
+			below := `{:query [:find (pull ?b [*]) :in $ ?p %
+				:where (below ?b ?p)]
+				:rules [[(below ?b ?a) [?b :block/parent ?a]]
+				        [(below ?b ?a) [?b :block/parent ?c] (below ?c ?a)]]
+				:inputs [:parent-block]}`
+
+			// onPage puts the query in a block below the second block of a
+			// page, and returns the query node.
+			onPage := func(text string, parentProps ...string) content.Node {
+				node := content.NewQueryCommand(text)
+				parent := content.NewBlock(
+					content.NewParagraph(content.NewText("section")),
+					content.NewBlock(content.NewParagraph(content.NewText("first"))),
+					content.NewBlock(node),
+				)
+				if len(parentProps) > 0 {
+					parent.Properties().Set("id", content.NewText(parentProps[0]))
+				}
+				content.NewBlock(content.NewBlock(content.NewParagraph(content.NewText("intro"))), parent)
+				return node
+			}
+
+			It("names blocks without a UUID by their location on the query page", func() {
+				advanced, err := query.ParseNode(onPage(below), query.WithQueryPage("Outline"))
+				Expect(err).ToNot(HaveOccurred())
+				Expect(advanced.Query.String()).To(Equal("(ancestor [[Outline]] 1)"))
+
+				advanced, err = query.ParseNode(onPage(children), query.WithQueryPage("Outline"))
+				Expect(err).ToNot(HaveOccurred())
+				Expect(advanced.Query.String()).To(Equal("(parent [[Outline]] 1 1)"))
+			})
+
+			It("names blocks with a UUID by it without the query page", func() {
+				advanced, err := query.ParseNode(onPage(below, "abc"))
+				Expect(err).ToNot(HaveOccurred())
+				Expect(advanced.Query.String()).To(Equal("(ancestor ((abc)))"))
+			})
+
+			It("uses the blocks given as options first", func() {
+				advanced, err := query.ParseNode(onPage(below), query.WithQueryPage("Outline"), query.WithParentBlock("given"))
+				Expect(err).ToNot(HaveOccurred())
+				Expect(advanced.Query.String()).To(Equal("(ancestor ((given)))"))
+			})
+
+			It("needs the query page for blocks without a UUID", func() {
+				_, err := query.ParseNode(onPage(below), query.WithCurrentPage("Outline"))
+				Expect(errors.Is(err, query.ErrUnsupported)).To(BeTrue())
+				Expect(err).To(MatchError(ContainSubstring("given with WithQueryPage")))
+			})
+
+			It("has no parent block for a query at the top of a page", func() {
+				node := content.NewQueryCommand(below)
+				content.NewBlock(content.NewBlock(node))
+
+				_, err := query.ParseNode(node, query.WithQueryPage("Outline"))
+				Expect(err).To(MatchError(ContainSubstring("the input :parent-block needs the block")))
+			})
 		})
 
 		It("does not read the block in other clauses", func() {

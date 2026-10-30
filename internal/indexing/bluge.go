@@ -485,8 +485,8 @@ func (i *BlugeIndex) indexBlocks(ctx context.Context, page *Page) error {
 	}
 
 	// Index the new blocks
-	for _, block := range page.Blocks {
-		err = i.indexBlock(idSet, page, block, pagePathRefs)
+	for idx, block := range page.Blocks {
+		err = i.indexBlock(idSet, page, block, pagePathRefs, []int{idx})
 		if err != nil {
 			return err
 		}
@@ -544,11 +544,12 @@ func (i *BlugeIndex) getBlocks(ctx context.Context, pagePath string) (map[string
 
 // indexBlock indexes a block and the blocks below it. parentPathRefs is the
 // path refs of the parent block, or of the page for a top-level block.
-func (i *BlugeIndex) indexBlock(idSet map[string]struct{}, page *Page, block *content.Block, parentPathRefs []string) error {
+// location is the place of the block on the page, see utils.LocationOf.
+func (i *BlugeIndex) indexBlock(idSet map[string]struct{}, page *Page, block *content.Block, parentPathRefs []string, location []int) error {
 	id := blockID(page, block)
 	pathRefs := pathRefsOf(parentPathRefs, block)
 
-	blugeDoc, err := i.blockToDocument(page, id, block, pathRefs)
+	blugeDoc, err := i.blockToDocument(page, id, block, pathRefs, location)
 	if err != nil {
 		return err
 	}
@@ -560,8 +561,11 @@ func (i *BlugeIndex) indexBlock(idSet map[string]struct{}, page *Page, block *co
 
 	delete(idSet, id)
 
-	for _, child := range block.Blocks() {
-		err = i.indexBlock(idSet, page, child, pathRefs)
+	for idx, child := range block.Blocks() {
+		// The full slice expression makes append copy the location, so that
+		// sibling blocks do not write to the same array.
+		childLocation := append(location[:len(location):len(location)], idx)
+		err = i.indexBlock(idSet, page, child, pathRefs, childLocation)
 		if err != nil {
 			return err
 		}
@@ -602,7 +606,7 @@ func containsString(values []string, value string) bool {
 	return false
 }
 
-func (i *BlugeIndex) blockToDocument(page *Page, id string, block *content.Block, pathRefs []string) (*bluge.Document, error) {
+func (i *BlugeIndex) blockToDocument(page *Page, id string, block *content.Block, pathRefs []string, location []int) (*bluge.Document, error) {
 	blugeDoc := bluge.NewDocument(id).
 		AddField(bluge.NewKeywordField("type", "block").StoreValue()).
 		AddField(bluge.NewKeywordField("page", page.SubPath).StoreValue())
@@ -636,6 +640,15 @@ func (i *BlugeIndex) blockToDocument(page *Page, id string, block *content.Block
 		if id := parent.ID(); id != "" {
 			blugeDoc.AddField(bluge.NewKeywordField("ancestor", id))
 		}
+	}
+
+	// Blocks without an id are found by their place on the page instead. The
+	// place of each block above this block is the start of its location.
+	for depth := 1; depth < len(location); depth++ {
+		blugeDoc.AddField(bluge.NewKeywordField("ancestor:location", formatLocation(location[:depth])))
+	}
+	if len(location) > 1 {
+		blugeDoc.AddField(bluge.NewKeywordField("parent:location", formatLocation(location[:len(location)-1])))
 	}
 
 	// Look up the properties without creating them, as indexing should not
@@ -711,6 +724,16 @@ func priorityValue(priority content.Priority) string {
 	}
 
 	return ""
+}
+
+// formatLocation writes a location as it is stored in the index, such as
+// "0.1".
+func formatLocation(location []int) string {
+	parts := make([]string, len(location))
+	for i, idx := range location {
+		parts[i] = strconv.Itoa(idx)
+	}
+	return strings.Join(parts, ".")
 }
 
 // blockID returns a semi-stable ID based on the location of the block on the

@@ -32,8 +32,55 @@ type ParseOption func(*parseOptions)
 type parseOptions struct {
 	currentPage  string
 	queryPage    string
-	currentBlock string
-	parentBlock  string
+	currentBlock blockRef
+	parentBlock  blockRef
+}
+
+// blockRef names a block by its UUID, or by its place on a page when it has
+// no UUID. See ParentFilter.
+type blockRef struct {
+	id       string
+	page     string
+	location []int
+}
+
+func (r blockRef) known() bool {
+	return r.id != "" || r.page != ""
+}
+
+// parent returns the filter for the blocks directly below the block.
+func (r blockRef) parent() Filter {
+	if r.id != "" {
+		return Parent(r.id)
+	}
+	return ParentAt(r.page, r.location...)
+}
+
+// ancestor returns the filter for the blocks below the block at any depth.
+func (r blockRef) ancestor() Filter {
+	if r.id != "" {
+		return Ancestor(r.id)
+	}
+	return AncestorAt(r.page, r.location...)
+}
+
+// refOf returns the name of a block in a page: its UUID, or else its location
+// on the page. Returns false if the block has no UUID and the page is not
+// known, or if the block is not on a page.
+func refOf(block *content.Block, page string) (blockRef, bool) {
+	if id := block.ID(); id != "" {
+		return blockRef{id: id}, true
+	}
+
+	if page == "" {
+		return blockRef{}, false
+	}
+
+	location, ok := utils.LocationOf(block)
+	if !ok {
+		return blockRef{}, false
+	}
+	return blockRef{page: page, location: location}, true
 }
 
 // WithCurrentPage gives the title of the page that the input `:current-page`
@@ -59,19 +106,23 @@ func WithQueryPage(title string) ParseOption {
 // The UUID is the value of the `id::` property of the block, see
 // content.Block.WithID. The block must have the property in the index for the
 // query to find the blocks below it.
+//
+// ParseNode finds the block itself, also when it has no UUID, so this option
+// is only needed for ParseAdvanced.
 func WithCurrentBlock(id string) ParseOption {
 	return func(o *parseOptions) {
-		o.currentBlock = id
+		o.currentBlock = blockRef{id: id}
 	}
 }
 
 // WithParentBlock gives the UUID of the block that the input `:parent-block`
 // of an advanced query stands for, which is the parent of the block the query
 // is written in. The UUID is the value of the `id::` property of the parent,
-// the same as for WithCurrentBlock.
+// the same as for WithCurrentBlock. ParseNode finds the parent itself, the
+// same as for WithCurrentBlock.
 func WithParentBlock(id string) ParseOption {
 	return func(o *parseOptions) {
-		o.parentBlock = id
+		o.parentBlock = blockRef{id: id}
 	}
 }
 
@@ -90,6 +141,14 @@ var inputOptionNames = map[string]string{
 //
 // A simple query is read with Parse, and returned without a title. An
 // advanced query is read with ParseAdvanced, which the options are given to.
+//
+// For an advanced query, the blocks that the inputs `:current-block` and
+// `:parent-block` stand for are the block that holds the node and its parent,
+// unless they are given with WithCurrentBlock and WithParentBlock. A block
+// with an `id::` property is named by its UUID. A block without one is named
+// by its location on the page given with WithQueryPage, see ParentFilter, so
+// give that option for queries in blocks without the property.
+//
 // Run the query with Graph.Query in the logseq package.
 func ParseNode(node content.Node, opts ...ParseOption) (*AdvancedQuery, error) {
 	switch n := node.(type) {
@@ -100,10 +159,33 @@ func ParseNode(node content.Node, opts ...ParseOption) (*AdvancedQuery, error) {
 		}
 		return &AdvancedQuery{Query: q}, nil
 	case *content.QueryCommand:
-		return ParseAdvanced(n.Query, opts...)
+		options := newParseOptions(opts)
+
+		if block := content.BlockOf(n); block != nil {
+			if !options.currentBlock.known() {
+				options.currentBlock, _ = refOf(block, options.queryPage)
+			}
+
+			// The root of a page is not a block that Logseq knows of, so a
+			// block at the top of a page has no parent block.
+			parent, ok := block.Parent().(*content.Block)
+			if ok && parent.Parent() != nil && !options.parentBlock.known() {
+				options.parentBlock, _ = refOf(parent, options.queryPage)
+			}
+		}
+
+		return parseAdvanced(n.Query, options)
 	}
 
 	return nil, fmt.Errorf("query: %T is not a query", node)
+}
+
+func newParseOptions(opts []ParseOption) *parseOptions {
+	options := &parseOptions{}
+	for _, opt := range opts {
+		opt(options)
+	}
+	return options
 }
 
 // ErrUnsupported is wrapped by the errors of ParseAdvanced for queries that
@@ -164,8 +246,9 @@ var queryFence = regexp.MustCompile(`(?im)^\s*#\+(BEGIN|END)_QUERY\s*$`)
 // and are supported when the page is given with WithCurrentPage and
 // WithQueryPage. The inputs `:current-block` and `:parent-block` are supported
 // when the UUID of the block is given with WithCurrentBlock and
-// WithParentBlock, as the parent of the blocks in `[?b :block/parent ?block]`
-// or as the block above them in a rule such as the one below.
+// WithParentBlock, or found by ParseNode, as the parent of the blocks in
+// `[?b :block/parent ?block]` or as the block above them in a rule such as the
+// one below.
 //
 // Of the :rules, the recursive rule that finds the blocks below a block at any
 // depth is supported, and is translated into an AncestorFilter:
@@ -177,11 +260,10 @@ var queryFence = regexp.MustCompile(`(?im)^\s*#\+(BEGIN|END)_QUERY\s*$`)
 // results, such as :view and :table-view?, are ignored. Errors in the EDN
 // itself are returned as *ParseError.
 func ParseAdvanced(text string, opts ...ParseOption) (*AdvancedQuery, error) {
-	options := &parseOptions{}
-	for _, opt := range opts {
-		opt(options)
-	}
+	return parseAdvanced(text, newParseOptions(opts))
+}
 
+func parseAdvanced(text string, options *parseOptions) (*AdvancedQuery, error) {
 	// The fences are replaced with spaces so that offsets stay the same.
 	text = queryFence.ReplaceAllStringFunc(text, func(s string) string {
 		return strings.Repeat(" ", len(s))
@@ -211,11 +293,11 @@ func ParseAdvanced(text string, opts ...ParseOption) (*AdvancedQuery, error) {
 			"current-page": options.currentPage,
 			"query-page":   options.queryPage,
 		},
-		blocks: map[string]string{
+		blocks: map[string]blockRef{
 			"current-block": options.currentBlock,
 			"parent-block":  options.parentBlock,
 		},
-		blockInputs: make(map[string]string),
+		blockInputs: make(map[string]blockRef),
 		rules:       make(map[string]*ancestorRule),
 	}
 
@@ -360,13 +442,13 @@ type translator struct {
 	// :query-page stand for, empty if they are not known.
 	pages map[string]string
 
-	// blocks are the UUIDs of the blocks that the inputs :current-block and
-	// :parent-block stand for, empty if they are not known.
-	blocks map[string]string
+	// blocks are the blocks that the inputs :current-block and :parent-block
+	// stand for, empty if they are not known.
+	blocks map[string]blockRef
 
-	// blockInputs maps the variables in :in that are blocks to their UUIDs.
+	// blockInputs maps the variables in :in that are blocks to the blocks.
 	// They are kept out of inputs, as they can not be read as values.
-	blockInputs map[string]string
+	blockInputs map[string]blockRef
 
 	// rules are the rules from :rules, by name.
 	rules map[string]*ancestorRule
@@ -525,12 +607,12 @@ func (t *translator) readInputs(queryNode *ednNode, in []*ednNode, inputsNode *e
 			continue
 		}
 
-		if id, isBlock := t.blocks[input.text]; isBlock && input.kind == ednKeyword {
-			if id == "" {
-				return t.unsupported(input, "the input :%s needs the UUID of the block, given with %s", input.text, inputOptionNames[input.text])
+		if ref, isBlock := t.blocks[input.text]; isBlock && input.kind == ednKeyword {
+			if !ref.known() {
+				return t.unsupported(input, "the input :%s needs the block, given with %s, or found by ParseNode with the page given with WithQueryPage", input.text, inputOptionNames[input.text])
 			}
 
-			t.blockInputs[v.text] = id
+			t.blockInputs[v.text] = ref
 			continue
 		}
 
@@ -837,17 +919,17 @@ func (t *translator) pageRefName(node *ednNode) (string, bool) {
 	return t.name(node)
 }
 
-// blockID returns the UUID of the block that a value of :block/parent points
-// at: a variable for :current-block or :parent-block, or a lookup such as
+// blockRef returns the block that a value of :block/parent points at: a
+// variable for :current-block or :parent-block, or a lookup such as
 // `[:block/uuid #uuid "..."]`.
-func (t *translator) blockID(node *ednNode) (string, bool) {
+func (t *translator) blockRef(node *ednNode) (blockRef, bool) {
 	if isVar(node) {
-		id, ok := t.blockInputs[node.text]
-		return id, ok
+		ref, ok := t.blockInputs[node.text]
+		return ref, ok
 	}
 
 	if node.kind != ednVector || len(node.items) != 2 || !(node.items[0].kind == ednKeyword && node.items[0].text == "block/uuid") {
-		return "", false
+		return blockRef{}, false
 	}
 
 	value := node.items[1]
@@ -856,9 +938,9 @@ func (t *translator) blockID(node *ednNode) (string, bool) {
 	}
 
 	if value.kind != ednString || value.text == "" {
-		return "", false
+		return blockRef{}, false
 	}
-	return value.text, true
+	return blockRef{id: value.text}, true
 }
 
 // conjunction translates clauses that must all match. The conditions in
@@ -1144,11 +1226,11 @@ func (t *translator) binding(clause *ednNode, conditions []*condition) (Filter, 
 			return nil, err
 		}
 
-		id, ok := t.blockID(value)
+		ref, ok := t.blockRef(value)
 		if !ok {
 			return nil, t.unsupported(clause, "expected a block, such as :current-block or [:block/uuid #uuid \"...\"]")
 		}
-		return Parent(id), nil
+		return ref.parent(), nil
 	case "block/refs", "block/path-refs":
 		if err := t.checkBlock(clause, entity); err != nil {
 			return nil, err
@@ -1629,11 +1711,11 @@ func (t *translator) ancestorFilter(clause *ednNode, rule *ancestorRule) (Filter
 		return nil, err
 	}
 
-	id, ok := t.blockID(clause.items[1+rule.ancestor])
+	ref, ok := t.blockRef(clause.items[1+rule.ancestor])
 	if !ok {
 		return nil, t.unsupported(clause, "expected a block above, such as :current-block or [:block/uuid #uuid \"...\"]")
 	}
-	return Ancestor(id), nil
+	return ref.ancestor(), nil
 }
 
 // strings returns the strings in a value, which is a string, a keyword, a

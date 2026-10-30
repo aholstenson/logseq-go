@@ -263,8 +263,20 @@ func parseFilter(e *expr) (Filter, error) {
 		}
 		return PageRef(name), nil
 	case "parent", "ancestor":
+		if len(args) > 1 && args[0].kind == exprPageRef {
+			location, err := parseLocation(args[1:])
+			if err != nil {
+				return nil, err
+			}
+
+			if op == "ancestor" {
+				return AncestorAt(args[0].text, location...), nil
+			}
+			return ParentAt(args[0].text, location...), nil
+		}
+
 		if len(args) != 1 {
-			return nil, errorAt(e.pos, "%s takes one block, such as ((uuid))", op)
+			return nil, errorAt(e.pos, "%s takes one block, such as ((uuid)) or [[page]] 0 1", op)
 		}
 
 		switch args[0].kind {
@@ -274,7 +286,7 @@ func parseFilter(e *expr) (Filter, error) {
 			}
 			return Parent(args[0].text), nil
 		}
-		return nil, errorAt(args[0].pos, "expected a block, such as ((uuid))")
+		return nil, errorAt(args[0].pos, "expected a block, such as ((uuid)) or [[page]] 0 1")
 	case "refs":
 		name, err := parseSingleName(e, args)
 		if err != nil {
@@ -547,6 +559,20 @@ var priorityValues = map[string]content.Priority{
 	"A": content.PriorityA,
 	"B": content.PriorityB,
 	"C": content.PriorityC,
+}
+
+// parseLocation reads the location of a block on a page, such as the `0 1`
+// in `(parent [[page]] 0 1)`.
+func parseLocation(args []*expr) ([]int, error) {
+	location := make([]int, 0, len(args))
+	for _, arg := range args {
+		idx, err := strconv.Atoi(arg.text)
+		if arg.kind != exprSymbol || err != nil || idx < 0 {
+			return nil, errorAt(arg.pos, "expected the position of a block, such as 0")
+		}
+		location = append(location, idx)
+	}
+	return location, nil
 }
 
 type exprKind int

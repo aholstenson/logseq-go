@@ -36,6 +36,8 @@ var _ = Describe("Writing queries", func() {
 		Prints("parent that is not a UUID", query.New(query.Parent("a b")), `(parent "a b")`)
 		Prints("ancestor", query.New(query.Ancestor("abc-123")), "(ancestor ((abc-123)))")
 		Prints("ancestor that is not a UUID", query.New(query.Ancestor("a b")), `(ancestor "a b")`)
+		Prints("parent by location", query.New(query.ParentAt("Outline", 0, 1)), "(parent [[Outline]] 0 1)")
+		Prints("ancestor by location", query.New(query.AncestorAt("Outline", 2)), "(ancestor [[Outline]] 2)")
 		Prints("refs with brackets", query.New(query.Refs("a ]] b")), `(refs "a ]] b")`)
 		Prints("namespace", query.New(query.Namespace("Projects")), "(namespace [[Projects]])")
 		Prints("page ref with brackets", query.New(query.PageRef("a ]] b")), `(page-ref "a ]] b")`)

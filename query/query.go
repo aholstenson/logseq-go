@@ -241,10 +241,25 @@ func Page(page string) *PageFilter {
 }
 
 // ParentFilter matches the blocks directly below a block. The block is named
-// by its UUID, which is the value of its `id::` property, so only a block with
-// that property can be the parent. It is written as `(parent ((uuid)))`.
+// by its UUID, which is the value of its `id::` property, and is written as
+// `(parent ((uuid)))`.
+//
+// A block without the property is named by its place instead: the title of
+// its page and its location on it, written as `(parent [[page]] 0 1)`. The
+// location is the position of the block among the blocks next to it at each
+// level, from the top of the page, so `0 1` is the second child of the first
+// block. A location changes when blocks are added or moved above the block,
+// so use it right after the page is read.
 type ParentFilter struct {
+	// Block is the UUID of the block.
 	Block string
+
+	// Page is the title of the page of the block, for a block without a
+	// UUID.
+	Page string
+
+	// Location is the place of the block on Page.
+	Location []int
 }
 
 // Parent creates a filter that matches the blocks directly below the block
@@ -253,17 +268,38 @@ func Parent(block string) *ParentFilter {
 	return &ParentFilter{Block: block}
 }
 
+// ParentAt creates a filter that matches the blocks directly below the block
+// at the location on the page. See ParentFilter for the location.
+func ParentAt(page string, location ...int) *ParentFilter {
+	return &ParentFilter{Page: page, Location: location}
+}
+
 // AncestorFilter matches the blocks below a block at any depth: its children,
-// the children of those and so on. The block is named by its UUID, the same
-// as for ParentFilter. It is written as `(ancestor ((uuid)))`.
+// the children of those and so on. The block is named the same way as for
+// ParentFilter, and is written as `(ancestor ((uuid)))` or
+// `(ancestor [[page]] 0 1)`.
 type AncestorFilter struct {
+	// Block is the UUID of the block.
 	Block string
+
+	// Page is the title of the page of the block, for a block without a
+	// UUID.
+	Page string
+
+	// Location is the place of the block on Page.
+	Location []int
 }
 
 // Ancestor creates a filter that matches the blocks below the block with the
 // UUID at any depth.
 func Ancestor(block string) *AncestorFilter {
 	return &AncestorFilter{Block: block}
+}
+
+// AncestorAt creates a filter that matches the blocks below the block at the
+// location on the page at any depth. See ParentFilter for the location.
+func AncestorAt(page string, location ...int) *AncestorFilter {
+	return &AncestorFilter{Page: page, Location: location}
 }
 
 // PropertyFilter matches the blocks with a property. If Value is set, the

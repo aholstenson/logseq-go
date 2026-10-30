@@ -450,6 +450,53 @@ var _ = Describe("Query", func() {
 		})
 	})
 
+	Describe("Queries for the blocks around the query without ids", func() {
+		It("finds the action items below the parent of the query", func() {
+			Expect(os.WriteFile(filepath.Join(graph.Directory(), "pages", "plain.md"), []byte(
+				"- Intro\n"+
+					"- Section\n"+
+					"  - TODO Write [[action]]\n"+
+					"    - TODO Nested [[action]]\n"+
+					"  - #+BEGIN_QUERY\n"+
+					"    {:title [:b \"Action items\"]\n"+
+					"     :query [:find (pull ?b [*]) :in $ ?parent %\n"+
+					"       :where [?p :block/name \"action\"] [?b :block/refs ?p] (check-parent ?b ?parent)]\n"+
+					"     :rules [[(check-parent ?b ?parent) [?b :block/parent ?parent]]\n"+
+					"             [(check-parent ?b ?parent) [?b :block/parent ?c] (check-parent ?c ?parent)]]\n"+
+					"     :inputs [:parent-block]}\n"+
+					"    #+END_QUERY\n"+
+					"- TODO Outside [[action]]\n",
+			), 0o644)).To(Succeed())
+			graph.Close()
+
+			var err error
+			graph, err = logseq.Open(ctx, graph.Directory(), logseq.WithInMemoryIndex())
+			Expect(err).ToNot(HaveOccurred())
+
+			page, err := graph.OpenPage("plain")
+			Expect(err).ToNot(HaveOccurred())
+
+			var nodes content.NodeList
+			for _, block := range page.Blocks() {
+				nodes = append(nodes, block.Children().FilterDeep(content.IsQuery())...)
+			}
+			Expect(nodes).To(HaveLen(1))
+
+			advanced, err := query.ParseNode(nodes[0], query.WithQueryPage(page.Title()))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(advanced.Query.String()).To(Equal("(and (refs [[action]]) (ancestor [[plain]] 1))"))
+
+			results, err := graph.Query(ctx, advanced.Query, logseq.QueryAt(now))
+			Expect(err).ToNot(HaveOccurred())
+
+			previews := make([]string, 0, len(results.Blocks))
+			for _, block := range results.Blocks {
+				previews = append(previews, block.Preview())
+			}
+			Expect(previews).To(ConsistOf("Write action", "Nested action"))
+		})
+	})
+
 	Describe("Results", func() {
 		It("picks a sample of the results", func() {
 			results := blocks("(and (task TODO) (sort-by priority asc) (sample 2))")

@@ -70,6 +70,25 @@ var _ = Describe("References of blocks", func() {
 		Expect(previewsOf(searchBlocks(idx, indexing.AncestorIs("second-id")))).To(BeEmpty())
 	})
 
+	It("matches the blocks below a block by its location", func() {
+		indexPage(idx, "pages/b.md", "Page B",
+			textBlock(text("first"),
+				textBlock(text("child"), textBlock(text("grandchild"))),
+				textBlock(text("second child")),
+			),
+			textBlock(text("second"), textBlock(text("child of second"))),
+		)
+
+		onB := func(q indexing.Query) indexing.Query {
+			return indexing.And(indexing.PageTitleIs("Page B"), q)
+		}
+
+		Expect(previewsOf(searchBlocks(idx, onB(indexing.ParentAt([]int{0}))))).To(ConsistOf("child", "second child"))
+		Expect(previewsOf(searchBlocks(idx, onB(indexing.ParentAt([]int{0, 0}))))).To(ConsistOf("grandchild"))
+		Expect(previewsOf(searchBlocks(idx, onB(indexing.AncestorAt([]int{0}))))).To(ConsistOf("child", "grandchild", "second child"))
+		Expect(previewsOf(searchBlocks(idx, onB(indexing.AncestorAt([]int{1}))))).To(ConsistOf("child of second"))
+	})
+
 	It("does not add properties to blocks without an id", func() {
 		block := textBlock(text("no id"), textBlock(text("child")))
 		indexPage(idx, "pages/b.md", "Page B", block)

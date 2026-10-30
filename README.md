@@ -406,14 +406,15 @@ Queries written on pages, as `{{query ...}}` or between `#+BEGIN_QUERY` and
 `#+END_QUERY`, are not run by the library. They can be found with
 `content.IsQuery`, read with `query.ParseNode` and run with `Graph.Query`.
 Advanced queries that use `:current-page` or `:query-page` need the title of
-the page. Queries that use `:current-block` or `:parent-block` to find the
-blocks below a block need the `id::` of that block:
+the page. `ParseNode` finds the blocks for `:current-block` and
+`:parent-block` itself. A block without an `id::` is found by its place on the
+page given with `query.WithQueryPage`:
 
 ```go
 for _, node := range block.Children().FilterDeep(content.IsQuery()) {
   advanced, err := query.ParseNode(node,
     query.WithCurrentPage(page.Title()),
-    query.WithCurrentBlock(content.BlockOf(node).ID()),
+    query.WithQueryPage(page.Title()),
   )
   ...
   results, err := graph.Query(ctx, advanced.Query)

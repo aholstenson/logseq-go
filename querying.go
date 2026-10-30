@@ -242,15 +242,9 @@ func (r *queryRunner) compile(filter query.Filter, blocks bool) (indexing.Query,
 	case *query.PageFilter:
 		return indexing.PageTitleIs(f.Page), nil
 	case *query.ParentFilter:
-		if f.Block == "" {
-			return nil, fmt.Errorf("query: the parent block has no UUID")
-		}
-		return indexing.ParentIs(f.Block), nil
+		return blockQuery("parent", f.Block, f.Page, f.Location, indexing.ParentIs, indexing.ParentAt)
 	case *query.AncestorFilter:
-		if f.Block == "" {
-			return nil, fmt.Errorf("query: the ancestor block has no UUID")
-		}
-		return indexing.AncestorIs(f.Block), nil
+		return blockQuery("ancestor", f.Block, f.Page, f.Location, indexing.AncestorIs, indexing.AncestorAt)
 	case *query.PropertyFilter:
 		return propertyQuery(f.Name, f.Value), nil
 	case *query.DateFilter:
@@ -351,6 +345,28 @@ func (r *queryRunner) blocksOnPages(pageQuery indexing.Query) (indexing.Query, e
 	}
 
 	return indexing.OnPages(subPaths...), nil
+}
+
+// blockQuery matches the blocks below a block that is named by its UUID, or by
+// its page and location when it has none.
+func blockQuery(
+	name string,
+	block string,
+	page string,
+	location []int,
+	byID func(string) indexing.Query,
+	byLocation func([]int) indexing.Query,
+) (indexing.Query, error) {
+	switch {
+	case block != "":
+		return byID(block), nil
+	case page != "" && len(location) > 0:
+		// The location is the same on every page, so the page is a part of
+		// the query.
+		return indexing.And(indexing.PageTitleIs(page), byLocation(location)), nil
+	}
+
+	return nil, fmt.Errorf("query: the %s block has no UUID or location", name)
 }
 
 // propertyQuery matches a property with the value, either as the text of the
