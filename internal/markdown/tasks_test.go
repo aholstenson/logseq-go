@@ -1,6 +1,8 @@
 package markdown_test
 
 import (
+	"time"
+
 	"github.com/aholstenson/logseq-go/content"
 	"github.com/aholstenson/logseq-go/internal/markdown"
 	. "github.com/onsi/ginkgo/v2"
@@ -69,5 +71,40 @@ var _ = Describe("Editing tasks", func() {
 		})
 
 		Expect(out).To(Equal("- TODO Task"))
+	})
+
+	Describe("Completing", func() {
+		at := time.Date(2024, time.January, 10, 12, 0, 0, 0, time.Local)
+		complete := func(block *content.Block) {
+			block.CompleteTask(at)
+		}
+
+		It("marks a task as done", func() {
+			Expect(editTask("- TODO Task", complete)).To(Equal("- DONE Task"))
+		})
+
+		It("stops a running clock", func() {
+			out := editTask("- DOING Task\n  :LOGBOOK:\n  CLOCK: [2024-01-10 Wed 11:00:00]\n  :END:", complete)
+
+			Expect(out).To(Equal("- DONE Task\n  :LOGBOOK:\n  CLOCK: [2024-01-10 Wed 11:00:00]--[2024-01-10 Wed 12:00:00] =>  01:00:00\n  :END:"))
+		})
+
+		It("repeats a task with a new logbook", func() {
+			out := editTask("- TODO Task\n  SCHEDULED: <2024-01-01 Mon .+1d>", complete)
+
+			Expect(out).To(Equal("- TODO Task\n  SCHEDULED: <2024-01-11 Thu .+1d>\n  :LOGBOOK:\n  * State \"DONE\" from \"TODO\" [2024-01-10 Wed 12:00:00]\n  :END:"))
+		})
+
+		It("repeats a task with properties and sub blocks", func() {
+			out := editTask("- NOW Task\n  DEADLINE: <2024-01-01 Mon 09:00 +1w>\n  id:: 1\n\t- Child", complete)
+
+			Expect(out).To(Equal("- LATER Task\n  DEADLINE: <2024-01-08 Mon 09:00 +1w>\n  id:: 1\n  :LOGBOOK:\n  * State \"DONE\" from \"NOW\" [2024-01-10 Wed 12:00:00]\n  :END:\n\t- Child"))
+		})
+
+		It("adds to a logbook that is already there", func() {
+			out := editTask("- TODO Task\n  SCHEDULED: <2024-01-09 Tue ++1d>\n  :LOGBOOK:\n  * State \"DONE\" from \"TODO\" [2024-01-08 Mon 12:00:00]\n  :END:", complete)
+
+			Expect(out).To(Equal("- TODO Task\n  SCHEDULED: <2024-01-10 Wed ++1d>\n  :LOGBOOK:\n  * State \"DONE\" from \"TODO\" [2024-01-08 Mon 12:00:00]\n  * State \"DONE\" from \"TODO\" [2024-01-10 Wed 12:00:00]\n  :END:"))
+		})
 	})
 })

@@ -336,18 +336,20 @@ const (
 )
 
 // RepeaterType controls how the next occurrence of a repeating date is picked
-// when the task is completed.
+// when the task is completed. The rules are the ones Logseq uses, which are
+// not the same as the rules of Org mode. See TaskDate.Next.
 type RepeaterType int
 
 const (
 	// RepeaterTypeCumulate, written as `+`, moves the date forward one
 	// interval, even if that leaves it in the past.
 	RepeaterTypeCumulate RepeaterType = iota
-	// RepeaterTypeCatchUp, written as `++`, moves the date forward whole
-	// intervals until it is in the future.
+	// RepeaterTypeCatchUp, written as `++`, keeps a date that is in the
+	// future and moves a date that is not forward one interval, even if that
+	// leaves it in the past.
 	RepeaterTypeCatchUp
-	// RepeaterTypeRestart, written as `.+`, moves the date to one interval
-	// after the day the task was completed.
+	// RepeaterTypeRestart, written as `.+`, moves the date forward whole
+	// intervals until it is in the future.
 	RepeaterTypeRestart
 )
 
@@ -506,6 +508,76 @@ func (t *TaskDate) WithRepeater(repeater *Repeater) *TaskDate {
 	return t
 }
 
+// Next returns the date that this date moves to when its task is completed at
+// the given time, following the rules of its repeater. Returns Date if the date
+// does not repeat.
+//
+// The intervals are added to the time of day as it is on a clock, so a day is
+// always 24 hours on the clock even when daylight saving time changes. Adding
+// months or years to a day that the target month does not have gives the last
+// day of that month, so 31 January plus one month is the end of February.
+func (t *TaskDate) Next(at time.Time) time.Time {
+	r := t.Repeater
+	if r == nil || r.Value <= 0 {
+		return t.Date
+	}
+
+	var next time.Time
+	switch r.Type {
+	case RepeaterTypeCatchUp:
+		if t.Date.After(at) {
+			return t.Date
+		}
+
+		next = r.addTo(t.Date)
+	case RepeaterTypeRestart:
+		next = r.addTo(t.Date)
+		for !next.After(at) {
+			next = r.addTo(next)
+		}
+	default:
+		next = r.addTo(t.Date)
+	}
+
+	if !t.HasTime {
+		next = truncateToDay(next)
+	}
+
+	return next
+}
+
+// addTo adds one interval of the repeater to a time.
+func (r *Repeater) addTo(date time.Time) time.Time {
+	switch r.Unit {
+	case RepeaterUnitHour:
+		return time.Date(date.Year(), date.Month(), date.Day(), date.Hour()+r.Value, date.Minute(), date.Second(), date.Nanosecond(), date.Location())
+	case RepeaterUnitDay:
+		return date.AddDate(0, 0, r.Value)
+	case RepeaterUnitWeek:
+		return date.AddDate(0, 0, 7*r.Value)
+	case RepeaterUnitMonth:
+		return addMonths(date, r.Value)
+	case RepeaterUnitYear:
+		return addMonths(date, 12*r.Value)
+	}
+
+	return date
+}
+
+// addMonths adds months to a time, using the last day of the target month if
+// it does not have the day of the time.
+func addMonths(date time.Time, months int) time.Time {
+	first := time.Date(date.Year(), date.Month()+time.Month(months), 1, date.Hour(), date.Minute(), date.Second(), date.Nanosecond(), date.Location())
+	lastDay := first.AddDate(0, 1, -1).Day()
+
+	day := date.Day()
+	if day > lastDay {
+		day = lastDay
+	}
+
+	return first.AddDate(0, 0, day-1)
+}
+
 func (t *TaskDate) WithPreviousLineType(previousLineType PreviousLineType) *TaskDate {
 	t.previousLineType = previousLineType
 	return t
@@ -621,6 +693,107 @@ func (b *Block) setTaskDate(dateType TaskDateType, date *TaskDate) {
 		b.PrependChild(date)
 	} else {
 		b.InsertChildAfter(date, after)
+	}
+}
+
+// CompleteTask marks the task in this block as done at the given time, in the
+// same way as Logseq does when a task is checked:
+//
+//   - A clock in the logbook that is still running is stopped.
+//   - A task that does not repeat gets the status DONE.
+//   - A task with a repeating `SCHEDULED` or `DEADLINE` date stays open, so
+//     that it can be done again. Each repeating date moves to its next
+//     occurrence, see TaskDate.Next. DOING changes to TODO and NOW changes to
+//     LATER, other statuses are kept. A state change from the old status to
+//     DONE is added to the logbook, which is created if the block does not
+//     have one.
+//
+// Nothing changes if the block is not a task or if the task is closed.
+func (b *Block) CompleteTask(at time.Time) {
+	status := b.TaskStatus()
+	if !status.IsOpen() {
+		return
+	}
+
+	logbook := b.Logbook()
+	if logbook != nil {
+		if clock, ok := logbook.LastChild().(*LogbookEntryClock); ok && clock.IsRunning() {
+			clock.WithEnd(at)
+		}
+	}
+
+	repeated := false
+	for _, date := range []*TaskDate{b.Scheduled(), b.Deadline()} {
+		if date == nil || date.Repeater == nil {
+			continue
+		}
+
+		date.Date = date.Next(at)
+		repeated = true
+	}
+
+	if !repeated {
+		b.SetTaskStatus(TaskStatusDone)
+		return
+	}
+
+	switch status {
+	case TaskStatusDoing:
+		b.SetTaskStatus(TaskStatusTodo)
+	case TaskStatusNow:
+		b.SetTaskStatus(TaskStatusLater)
+	}
+
+	if logbook == nil {
+		// Logseq writes the logbook directly after the line before it.
+		logbook = NewLogbook().WithPreviousLineType(PreviousLineTypeNonBlank)
+		b.insertAfterTaskContent(logbook)
+	}
+
+	logbook.AddChild(NewLogbookEntryStateChange(status, TaskStatusDone, at))
+}
+
+// Logbook gets the logbook of this block, or nil if it does not have one. Only
+// a logbook before the sub blocks belongs to the block.
+func (b *Block) Logbook() *Logbook {
+	for node := b.FirstChild(); node != nil; node = node.NextSibling() {
+		switch n := node.(type) {
+		case *Logbook:
+			return n
+		case *Block:
+			return nil
+		}
+	}
+
+	return nil
+}
+
+// insertAfterTaskContent inserts a node after the first paragraph of the
+// block and the dates and properties that follow it, which is where Logseq
+// puts the logbook of a task.
+func (b *Block) insertAfterTaskContent(node Node) {
+	var after Node
+	seenParagraph := false
+loop:
+	for child := b.FirstChild(); child != nil; child = child.NextSibling() {
+		switch child.(type) {
+		case *Paragraph:
+			if seenParagraph {
+				break loop
+			}
+			seenParagraph = true
+		case *TaskDate, *Properties:
+		default:
+			break loop
+		}
+
+		after = child
+	}
+
+	if after == nil {
+		b.PrependChild(node)
+	} else {
+		b.InsertChildAfter(node, after)
 	}
 }
 

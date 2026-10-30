@@ -390,4 +390,216 @@ var _ = Describe("Tasks", func() {
 			))))
 		})
 	})
+
+	Describe("Next occurrence", func() {
+		// The task is completed on 10 January at noon.
+		at := time.Date(2024, time.January, 10, 12, 0, 0, 0, time.Local)
+		jan1 := time.Date(2024, time.January, 1, 0, 0, 0, 0, time.Local)
+
+		repeating := func(date time.Time, repeaterType content.RepeaterType, value int, unit content.RepeaterUnit) *content.TaskDate {
+			return content.NewScheduled(date).WithRepeater(content.NewRepeater(repeaterType, value, unit))
+		}
+
+		It("keeps a date that does not repeat", func() {
+			Expect(content.NewScheduled(jan1).Next(at)).To(Equal(jan1))
+		})
+
+		It("moves + one interval, even into the past", func() {
+			date := repeating(jan1, content.RepeaterTypeCumulate, 1, content.RepeaterUnitDay)
+			Expect(date.Next(at)).To(Equal(jan1.AddDate(0, 0, 1)))
+		})
+
+		It("moves ++ one interval when it is in the past", func() {
+			date := repeating(jan1, content.RepeaterTypeCatchUp, 1, content.RepeaterUnitWeek)
+			Expect(date.Next(at)).To(Equal(jan1.AddDate(0, 0, 7)))
+		})
+
+		It("keeps ++ when it is in the future", func() {
+			future := time.Date(2024, time.January, 12, 0, 0, 0, 0, time.Local)
+			date := repeating(future, content.RepeaterTypeCatchUp, 1, content.RepeaterUnitDay)
+			Expect(date.Next(at)).To(Equal(future))
+		})
+
+		It("moves .+ until it is in the future", func() {
+			date := repeating(jan1, content.RepeaterTypeRestart, 1, content.RepeaterUnitDay)
+			Expect(date.Next(at)).To(Equal(time.Date(2024, time.January, 11, 0, 0, 0, 0, time.Local)))
+		})
+
+		It("moves .+ one interval when it is already in the future", func() {
+			future := time.Date(2024, time.January, 12, 0, 0, 0, 0, time.Local)
+			date := repeating(future, content.RepeaterTypeRestart, 3, content.RepeaterUnitDay)
+			Expect(date.Next(at)).To(Equal(time.Date(2024, time.January, 15, 0, 0, 0, 0, time.Local)))
+		})
+
+		It("moves .+ past the time of day the task was completed", func() {
+			date := content.NewScheduledWithTime(time.Date(2024, time.January, 9, 12, 0, 0, 0, time.Local)).
+				WithRepeater(content.NewRepeater(content.RepeaterTypeRestart, 1, content.RepeaterUnitDay))
+			Expect(date.Next(at)).To(Equal(time.Date(2024, time.January, 11, 12, 0, 0, 0, time.Local)))
+		})
+
+		It("adds hours to the time of day", func() {
+			date := content.NewScheduledWithTime(time.Date(2024, time.January, 10, 9, 0, 0, 0, time.Local)).
+				WithRepeater(content.NewRepeater(content.RepeaterTypeCumulate, 2, content.RepeaterUnitHour))
+			Expect(date.Next(at)).To(Equal(time.Date(2024, time.January, 10, 11, 0, 0, 0, time.Local)))
+		})
+
+		It("keeps a date without a time of day on a day for hours", func() {
+			date := repeating(jan1, content.RepeaterTypeCumulate, 25, content.RepeaterUnitHour)
+			Expect(date.Next(at)).To(Equal(jan1.AddDate(0, 0, 1)))
+		})
+
+		It("uses the last day of a shorter month", func() {
+			jan31 := time.Date(2024, time.January, 31, 0, 0, 0, 0, time.Local)
+			date := repeating(jan31, content.RepeaterTypeCumulate, 1, content.RepeaterUnitMonth)
+			Expect(date.Next(at)).To(Equal(time.Date(2024, time.February, 29, 0, 0, 0, 0, time.Local)))
+		})
+
+		It("uses the last day of February for a leap day", func() {
+			leapDay := time.Date(2024, time.February, 29, 0, 0, 0, 0, time.Local)
+			date := repeating(leapDay, content.RepeaterTypeCumulate, 1, content.RepeaterUnitYear)
+			Expect(date.Next(at)).To(Equal(time.Date(2025, time.February, 28, 0, 0, 0, 0, time.Local)))
+		})
+
+		It("keeps the day of the month when it can", func() {
+			date := repeating(jan1, content.RepeaterTypeCumulate, 13, content.RepeaterUnitMonth)
+			Expect(date.Next(at)).To(Equal(time.Date(2025, time.February, 1, 0, 0, 0, 0, time.Local)))
+		})
+	})
+
+	Describe("Completing tasks", func() {
+		at := time.Date(2024, time.January, 10, 12, 0, 0, 0, time.Local)
+		jan1 := time.Date(2024, time.January, 1, 0, 0, 0, 0, time.Local)
+		daily := func() *content.Repeater {
+			return content.NewRepeater(content.RepeaterTypeCumulate, 1, content.RepeaterUnitDay)
+		}
+
+		task := func(status content.TaskStatus, rest ...content.Node) *content.Block {
+			children := append([]content.Node{content.NewParagraph(
+				content.NewTaskMarker(status),
+				content.NewText("Task"),
+			)}, rest...)
+			return content.NewBlock(children...)
+		}
+
+		It("marks a task that does not repeat as done", func() {
+			block := task(content.TaskStatusTodo, content.NewScheduled(jan1))
+			block.CompleteTask(at)
+
+			Expect(block).To(EqualNode(task(content.TaskStatusDone, content.NewScheduled(jan1))))
+		})
+
+		It("stops a running clock", func() {
+			start := at.Add(-time.Hour)
+			block := task(content.TaskStatusDoing, content.NewLogbook(content.NewLogbookEntryClock(start, time.Time{})))
+			block.CompleteTask(at)
+
+			Expect(block).To(EqualNode(task(content.TaskStatusDone,
+				content.NewLogbook(content.NewLogbookEntryClock(start, at)),
+			)))
+		})
+
+		It("keeps a clock that is stopped", func() {
+			start := at.Add(-2 * time.Hour)
+			end := at.Add(-time.Hour)
+			block := task(content.TaskStatusTodo, content.NewLogbook(content.NewLogbookEntryClock(start, end)))
+			block.CompleteTask(at)
+
+			Expect(block.Logbook().LastChild()).To(EqualNode(content.NewLogbookEntryClock(start, end)))
+		})
+
+		It("moves a repeating date and keeps the task open", func() {
+			block := task(content.TaskStatusTodo, content.NewScheduled(jan1).WithRepeater(daily()))
+			block.CompleteTask(at)
+
+			Expect(block).To(EqualNode(task(content.TaskStatusTodo,
+				content.NewScheduled(jan1.AddDate(0, 0, 1)).WithRepeater(daily()),
+				content.NewLogbook(content.NewLogbookEntryStateChange(content.TaskStatusTodo, content.TaskStatusDone, at)).
+					WithPreviousLineType(content.PreviousLineTypeNonBlank),
+			)))
+		})
+
+		It("moves both repeating dates", func() {
+			block := task(content.TaskStatusLater,
+				content.NewScheduled(jan1).WithRepeater(daily()),
+				content.NewDeadline(jan1.AddDate(0, 0, 2)).WithRepeater(daily()),
+			)
+			block.CompleteTask(at)
+
+			Expect(block.Scheduled().Date).To(Equal(jan1.AddDate(0, 0, 1)))
+			Expect(block.Deadline().Date).To(Equal(jan1.AddDate(0, 0, 3)))
+		})
+
+		It("only moves the date that repeats", func() {
+			block := task(content.TaskStatusTodo,
+				content.NewScheduled(jan1).WithRepeater(daily()),
+				content.NewDeadline(jan1),
+			)
+			block.CompleteTask(at)
+
+			Expect(block.Scheduled().Date).To(Equal(jan1.AddDate(0, 0, 1)))
+			Expect(block.Deadline().Date).To(Equal(jan1))
+		})
+
+		It("changes DOING to TODO and NOW to LATER for a repeating task", func() {
+			doing := task(content.TaskStatusDoing, content.NewScheduled(jan1).WithRepeater(daily()))
+			doing.CompleteTask(at)
+			Expect(doing.TaskStatus()).To(Equal(content.TaskStatusTodo))
+
+			now := task(content.TaskStatusNow, content.NewScheduled(jan1).WithRepeater(daily()))
+			now.CompleteTask(at)
+			Expect(now.TaskStatus()).To(Equal(content.TaskStatusLater))
+		})
+
+		It("keeps other open statuses for a repeating task", func() {
+			block := task(content.TaskStatusWaiting, content.NewScheduled(jan1).WithRepeater(daily()))
+			block.CompleteTask(at)
+
+			Expect(block.TaskStatus()).To(Equal(content.TaskStatusWaiting))
+		})
+
+		It("adds the state change after a stopped clock", func() {
+			start := at.Add(-time.Hour)
+			block := task(content.TaskStatusDoing,
+				content.NewScheduled(jan1).WithRepeater(daily()),
+				content.NewLogbook(content.NewLogbookEntryClock(start, time.Time{})),
+			)
+			block.CompleteTask(at)
+
+			Expect(block.Logbook()).To(EqualNode(content.NewLogbook(
+				content.NewLogbookEntryClock(start, at),
+				content.NewLogbookEntryStateChange(content.TaskStatusDoing, content.TaskStatusDone, at),
+			)))
+		})
+
+		It("adds the logbook after properties and before sub blocks", func() {
+			block := task(content.TaskStatusTodo,
+				content.NewScheduled(jan1).WithRepeater(daily()),
+				content.NewProperties(content.NewProperty("id", content.NewText("1"))),
+				content.NewBlock(content.NewParagraph(content.NewText("Child"))),
+			)
+			block.CompleteTask(at)
+
+			Expect(block).To(EqualNode(task(content.TaskStatusTodo,
+				content.NewScheduled(jan1.AddDate(0, 0, 1)).WithRepeater(daily()),
+				content.NewProperties(content.NewProperty("id", content.NewText("1"))),
+				content.NewLogbook(content.NewLogbookEntryStateChange(content.TaskStatusTodo, content.TaskStatusDone, at)).
+					WithPreviousLineType(content.PreviousLineTypeNonBlank),
+				content.NewBlock(content.NewParagraph(content.NewText("Child"))),
+			)))
+		})
+
+		It("does nothing for a closed task", func() {
+			block := task(content.TaskStatusCancelled, content.NewScheduled(jan1).WithRepeater(daily()))
+			block.CompleteTask(at)
+
+			Expect(block).To(EqualNode(task(content.TaskStatusCancelled, content.NewScheduled(jan1).WithRepeater(daily()))))
+		})
+
+		It("does nothing for a block that is not a task", func() {
+			block := content.NewBlock(content.NewParagraph(content.NewText("Text")))
+			block.CompleteTask(at)
+
+			Expect(block).To(EqualNode(content.NewBlock(content.NewParagraph(content.NewText("Text")))))
+		})
+	})
 })

@@ -125,6 +125,21 @@ Deleted pages are removed from the graph, unless the graph is opened with
 `logseq.WithRecycleDeletedPages()`, in which case they are moved to the
 `logseq/.recycle` directory that Logseq recovers deleted pages from.
 
+### Tasks
+
+Blocks have helpers to read and change tasks:
+
+```go
+block.SetTaskStatus(graph.Workflow().Todo())
+block.SetPriority(content.PriorityA)
+block.SetDeadline(content.NewDeadline(time.Now().AddDate(0, 0, 7)))
+
+// Marks the task as done in the same way as Logseq. A task with a repeating
+// date stays open, its date moves to the next occurrence and the logbook
+// records that it was done.
+block.CompleteTask(time.Now())
+```
+
 ### Revisions and conflicts
 
 Every page has a revision, which is a hash of the content of its file. A page
