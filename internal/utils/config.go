@@ -171,9 +171,12 @@ type DefaultQueries struct {
 }
 
 // DefaultQuery is a single query in DefaultQueries. The parts of it that are
-// Datalog or Clojure are kept as the EDN they were written as, as this library
-// does not run queries.
+// Datalog or Clojure are kept as the EDN they were written as.
 type DefaultQuery struct {
+	// Raw is the map of the query exactly as it appears in the config, which
+	// is the same map as an advanced query written on a page.
+	Raw edn.RawMessage `edn:"-"`
+
 	// Title is what is shown above the results of the query.
 	Title QueryTitle `edn:"title"`
 
@@ -195,6 +198,20 @@ type DefaultQuery struct {
 
 	// Collapsed is whether the query starts out collapsed.
 	Collapsed bool `edn:"collapsed?"`
+}
+
+func (q *DefaultQuery) UnmarshalEDN(data []byte) error {
+	// The type without this method reads the keys of the map.
+	type defaultQuery DefaultQuery
+	var parsed defaultQuery
+	if err := edn.Unmarshal(data, &parsed); err != nil {
+		return err
+	}
+
+	*q = DefaultQuery(parsed)
+	q.Raw = make(edn.RawMessage, len(data))
+	copy(q.Raw, data)
+	return nil
 }
 
 // QueryTitle is the title of a query. Logseq accepts either a string or Hiccup

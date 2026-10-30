@@ -8,6 +8,7 @@ import (
 
 	logseq "github.com/aholstenson/logseq-go"
 	"github.com/aholstenson/logseq-go/content"
+	"github.com/aholstenson/logseq-go/query"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -428,6 +429,54 @@ var _ = Describe("Config", func() {
 			Expect(queries[0].GroupByPage).ToNot(BeNil())
 			Expect(*queries[0].GroupByPage).To(BeFalse())
 			Expect(queries[0].Collapsed).To(BeTrue())
+			Expect(queries[0].EDN).To(HavePrefix(`{:title "🔨 NOW"`))
+		})
+
+		It("runs a query from the config", func() {
+			Expect(os.WriteFile(
+				filepath.Join(dir, "pages", "tasks.md"),
+				[]byte("- TODO Overdue\n  SCHEDULED: <2024-01-10 Wed>\n"+
+					"- TODO Later\n  SCHEDULED: <2024-01-20 Sat>\n"+
+					"- DONE Finished\n  SCHEDULED: <2024-01-10 Wed>\n"),
+				0o644,
+			)).To(Succeed())
+
+			graph := openWithConfig(`{:default-queries
+			  {:journals
+			   [{:title [:b "🔥 Overdue todos"]
+			     ; Tasks that were scheduled before today.
+			     :query [:find (pull ?b [*])
+			             :in $ ?day
+			             :where
+			             [?b :block/marker ?m]
+			             [(contains? #{"LATER" "TODO"} ?m)]
+			             [?b :block/scheduled ?d]
+			             [(< ?d ?day)]]
+			     :inputs [:today]
+			     :breadcrumb-show? false
+			     :collapsed? false}]}}`, logseq.WithInMemoryIndex())
+
+			queries := graph.DefaultJournalQueries()
+			Expect(queries).To(HaveLen(1))
+
+			advanced, err := queries[0].Parse()
+			Expect(err).ToNot(HaveOccurred())
+			Expect(advanced.Title).To(Equal("🔥 Overdue todos"))
+			Expect(advanced.Query.String()).To(Equal("(and (task LATER TODO) (scheduled < today))"))
+
+			now := time.Date(2024, time.January, 15, 14, 0, 0, 0, time.Local)
+			results, err := graph.Query(context.Background(), advanced.Query, logseq.QueryAt(now))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(results.Blocks).To(HaveLen(1))
+			Expect(results.Blocks[0].Preview()).To(Equal("Overdue"))
+		})
+
+		It("returns an error for a query that can not be translated", func() {
+			graph := openWithConfig(`{:default-queries
+			  {:journals [{:title "Count" :query [:find (count ?b) :where [?b :block/marker "TODO"]]}]}}`)
+
+			_, err := graph.DefaultJournalQueries()[0].Parse()
+			Expect(err).To(MatchError(query.ErrUnsupported))
 		})
 	})
 })

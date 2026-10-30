@@ -5,6 +5,7 @@ import (
 
 	"github.com/aholstenson/logseq-go/content"
 	"github.com/aholstenson/logseq-go/internal/utils"
+	"github.com/aholstenson/logseq-go/query"
 )
 
 // Workflow is the pair of task markers that a graph uses for its tasks, set
@@ -116,8 +117,12 @@ func (g *Graph) LogbookSettings() LogbookSettings {
 
 // DefaultQuery is a query that Logseq shows in addition to the content of a
 // page. The parts of it that are Datalog or Clojure are kept as the EDN they
-// were written as, as this library does not run queries.
+// were written as. Use Parse to translate the query and Graph.Query to run it.
 type DefaultQuery struct {
+	// EDN is the map of the query exactly as it appears in the config, which
+	// is the same map as an advanced query written on a page.
+	EDN string
+
 	// Title is what is shown above the results of the query. Queries with a
 	// title written as Hiccup markup have an empty title here, with the markup
 	// available in TitleEDN.
@@ -146,19 +151,36 @@ type DefaultQuery struct {
 	Collapsed bool
 }
 
+// Parse translates the query with query.ParseAdvanced, the same as an
+// advanced query written on a page. The options are given to
+// query.ParseAdvanced. The title of the result is the text of the title
+// without Hiccup markup, also when the title is written as Hiccup.
+//
+// Run the result with Graph.Query. Relative dates such as `:today` are
+// relative to the time the query runs at, see QueryAt:
+//
+//	advanced, err := defaultQuery.Parse()
+//	...
+//	results, err := graph.Query(ctx, advanced.Query)
+func (q DefaultQuery) Parse(opts ...query.ParseOption) (*query.AdvancedQuery, error) {
+	return query.ParseAdvanced(q.EDN, opts...)
+}
+
 // DefaultJournalQueries returns the queries that Logseq shows at the bottom of
-// the journal page for today, as set via `:default-queries`.
+// the journal page for today, as set via `:default-queries`. Logseq does not
+// show a query from this list when it has no results.
 func (g *Graph) DefaultJournalQueries() []DefaultQuery {
 	queries := make([]DefaultQuery, 0, len(g.config.DefaultQueries.Journals))
-	for _, query := range g.config.DefaultQueries.Journals {
+	for _, q := range g.config.DefaultQueries.Journals {
 		queries = append(queries, DefaultQuery{
-			Title:           query.Title.Text,
-			TitleEDN:        string(query.Title.Raw),
-			Query:           string(query.Query),
-			Inputs:          string(query.Inputs),
-			ResultTransform: string(query.ResultTransform),
-			GroupByPage:     query.GroupByPage,
-			Collapsed:       query.Collapsed,
+			EDN:             string(q.Raw),
+			Title:           q.Title.Text,
+			TitleEDN:        string(q.Title.Raw),
+			Query:           string(q.Query),
+			Inputs:          string(q.Inputs),
+			ResultTransform: string(q.ResultTransform),
+			GroupByPage:     q.GroupByPage,
+			Collapsed:       q.Collapsed,
 		})
 	}
 

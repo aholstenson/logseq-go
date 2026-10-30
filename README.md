@@ -421,6 +421,22 @@ for _, node := range block.Children().FilterDeep(content.IsQuery()) {
 }
 ```
 
+The default queries that Logseq shows below the journal for today, set via
+`:default-queries` in `config.edn`, are advanced queries too. Read them with
+`DefaultQuery.Parse` and run them with `Graph.Query`. Logseq does not show a
+default query that has no results:
+
+```go
+for _, defaultQuery := range graph.DefaultJournalQueries() {
+  advanced, err := defaultQuery.Parse()
+  ...
+  results, err := graph.Query(ctx, advanced.Query)
+  if len(results.Blocks) == 0 && len(results.Pages) == 0 {
+    continue
+  }
+}
+```
+
 When only the text of the query is known, give the blocks to
 `query.ParseAdvanced` instead. Use `query.WithCurrentBlock` and
 `query.WithParentBlock` for a block with an `id::`, and

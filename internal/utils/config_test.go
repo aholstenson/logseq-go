@@ -237,6 +237,8 @@ var _ = Describe("Config", func() {
 			Expect(c.DefaultQueries.Journals).To(HaveLen(1))
 
 			query := c.DefaultQueries.Journals[0]
+			Expect(string(query.Raw)).To(HavePrefix(`{:title "🔨 NOW"`))
+			Expect(string(query.Raw)).To(HaveSuffix(`:collapsed? true}`))
 			Expect(query.Title.Text).To(Equal("🔨 NOW"))
 			Expect(string(query.Title.Raw)).To(Equal(`"🔨 NOW"`))
 			Expect(string(query.Query)).To(ContainSubstring("[?h :block/marker ?marker]"))
