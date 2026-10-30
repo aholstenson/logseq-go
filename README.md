@@ -221,7 +221,9 @@ graph, err := logseq.Open(ctx, "path/to/graph",
     case *logseq.SyncStarted:
       // e.Total pages will be indexed, e.Unchanged are up to date
     case *logseq.PageIndexed:
-      // e.Done of e.Total pages are indexed
+      // e.Done of e.Total pages are handled
+    case *logseq.PageIndexFailed:
+      // A page could not be read and was skipped, e.Err has the reason
     case *logseq.SyncCompleted:
       // The index is up to date, e.Removed pages were removed as their
       // files were deleted while the graph was closed
@@ -232,7 +234,9 @@ graph, err := logseq.Open(ctx, "path/to/graph",
 )
 ```
 
-The events are sent in the order above. A graph without an index sends only
+The events are sent in the order above. A page that can not be read does not
+stop the graph from opening. It is reported with `PageIndexFailed` and is tried
+again the next time the graph is opened. A graph without an index sends only
 `OpenCompleted`.
 
 Pages can be searched for by title, content, references, tags, etc:

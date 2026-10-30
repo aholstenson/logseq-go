@@ -10,7 +10,7 @@ import "time"
 //
 //  1. ScanStarted, once.
 //  2. SyncStarted, once, with the number of pages to index.
-//  3. PageIndexed, once for each page that is indexed.
+//  3. PageIndexed or PageIndexFailed, once for each page to index.
 //  4. SyncCompleted, once.
 //  5. OpenCompleted, once.
 //
@@ -44,8 +44,9 @@ func (e *SyncStarted) isOpenEvent() {}
 type PageIndexed struct {
 	// SubPath is the path of the page file, relative to the graph directory.
 	SubPath string
-	// Done is the number of pages that are indexed, including this page. It
-	// is the same as Total for the last page.
+	// Done is the number of pages that are handled, including this page. Pages
+	// that failed, see PageIndexFailed, are also counted, so Done is the same
+	// as Total for the last page.
 	Done int
 	// Total is the number of pages to index, the same as SyncStarted.Total.
 	Total int
@@ -53,11 +54,45 @@ type PageIndexed struct {
 
 func (p *PageIndexed) isOpenEvent() {}
 
+// PageIndexFailed is an event that occurs when a page can not be read, for
+// example when the file has no read permission. The page is skipped and the
+// graph continues to open. The index keeps what it had for the page before,
+// and the page is tried again the next time the graph is opened.
+//
+// Errors from the index itself are not reported with this event, they stop
+// the graph from opening.
+type PageIndexFailed struct {
+	// SubPath is the path of the page file, relative to the graph directory.
+	SubPath string
+	// Err is the error that occurred.
+	Err error
+	// Done is the number of pages that are handled, including this page, the
+	// same as PageIndexed.Done.
+	Done int
+	// Total is the number of pages to index, the same as SyncStarted.Total.
+	Total int
+}
+
+func (e *PageIndexFailed) isOpenEvent() {}
+
+// Error returns the error message with the path of the page.
+func (e *PageIndexFailed) Error() string {
+	return e.SubPath + ": " + e.Err.Error()
+}
+
+// Unwrap returns the error that occurred.
+func (e *PageIndexFailed) Unwrap() error {
+	return e.Err
+}
+
 // SyncCompleted is an event that occurs when the index matches the files of
 // the graph.
 type SyncCompleted struct {
 	// Indexed is the number of pages that were indexed.
 	Indexed int
+	// Failed is the number of pages that could not be read, see
+	// PageIndexFailed.
+	Failed int
 	// Removed is the number of pages that were removed from the index, as
 	// their files were deleted or hidden while the graph was closed.
 	Removed int

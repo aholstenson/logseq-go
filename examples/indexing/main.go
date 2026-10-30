@@ -39,8 +39,10 @@ func main() {
 			fmt.Printf("Indexing %d pages, %d are up to date\n", e.Total, e.Unchanged)
 		case *logseq.PageIndexed:
 			fmt.Printf("[%d/%d] %s\n", e.Done, e.Total, e.SubPath)
+		case *logseq.PageIndexFailed:
+			fmt.Printf("[%d/%d] Skipped %s: %s\n", e.Done, e.Total, e.SubPath, e.Err)
 		case *logseq.SyncCompleted:
-			fmt.Printf("Indexed %d pages and removed %d in %s\n", e.Indexed, e.Removed, e.Duration)
+			fmt.Printf("Indexed %d pages, skipped %d and removed %d in %s\n", e.Indexed, e.Failed, e.Removed, e.Duration)
 		case *logseq.OpenCompleted:
 			println("Graph is open")
 		}

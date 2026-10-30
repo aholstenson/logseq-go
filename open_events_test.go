@@ -157,6 +157,63 @@ var _ = Describe("Open events", func() {
 		Expect(results.Size()).To(Equal(1))
 	})
 
+	It("reports a page that can not be read and continues to open", func() {
+		writePage("one.md", "- one\n")
+		Expect(os.WriteFile(filepath.Join(dir, "pages", "two.md"), []byte("- two\n"), 0o000)).To(Succeed())
+		writePage("three.md", "- three\n")
+
+		graph, events := open(logseq.WithInMemoryIndex())
+		defer graph.Close()
+
+		event := find(events, func(e logseq.OpenEvent) bool { _, ok := e.(*logseq.PageIndexFailed); return ok })
+		Expect(event).ToNot(BeNil(), "expected a PageIndexFailed event")
+
+		failed := event.(*logseq.PageIndexFailed)
+		Expect(failed.SubPath).To(Equal(filepath.Join("pages", "two.md")))
+		Expect(failed.Total).To(Equal(3))
+		Expect(failed).To(MatchError(os.ErrPermission))
+
+		var done []int
+		for _, e := range events {
+			switch e := e.(type) {
+			case *logseq.PageIndexed:
+				done = append(done, e.Done)
+			case *logseq.PageIndexFailed:
+				done = append(done, e.Done)
+			}
+		}
+		Expect(done).To(Equal([]int{1, 2, 3}))
+
+		completed := syncCompleted(events)
+		Expect(completed.Indexed).To(Equal(2))
+		Expect(completed.Failed).To(Equal(1))
+		Expect(events[len(events)-1]).To(Equal(&logseq.OpenCompleted{}))
+
+		results, err := graph.SearchPages(context.Background(),
+			logseq.WithQuery(logseq.ContentMatches("three")),
+		)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(results.Size()).To(Equal(1))
+	})
+
+	It("tries a page that failed again the next time the graph is opened", func() {
+		indexDir := GinkgoT().TempDir()
+		path := filepath.Join(dir, "pages", "later.md")
+		Expect(os.WriteFile(path, []byte("- readable later\n"), 0o000)).To(Succeed())
+
+		graph, events := open(logseq.WithIndex(indexDir))
+		Expect(syncCompleted(events).Failed).To(Equal(1))
+		Expect(graph.Close()).To(Succeed())
+
+		Expect(os.Chmod(path, 0o644)).To(Succeed())
+
+		graph, events = open(logseq.WithIndex(indexDir))
+		defer graph.Close()
+
+		Expect(syncStarted(events).Total).To(Equal(1))
+		Expect(syncCompleted(events).Indexed).To(Equal(1))
+	})
+
 	It("sends only OpenCompleted without an index", func() {
 		writePage("page.md", "- page\n")
 

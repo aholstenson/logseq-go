@@ -392,13 +392,33 @@ func (g *Graph) sync(ctx context.Context, listener func(event OpenEvent)) error 
 		Unchanged: len(scan.seen) - total,
 	})
 
+	failed := 0
 	for i, subPath := range scan.changed {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 
-		_, err := g.indexDocument(ctx, filepath.Join(g.directory, subPath))
+		path := filepath.Join(g.directory, subPath)
+
+		// A page that can not be read is skipped, so that one bad file does
+		// not keep the graph from opening. The index is not changed for the
+		// file, so it is tried again the next time the graph is opened.
+		page, err := g.openViaPath(path, g)
 		if err != nil {
+			failed++
+			notify(&PageIndexFailed{
+				SubPath: subPath,
+				Err:     err,
+				Done:    i + 1,
+				Total:   total,
+			})
+			continue
+		}
+
+		// The scan only keeps files that hold pages, so page is not nil.
+		// Errors from the index are not about this page and will most likely
+		// happen for all pages, so they stop the sync.
+		if err := g.indexPage(ctx, page, path); err != nil {
 			return fmt.Errorf("failed to index %s: %w", subPath, err)
 		}
 
@@ -419,7 +439,8 @@ func (g *Graph) sync(ctx context.Context, listener func(event OpenEvent)) error 
 	}
 
 	notify(&SyncCompleted{
-		Indexed:  total,
+		Indexed:  total - failed,
+		Failed:   failed,
 		Removed:  removed,
 		Duration: time.Since(started),
 	})
@@ -520,6 +541,16 @@ func (g *Graph) indexDocument(ctx context.Context, docPath string) (Page, error)
 		return nil, nil
 	}
 
+	if err := g.indexPage(ctx, page, docPath); err != nil {
+		return page, err
+	}
+
+	return page, nil
+}
+
+// indexPage adds a page that is open to the index, replacing what the index
+// has for the file at the given path.
+func (g *Graph) indexPage(ctx context.Context, page Page, docPath string) error {
 	doc := &indexing.Page{
 		Type:         indexing.PageType(page.Type()),
 		LastModified: page.LastModified(),
@@ -539,10 +570,10 @@ func (g *Graph) indexDocument(ctx context.Context, docPath string) (Page, error)
 	}
 
 	if err := g.index.IndexPage(ctx, doc); err != nil {
-		return page, fmt.Errorf("failed to index page: %w", err)
+		return fmt.Errorf("failed to index page: %w", err)
 	}
 
-	return page, nil
+	return nil
 }
 
 // watchForChanges starts to watch the journals and pages directories for
