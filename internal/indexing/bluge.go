@@ -234,6 +234,48 @@ func (i *BlugeIndex) GetFileState(ctx context.Context, subPath string) (FileStat
 	return state, nil
 }
 
+func (i *BlugeIndex) PageSubPaths(ctx context.Context) ([]string, error) {
+	reader, err := i.reader()
+	if err != nil {
+		return nil, err
+	}
+
+	query := bluge.NewBooleanQuery().
+		AddShould(bluge.NewTermQuery("page").SetField("type")).
+		AddShould(bluge.NewTermQuery("journal").SetField("type"))
+
+	it, err := reader.Search(ctx, bluge.NewAllMatches(query))
+	if err != nil {
+		return nil, fmt.Errorf("error searching index: %w", err)
+	}
+
+	var subPaths []string
+	for {
+		match, err := it.Next()
+		if err != nil {
+			return nil, fmt.Errorf("error getting next match: %w", err)
+		}
+
+		if match == nil {
+			break
+		}
+
+		err = match.VisitStoredFields(func(field string, value []byte) bool {
+			if field == "_id" {
+				subPaths = append(subPaths, string(value))
+				return false
+			}
+
+			return true
+		})
+		if err != nil {
+			return nil, fmt.Errorf("error reading stored fields: %w", err)
+		}
+	}
+
+	return subPaths, nil
+}
+
 func (i *BlugeIndex) pageToDocument(doc *Page) (*bluge.Document, error) {
 	blugeDoc := bluge.NewDocument(doc.SubPath).
 		AddField(bluge.NewDateTimeField("lastModified", doc.LastModified).StoreValue())

@@ -194,6 +194,71 @@ for {
 }
 ```
 
+## Navigating the graph
+
+`logseq-go` provides the ability to index the graph to allow it to be navigated.
+
+In memory indexing or persistent indexing can be used:
+
+```go
+// In-memory index that rebuilds on every open
+graph, err := logseq.Open(ctx, "path/to/graph", logseq.WithInMemoryIndex())
+
+// Persistent index that is saved to disk, is loaded and refreshed on open
+graph, err := logseq.Open(ctx, "path/to/graph", logseq.WithIndex("path/to/index"))
+```
+
+Opening a graph with an index can take some time, as pages that changed since
+the last open are indexed again. Use `WithListener` to show the progress:
+
+```go
+graph, err := logseq.Open(ctx, "path/to/graph",
+  logseq.WithIndex("path/to/index"),
+  logseq.WithListener(func(event logseq.OpenEvent) {
+    switch e := event.(type) {
+    case *logseq.ScanStarted:
+      // The graph looks for pages that changed, the total is not known yet
+    case *logseq.SyncStarted:
+      // e.Total pages will be indexed, e.Unchanged are up to date
+    case *logseq.PageIndexed:
+      // e.Done of e.Total pages are indexed
+    case *logseq.SyncCompleted:
+      // The index is up to date, e.Removed pages were removed as their
+      // files were deleted while the graph was closed
+    case *logseq.OpenCompleted:
+      // The graph is ready to use
+    }
+  }),
+)
+```
+
+The events are sent in the order above. A graph without an index sends only
+`OpenCompleted`.
+
+Pages can be searched for by title, content, references, tags, etc:
+
+```go
+pages, err := graph.SearchPages(ctx, logseq.WithQuery(logseq.TitleMatches("Example")))
+
+for _, r := range pages.Results() {
+  // Pages can be opened from the result
+  page, err := r.Open()
+  ...
+}
+```
+
+Blocks can also be searched:
+
+```go
+blocks, err := graph.SearchBlocks(ctx, logseq.WithQuery(logseq.ContentMatches("Example")))
+
+for _, r := range blocks.Results() {
+  // Blocks can be opened from the result
+  block, page, err := r.Open()
+  ...
+}
+```
+
 ## Limitations
 
 This library is limited to working with Markdown files. As the library provides

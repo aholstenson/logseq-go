@@ -33,8 +33,16 @@ func main() {
 
 	graph, err := logseq.Open(ctx, directory, indexOpt, logseq.WithListener(func(event logseq.OpenEvent) {
 		switch e := event.(type) {
+		case *logseq.ScanStarted:
+			println("Looking for changed pages...")
+		case *logseq.SyncStarted:
+			fmt.Printf("Indexing %d pages, %d are up to date\n", e.Total, e.Unchanged)
 		case *logseq.PageIndexed:
-			println("Indexed:", e.SubPath)
+			fmt.Printf("[%d/%d] %s\n", e.Done, e.Total, e.SubPath)
+		case *logseq.SyncCompleted:
+			fmt.Printf("Indexed %d pages and removed %d in %s\n", e.Indexed, e.Removed, e.Duration)
+		case *logseq.OpenCompleted:
+			println("Graph is open")
 		}
 	}))
 	if err != nil {

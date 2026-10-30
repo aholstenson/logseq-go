@@ -2,17 +2,77 @@ package logseq
 
 import "time"
 
-// OpenEvent is an event that occurs while the graph is being opened.
+// OpenEvent is an event that occurs while the graph is being opened. Use
+// WithListener to get these events, for example to show the progress of
+// opening a graph.
+//
+// A graph opened with an index sends the events in this order:
+//
+//  1. ScanStarted, once.
+//  2. SyncStarted, once, with the number of pages to index.
+//  3. PageIndexed, once for each page that is indexed.
+//  4. SyncCompleted, once.
+//  5. OpenCompleted, once.
+//
+// A graph opened without an index sends only OpenCompleted. When opening
+// fails, the events stop and OpenCompleted is not sent.
 type OpenEvent interface {
 	isOpenEvent()
 }
 
+// ScanStarted is an event that occurs when the graph starts to look for the
+// pages that changed since they were indexed. The number of pages to index is
+// not known until SyncStarted.
+type ScanStarted struct{}
+
+func (e *ScanStarted) isOpenEvent() {}
+
+// SyncStarted is an event that occurs when the scan is done and the graph
+// starts to index the pages that changed.
+type SyncStarted struct {
+	// Total is the number of pages to index. It is zero when the index is up
+	// to date.
+	Total int
+	// Unchanged is the number of pages that are up to date in the index and
+	// are not indexed again.
+	Unchanged int
+}
+
+func (e *SyncStarted) isOpenEvent() {}
+
 // PageIndexed is an event that occurs when a page is indexed.
 type PageIndexed struct {
+	// SubPath is the path of the page file, relative to the graph directory.
 	SubPath string
+	// Done is the number of pages that are indexed, including this page. It
+	// is the same as Total for the last page.
+	Done int
+	// Total is the number of pages to index, the same as SyncStarted.Total.
+	Total int
 }
 
 func (p *PageIndexed) isOpenEvent() {}
+
+// SyncCompleted is an event that occurs when the index matches the files of
+// the graph.
+type SyncCompleted struct {
+	// Indexed is the number of pages that were indexed.
+	Indexed int
+	// Removed is the number of pages that were removed from the index, as
+	// their files were deleted or hidden while the graph was closed.
+	Removed int
+	// Duration is the time from ScanStarted to this event.
+	Duration time.Duration
+}
+
+func (e *SyncCompleted) isOpenEvent() {}
+
+// OpenCompleted is an event that occurs when the graph is open and ready to
+// use. For a graph with an index, it occurs after the graph starts to watch
+// for changes.
+type OpenCompleted struct{}
+
+func (e *OpenCompleted) isOpenEvent() {}
 
 type ChangeEvent interface {
 	isChangeEvent()

@@ -113,6 +113,9 @@ func Open(ctx context.Context, directory string, opts ...Option) (*Graph, error)
 	// Sync the graph with the index
 	err = g.sync(ctx, options.listener)
 	if err != nil {
+		if g.index != nil {
+			g.index.Close()
+		}
 		return nil, fmt.Errorf("failed to sync graph: %w", err)
 	}
 
@@ -124,6 +127,11 @@ func Open(ctx context.Context, directory string, opts ...Option) (*Graph, error)
 			return nil, err
 		}
 	}
+
+	if options.listener != nil {
+		options.listener(&OpenCompleted{})
+	}
+
 	return g, nil
 }
 
@@ -269,38 +277,65 @@ func (g *Graph) removePageFile(path string) error {
 }
 
 // openViaPath opens the page stored at the given path. A nil page is returned
-// for files that are not part of the graph: files that are not Markdown, files
-// outside the pages and journals directories, such as in a subdirectory of
-// them, and journals whose name does not match the configured format.
+// for files that are not part of the graph, see pageFile.
 func (g *Graph) openViaPath(path string, source pageSource) (Page, error) {
-	name := filepath.Base(path)
-	if filepath.Ext(name) != ".md" {
+	file, ok := g.pageFile(path)
+	if !ok {
 		return nil, nil
 	}
 
-	name = name[:len(name)-3]
-	dir := filepath.Dir(path)
+	switch file.pageType {
+	case PageTypeJournal:
+		title := g.journalTitleFormat.Format(file.date)
 
-	if dir == filepath.Join(g.directory, g.config.JournalsDir) {
-		date, err := g.journalNameFormat.Parse(name)
-		if err != nil {
-			// Ignore files that don't match the journal name format
-			return nil, nil
-		}
-
-		title := g.journalTitleFormat.Format(date)
-
-		return openOrCreatePage(source, path, PageTypeJournal, title, date, "", g.markdownParseOptions()...)
-	} else if dir == filepath.Join(g.directory, g.config.PagesDir) {
-		title, err := utils.FilenameToTitle(g.config.FileNameFormat, name)
+		return openOrCreatePage(source, path, PageTypeJournal, title, file.date, "", g.markdownParseOptions()...)
+	default:
+		title, err := utils.FilenameToTitle(g.config.FileNameFormat, file.name)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get title from filename: %w", err)
 		}
 
 		return openOrCreatePage(source, path, PageTypeDedicated, title, time.Time{}, "", g.markdownParseOptions()...)
 	}
+}
 
-	return nil, nil
+// pageFileInfo describes a file that holds a page of the graph.
+type pageFileInfo struct {
+	pageType PageType
+	// name is the file name without the extension.
+	name string
+	// date is the date of a journal, parsed from the file name.
+	date time.Time
+}
+
+// pageFile tells if the file at the given path holds a page of the graph,
+// without reading the file. Files that are not Markdown, files outside the
+// pages and journals directories, such as in a subdirectory of them, and
+// journals whose name does not match the configured format are not part of
+// the graph.
+func (g *Graph) pageFile(path string) (pageFileInfo, bool) {
+	name := filepath.Base(path)
+	if filepath.Ext(name) != ".md" {
+		return pageFileInfo{}, false
+	}
+
+	name = name[:len(name)-3]
+	dir := filepath.Dir(path)
+
+	switch dir {
+	case filepath.Join(g.directory, g.config.JournalsDir):
+		date, err := g.journalNameFormat.Parse(name)
+		if err != nil {
+			// Ignore files that don't match the journal name format
+			return pageFileInfo{}, false
+		}
+
+		return pageFileInfo{pageType: PageTypeJournal, name: name, date: date}, true
+	case filepath.Join(g.directory, g.config.PagesDir):
+		return pageFileInfo{pageType: PageTypeDedicated, name: name}, true
+	}
+
+	return pageFileInfo{}, false
 }
 
 func (g *Graph) Close() error {
@@ -319,35 +354,94 @@ func (g *Graph) Close() error {
 	return nil
 }
 
-// sync performs a sync of the graph with the index.
+// sync makes the index match the files of the graph. It first scans the
+// journals and pages directories for files that changed since they were
+// indexed, then indexes those files, and last removes the pages of files that
+// no longer exist. Scanning first gives the total for the progress events.
 func (g *Graph) sync(ctx context.Context, listener func(event OpenEvent)) error {
 	if g.index == nil {
 		return nil
 	}
 
-	walker := g.createWalker(ctx, listener)
+	notify := func(event OpenEvent) {
+		if listener != nil {
+			listener(event)
+		}
+	}
 
-	// Sync the journal pages
+	started := time.Now()
+	notify(&ScanStarted{})
+
+	scan := &syncScan{
+		seen: make(map[string]struct{}),
+	}
+
 	journalsDir := filepath.Join(g.directory, g.config.JournalsDir)
-	err := filepath.Walk(journalsDir, walker)
-	if err != nil {
-		return fmt.Errorf("failed to sync journals: %w", err)
+	if err := filepath.Walk(journalsDir, g.createScanner(ctx, scan)); err != nil {
+		return fmt.Errorf("failed to scan journals: %w", err)
 	}
 
-	// Sync the note pages
-	notesDir := filepath.Join(g.directory, g.config.PagesDir)
-	err = filepath.Walk(notesDir, walker)
-	if err != nil {
-		return fmt.Errorf("failed to sync pages: %w", err)
+	pagesDir := filepath.Join(g.directory, g.config.PagesDir)
+	if err := filepath.Walk(pagesDir, g.createScanner(ctx, scan)); err != nil {
+		return fmt.Errorf("failed to scan pages: %w", err)
 	}
 
-	return g.index.Sync()
+	total := len(scan.changed)
+	notify(&SyncStarted{
+		Total:     total,
+		Unchanged: len(scan.seen) - total,
+	})
+
+	for i, subPath := range scan.changed {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
+		_, err := g.indexDocument(ctx, filepath.Join(g.directory, subPath))
+		if err != nil {
+			return fmt.Errorf("failed to index %s: %w", subPath, err)
+		}
+
+		notify(&PageIndexed{
+			SubPath: subPath,
+			Done:    i + 1,
+			Total:   total,
+		})
+	}
+
+	removed, err := g.removeMissingPages(ctx, scan.seen)
+	if err != nil {
+		return err
+	}
+
+	if err := g.index.Sync(); err != nil {
+		return err
+	}
+
+	notify(&SyncCompleted{
+		Indexed:  total,
+		Removed:  removed,
+		Duration: time.Since(started),
+	})
+
+	return nil
 }
 
-func (g *Graph) createWalker(ctx context.Context, listener func(event OpenEvent)) filepath.WalkFunc {
+// syncScan is the result of scanning the graph for files to index.
+type syncScan struct {
+	// seen has the sub path of every file that holds a page of the graph.
+	seen map[string]struct{}
+	// changed has the sub paths of the files that must be indexed, in the
+	// order they were found.
+	changed []string
+}
+
+// createScanner returns a function that walks a directory and adds the files
+// that hold pages of the graph to the scan.
+func (g *Graph) createScanner(ctx context.Context, scan *syncScan) filepath.WalkFunc {
 	return func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			return fmt.Errorf("failed to walk journals directory: %w", err)
+			return fmt.Errorf("failed to walk directory: %w", err)
 		}
 
 		subPath, err := filepath.Rel(g.directory, path)
@@ -369,9 +463,11 @@ func (g *Graph) createWalker(ctx context.Context, listener func(event OpenEvent)
 			return nil
 		}
 
-		if filepath.Ext(path) != ".md" {
+		if _, ok := g.pageFile(path); !ok {
 			return nil
 		}
+
+		scan.seen[subPath] = struct{}{}
 
 		state, err := g.index.GetFileState(ctx, subPath)
 		if err != nil {
@@ -383,23 +479,34 @@ func (g *Graph) createWalker(ctx context.Context, listener func(event OpenEvent)
 			return nil
 		}
 
-		page, err := g.indexDocument(ctx, path)
-		if err != nil {
-			return fmt.Errorf("failed to index document: %w", err)
-		}
-
-		if page == nil {
-			// The file is not part of the graph, so nothing was indexed.
-			return nil
-		}
-
-		if listener != nil {
-			listener(&PageIndexed{
-				SubPath: subPath,
-			})
-		}
+		scan.changed = append(scan.changed, subPath)
 		return nil
 	}
+}
+
+// removeMissingPages removes the pages from the index whose files were not
+// seen during the scan, such as files that were deleted or hidden while the
+// graph was closed. Returns the number of pages that were removed.
+func (g *Graph) removeMissingPages(ctx context.Context, seen map[string]struct{}) (int, error) {
+	indexed, err := g.index.PageSubPaths(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("failed to list indexed pages: %w", err)
+	}
+
+	removed := 0
+	for _, subPath := range indexed {
+		if _, ok := seen[subPath]; ok {
+			continue
+		}
+
+		if err := g.index.DeletePage(ctx, subPath); err != nil {
+			return removed, fmt.Errorf("failed to remove %s from index: %w", subPath, err)
+		}
+
+		removed++
+	}
+
+	return removed, nil
 }
 
 func (g *Graph) indexDocument(ctx context.Context, docPath string) (Page, error) {

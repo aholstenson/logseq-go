@@ -25,6 +25,10 @@ type Index interface {
 	// Should return a zero FileState if the page does not exist in the index.
 	GetFileState(ctx context.Context, subPath string) (FileState, error)
 
+	// PageSubPaths returns the sub paths of all pages and journals in the
+	// index.
+	PageSubPaths(ctx context.Context) ([]string, error)
+
 	// SearchPages searches for pages in the index.
 	SearchPages(ctx context.Context, query Query, opts SearchOptions) (SearchResults[*Page], error)
 
