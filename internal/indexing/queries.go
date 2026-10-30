@@ -1,6 +1,7 @@
 package indexing
 
 import (
+	"regexp"
 	"time"
 
 	"github.com/aholstenson/logseq-go/content"
@@ -61,6 +62,15 @@ type fieldRefs struct {
 }
 
 func (f *fieldRefs) isQuery() {}
+
+// fieldPattern matches a keyword field with a regular expression, which must
+// match the whole value.
+type fieldPattern struct {
+	field   string
+	pattern string
+}
+
+func (f *fieldPattern) isQuery() {}
 
 // dateRange matches a date field from start, inclusive, to end, exclusive. A
 // zero time leaves that end of the range open.
@@ -263,6 +273,49 @@ func OnPages(subPaths ...string) Query {
 	}
 
 	return Or(clauses...)
+}
+
+// PagesAt matches the pages with the given sub paths. Matches nothing if no
+// sub path is given.
+func PagesAt(subPaths ...string) Query {
+	if len(subPaths) == 0 {
+		return None()
+	}
+
+	clauses := make([]Query, 0, len(subPaths))
+	for _, subPath := range subPaths {
+		clauses = append(clauses, &fieldEquals{
+			field: "_id",
+			value: subPath,
+		})
+	}
+
+	return Or(clauses...)
+}
+
+// PageTitleStartsWith matches the pages with a title that starts with the
+// text, and the blocks on them. Titles are matched without regard for case.
+func PageTitleStartsWith(text string) Query {
+	return titlePattern(regexp.QuoteMeta(normalizeRef(text)) + ".*")
+}
+
+// PageTitleEndsWith matches the pages with a title that ends with the text,
+// and the blocks on them. Titles are matched without regard for case.
+func PageTitleEndsWith(text string) Query {
+	return titlePattern(".*" + regexp.QuoteMeta(normalizeRef(text)))
+}
+
+// PageTitleIncludes matches the pages with a title that includes the text,
+// and the blocks on them. Titles are matched without regard for case.
+func PageTitleIncludes(text string) Query {
+	return titlePattern(".*" + regexp.QuoteMeta(normalizeRef(text)) + ".*")
+}
+
+func titlePattern(pattern string) Query {
+	return &fieldPattern{
+		field:   SortFieldTitle,
+		pattern: pattern,
+	}
 }
 
 // PageTitleIs matches the page with the title, and the blocks on it. Titles

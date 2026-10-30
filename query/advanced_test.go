@@ -251,6 +251,44 @@ var _ = Describe("Advanced queries", func() {
 			"(or (page-property status open) (not (page-property status)))")
 	})
 
+	Describe("Page queries", func() {
+		pagesWhere := func(clauses string) string {
+			return "{:query [:find (pull ?p [*]) :where " + clauses + "]}"
+		}
+
+		Translates("pages by title", pagesWhere(`[?p :block/name "x"]`), `(title = "x")`)
+		Translates("pages by the start of their title",
+			pagesWhere(`[?p :block/name ?n] [(clojure.string/starts-with? ?n "projects/")]`), `(title starts-with "projects/")`)
+		Translates("titles in an or",
+			pagesWhere(`[?p :block/name ?n] (or [(clojure.string/starts-with? ?n "a")] [(clojure.string/ends-with? ?n "b")])`),
+			`(or (title starts-with "a") (title ends-with "b"))`)
+		Translates("title of the page of a block",
+			where(`[?b :block/marker "TODO"] [?b :block/page ?p] [?p :block/original-name ?n] [(clojure.string/includes? ?n "Meeting")]`),
+			`(and (task TODO) (title includes "Meeting"))`)
+		Translates("journal pages", pagesWhere(`[?p :block/journal? true]`), "(journal-page)")
+		Translates("pages that are not journals", pagesWhere(`[?p :block/name] (not [?p :block/journal? true])`), "(not (journal-page))")
+		Translates("pages with journal? false", pagesWhere(`[?p :block/journal? false]`), "(not (journal-page))")
+		Translates("pages without a journal day", pagesWhere(`[?p :block/name] [(missing? $ ?p :block/journal-day)]`), "(not (journal-page))")
+		Translates("journal pages by date",
+			`{:query [:find (pull ?p [*]) :in $ ?start ?end :where [?p :block/journal-day ?d] [(>= ?d ?start)] [(<= ?d ?end)]] :inputs [:-7d :today]}`,
+			"(journal-page -7d today)")
+		Translates("pages by alias", pagesWhere(`[?p :block/alias ?a] [?a :block/name "acme corp"]`), "(alias [[acme corp]])")
+		Translates("pages by alias with a lookup", pagesWhere(`[?p :block/alias [:block/name "acme corp"]]`), "(alias [[acme corp]])")
+		Translates("pages by their blocks", pagesWhere(`[?b :block/page ?p] [?b :block/marker "TODO"]`), "(has-block (task TODO))")
+		Translates("pages by their blocks in an or",
+			pagesWhere(`[?b :block/page ?p] (or [?b :block/marker "TODO"] [?b :block/marker "DOING"])`),
+			"(has-block (or (task TODO) (task DOING)))")
+		Translates("pages by their blocks and their own properties",
+			pagesWhere(`[?b :block/page ?p] [?b :block/marker "TODO"] [?p :block/properties ?pp] [(get ?pp :type) ?t] [(= ?t "book")]`),
+			"(and (page-property type book) (has-block (task TODO)))")
+		Translates("pages by their blocks and their title",
+			pagesWhere(`[?b :block/page ?p] [?p :block/name "x"] [?b :block/marker "TODO"]`),
+			`(and (title = "x") (has-block (task TODO)))`)
+		Translates("journal pages by date and their blocks",
+			`{:query [:find (pull ?p [*]) :in $ ?s :where [?p :block/journal-day ?d] [(>= ?d ?s)] [?b :block/page ?p] [?b :block/marker "TODO"]] :inputs [:-7d]}`,
+			"(and (journal-page >= -7d) (has-block (task TODO)))")
+	})
+
 	Describe("Inputs", func() {
 		Translates("older date inputs",
 			`{:query [:find (pull ?b [*]) :in $ ?start ?end :where [?b :block/scheduled ?d] [(>= ?d ?start)] [(<= ?d ?end)]] :inputs [:14d :7d-after]}`,
@@ -386,14 +424,16 @@ var _ = Describe("Advanced queries", func() {
 		Unsupported("parents that are not inputs", where(`[?b :block/parent ?parent]`), "expected a block")
 		Unsupported("other attributes", where(`[?b :block/left ?left]`), "attribute :block/left")
 		Unsupported("other blocks", where(`[?b :block/page ?p] [?c :block/page ?p] [?c :block/marker "TODO"]`), "other blocks")
-		Unsupported("pages by their blocks", `{:query [:find (pull ?p [*]) :where [?b :block/page ?p] [?b :block/marker "TODO"]]}`, "pages by the blocks")
 		Unsupported("unknown rules", where(`(my-rule ?b)`), "rule my-rule")
 		Unsupported("unbound variables", where(`[?b :block/marker "TODO"] [(= ?x "y")]`), "?x does not get a value")
 		Unsupported("missing inputs", `{:query [:find ?b :in $ ?day :where [?b :block/scheduled ?day]]}`, "1 variables in :in but 0 :inputs")
 		Unsupported("empty lists", `{:query [:find ?b :where ()]}`, "expected a clause")
 		Unsupported("empty sets", where(`[?b :block/marker ?m] [(contains? #{} ?m)]`), "expected a set of values")
-		Unsupported("pages by title", "{:query [:find ?p :where [?p :block/name \"x\"]]}", "pages by their title")
-		Unsupported("conditions on titles", "{:query [:find ?p :where [?p :block/name ?n] [(clojure.string/starts-with? ?n \"x\")]]}", "title of a page")
+		Unsupported("other conditions on titles", "{:query [:find ?p :where [?p :block/name ?n] [(clojure.string/blank? ?n)]]}", "for the title of a page")
+		Unsupported("blocks with only conditions on their page",
+			where(`[?b :block/page ?p] [?p :block/original-name ?n] [(clojure.string/includes? ?n "Meeting")]`), "only conditions on their page")
+		Unsupported("other conditions on the title of a referenced page that compare text",
+			where(`[?b :block/refs ?p] [?p :block/name ?n] [(clojure.string/starts-with? ?n "x")]`), "a page that a block refers to")
 		Unsupported("another page without a title",
 			where(`[?b :block/page ?p] [?p :block/journal? true] (or [?b :block/marker "TODO"] [?b :block/page ?q])`),
 			"or a page with a title")

@@ -63,8 +63,10 @@ func findsBlocks(filter Filter) bool {
 		return anyFindsBlocks(f.Filters)
 	case *NotFilter:
 		return findsBlocks(f.Filter)
+	case *DateFilter:
+		return f.Field != FieldJournalPage
 	case *PageRefFilter, *RefsFilter, *FullTextFilter, *TaskFilter, *PriorityFilter,
-		*PageFilter, *ParentFilter, *AncestorFilter, *PropertyFilter, *DateFilter:
+		*PageFilter, *ParentFilter, *AncestorFilter, *PropertyFilter:
 		return true
 	}
 
@@ -372,6 +374,65 @@ func Namespace(namespace string) *NamespaceFilter {
 	return &NamespaceFilter{Namespace: namespace}
 }
 
+// TitleFilter matches the pages with a title that compares with the text. The
+// title is compared without regard for case. It is written as
+// `(title starts-with "projects/")`, with `=`, `starts-with`, `ends-with` or
+// `includes`.
+type TitleFilter struct {
+	Op   TitleOp
+	Text string
+}
+
+// TitleOp is how a TitleFilter compares a title.
+type TitleOp int
+
+const (
+	// TitleEquals matches the title that is the text.
+	TitleEquals TitleOp = iota
+	// TitleStartsWith matches the titles that start with the text.
+	TitleStartsWith
+	// TitleEndsWith matches the titles that end with the text.
+	TitleEndsWith
+	// TitleIncludes matches the titles that include the text.
+	TitleIncludes
+)
+
+var titleOpNames = map[TitleOp]string{
+	TitleEquals:     "=",
+	TitleStartsWith: "starts-with",
+	TitleEndsWith:   "ends-with",
+	TitleIncludes:   "includes",
+}
+
+// Title creates a filter that matches the pages with a title that compares
+// with the text.
+func Title(op TitleOp, text string) *TitleFilter {
+	return &TitleFilter{Op: op, Text: text}
+}
+
+// AliasFilter matches the pages that have the alias in their `alias`
+// property. It is written as `(alias [[name]])`.
+type AliasFilter struct {
+	Alias string
+}
+
+// Alias creates a filter that matches the pages with the alias.
+func Alias(alias string) *AliasFilter {
+	return &AliasFilter{Alias: alias}
+}
+
+// HasBlockFilter matches the pages that have one or more blocks that match
+// its filter. It is written as `(has-block (task TODO))`.
+type HasBlockFilter struct {
+	Filter Filter
+}
+
+// HasBlock creates a filter that matches the pages with one or more blocks
+// that match the filter.
+func HasBlock(filter Filter) *HasBlockFilter {
+	return &HasBlockFilter{Filter: filter}
+}
+
 func (*AndFilter) isFilter()          {}
 func (*OrFilter) isFilter()           {}
 func (*NotFilter) isFilter()          {}
@@ -389,3 +450,6 @@ func (*PageTagsFilter) isFilter()     {}
 func (*AllPageTagsFilter) isFilter()  {}
 func (*NamespaceFilter) isFilter()    {}
 func (*DateFilter) isFilter()         {}
+func (*TitleFilter) isFilter()        {}
+func (*AliasFilter) isFilter()        {}
+func (*HasBlockFilter) isFilter()     {}

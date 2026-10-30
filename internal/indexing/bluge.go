@@ -1052,6 +1052,8 @@ func mapQuery(q Query) bluge.Query {
 		}
 
 		return bluge.NewTermQuery(value).SetField(query.field)
+	case *fieldPattern:
+		return bluge.NewRegexpQuery(query.pattern).SetField(query.field)
 	case *dateRange:
 		return bluge.NewDateRangeQuery(query.start, query.end).SetField(query.field)
 	case *fieldRefs:

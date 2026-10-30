@@ -225,14 +225,17 @@ var queryFence = regexp.MustCompile(`(?im)^\s*#\+(BEGIN|END)_QUERY\s*$`)
 // `[(< ?d ?today)]` is applied where its variable gets its value, also in each
 // branch of an `or-join`. These parts are translated:
 //
-//   - :find with one variable or `(pull ?b [*])`, for blocks or pages
+//   - :find with one variable or `(pull ?b [*])`, for blocks or pages; a
+//     query for pages with clauses about the blocks on them, such as
+//     `[?b :block/page ?p] [?b :block/marker "TODO"]`, finds the pages with
+//     one or more of these blocks, see HasBlockFilter
 //   - :in and :inputs with date inputs such as `:today` or `:-7d`, page names
 //     and numbers
 //   - the attributes :block/marker, :block/priority, :block/scheduled,
 //     :block/deadline, :block/content, :block/page, :block/parent,
 //     :block/refs, :block/path-refs, :block/properties, :block/name, :block/original-name,
-//     :block/journal-day, :block/journal?, :block/tags, :block/namespace and
-//     :page/properties
+//     :block/journal-day, :block/journal?, :block/tags, :block/namespace,
+//     :block/alias and :page/properties
 //   - the conditions =, not=, <, <=, >, >=, contains?, get and
 //     clojure.string/includes?, and `[(get ?props :key) ?value]` with or
 //     without a default value
@@ -241,6 +244,8 @@ var queryFence = regexp.MustCompile(`(?im)^\s*#\+(BEGIN|END)_QUERY\s*$`)
 //   - a property that is set, such as `[(get ?props :key)]`
 //   - `[(missing? $ ?b :block/scheduled)]`, also for :block/marker,
 //     :block/priority, :block/deadline and the :block/journal-day of the page
+//   - the title of a page compared with =, contains?,
+//     clojure.string/starts-with?, ends-with? and includes?, see TitleFilter
 //   - the title of a page with a known title as a value, such as ?title in
 //     `[?p :block/name ?page] [?p :block/original-name ?title]`
 //   - and, or, or-join, not and not-join
@@ -483,6 +488,11 @@ type translator struct {
 	sources map[string]*source
 
 	result string
+	// findsPages is true if the query finds pages. A query for pages with
+	// clauses about the blocks on them, such as `[?b :block/page ?p]`, is
+	// translated as a query for these blocks, with result set to the block,
+	// and then finds the pages that have one or more of them.
+	findsPages bool
 	// block is the variable of the blocks the query is about.
 	block string
 	// page is the variable of the page of block, or of the pages the query
@@ -567,13 +577,22 @@ func (t *translator) translate(queryNode *ednNode, inputsNode *ednNode) (*Query,
 		return nil, err
 	}
 
+	t.findsPages = t.kinds[t.result] == entityPage
+	if t.findsPages && t.block != "" {
+		t.result = t.block
+	}
+
 	filter, err := t.conjunction(where, nil)
 	if err != nil {
 		return nil, err
 	}
 
+	if t.findsPages {
+		filter = pagesWithBlocks(filter)
+	}
+
 	q := New(filter)
-	if q.FindsBlocks() != (t.kinds[t.result] == entityBlock) {
+	if q.FindsBlocks() == t.findsPages {
 		if q.FindsBlocks() {
 			return nil, t.unsupported(find[0], "finding pages by the blocks on them is not supported")
 		}
@@ -581,6 +600,33 @@ func (t *translator) translate(queryNode *ednNode, inputsNode *ednNode) (*Query,
 	}
 
 	return q, nil
+}
+
+// pagesWithBlocks turns a filter for the blocks on the pages a query finds
+// into a filter for these pages, with a HasBlockFilter for the parts that
+// match blocks. In an `and`, the parts that only match pages are kept out of
+// it, so that `(and (title = "x") (task TODO))` becomes
+// `(and (title = "x") (has-block (task TODO)))`.
+func pagesWithBlocks(filter Filter) Filter {
+	if !findsBlocks(filter) {
+		return filter
+	}
+
+	and, ok := filter.(*AndFilter)
+	if !ok {
+		return HasBlock(filter)
+	}
+
+	var pageFilters, blockFilters []Filter
+	for _, f := range and.Filters {
+		if findsBlocks(f) {
+			blockFilters = append(blockFilters, f)
+		} else {
+			pageFilters = append(pageFilters, f)
+		}
+	}
+
+	return andOf(append(pageFilters, HasBlock(andOf(blockFilters))))
 }
 
 func (t *translator) readInputs(queryNode *ednNode, in []*ednNode, inputsNode *ednNode) error {
@@ -688,6 +734,7 @@ var (
 		"block/journal?":      true,
 		"block/tags":          true,
 		"block/namespace":     true,
+		"block/alias":         true,
 		"page/properties":     true,
 	}
 
@@ -776,7 +823,7 @@ func (t *translator) collect(clause *ednNode, nested bool) error {
 
 		value := clause.items[2]
 		switch attribute {
-		case "block/page", "block/refs", "block/path-refs", "block/tags", "block/namespace":
+		case "block/page", "block/refs", "block/path-refs", "block/tags", "block/namespace", "block/alias":
 			if isVar(value) {
 				if err := t.setKind(value, entityPage); err != nil {
 					return err
@@ -1033,6 +1080,15 @@ func (t *translator) conjunction(clauses []*ednNode, pending []*condition) (Filt
 
 		src, ok := t.sources[c.subject]
 		if !ok {
+			if clause, isTitle := t.titles[c.subject]; isTitle && clause.items[0].text == t.page {
+				filter, err := t.pageTitleFilter([]*condition{c})
+				if err != nil {
+					return nil, err
+				}
+				filters = appendFilter(filters, filter)
+				continue
+			}
+
 			if _, isTitle := t.titles[c.subject]; isTitle {
 				return nil, t.unsupported(c.node, "conditions on the title of a page are only supported for a page that a block is on or refers to, such as in [?b :block/refs ?p]")
 			}
@@ -1212,9 +1268,7 @@ func (t *translator) binding(clause *ednNode, conditions []*condition) (Filter, 
 				// This names the page of the block. A title for it is
 				// translated with its :block/name, and conditions on the
 				// title here.
-				return t.titleFilter(value.text, conditions, func(names []string) Filter {
-					return orOf(names, func(name string) Filter { return Page(name) })
-				})
+				return t.pageTitleFilter(conditions)
 			}
 
 			// A page with a title from another clause, such as in
@@ -1248,11 +1302,10 @@ func (t *translator) binding(clause *ednNode, conditions []*condition) (Filter, 
 			return nil, nil
 		}
 
-		if entity.text == t.result {
-			return nil, t.unsupported(clause, "finding pages by their title is not supported")
-		}
-
 		if entity.text == t.page {
+			if t.findsPages {
+				return Title(TitleEquals, name), nil
+			}
 			return Page(name), nil
 		}
 
@@ -1264,10 +1317,18 @@ func (t *translator) binding(clause *ednNode, conditions []*condition) (Filter, 
 			return nil, err
 		}
 
-		if !value.isSymbol("true") {
-			return nil, t.unsupported(clause, "expected true")
+		var journal Filter = OnJournal()
+		if t.findsPages {
+			journal = IsJournalPage()
 		}
-		return OnJournal(), nil
+
+		switch {
+		case value.isSymbol("true"):
+			return journal, nil
+		case value.isSymbol("false"):
+			return Not(journal), nil
+		}
+		return nil, t.unsupported(clause, "expected true or false")
 	case "block/journal-day":
 		if err := t.checkPageOfBlock(clause, entity); err != nil {
 			return nil, err
@@ -1313,8 +1374,8 @@ func (t *translator) binding(clause *ednNode, conditions []*condition) (Filter, 
 			return nil, t.unsupported(clause, "expected a block, such as :current-block or [:block/uuid #uuid \"...\"]")
 		}
 		return ref.parent(), nil
-	case "block/refs", "block/path-refs", "block/tags", "block/namespace":
-		if attribute == "block/tags" || attribute == "block/namespace" {
+	case "block/refs", "block/path-refs", "block/tags", "block/namespace", "block/alias":
+		if attribute == "block/tags" || attribute == "block/namespace" || attribute == "block/alias" {
 			if entity.text != t.page {
 				return nil, t.unsupported(clause, "%s of other pages is not supported", attribute)
 			}
@@ -1330,6 +1391,8 @@ func (t *translator) binding(clause *ednNode, conditions []*condition) (Filter, 
 				return orOf(names, func(name string) Filter { return PageRef(name) })
 			case "block/tags":
 				return PageTags(names...)
+			case "block/alias":
+				return orOf(names, func(name string) Filter { return Alias(name) })
 			}
 			return orOf(names, func(name string) Filter { return Namespace(name) })
 		}
@@ -1366,8 +1429,8 @@ func (t *translator) checkBlock(clause *ednNode, entity *ednNode) error {
 // checkPageOfBlock returns an error if a variable is not the page of the
 // block the query finds.
 func (t *translator) checkPageOfBlock(clause *ednNode, entity *ednNode) error {
-	if entity.text != t.page || t.result != t.block {
-		return t.unsupported(clause, "only the journal of the blocks the query finds is supported")
+	if entity.text != t.page {
+		return t.unsupported(clause, "only the journal of the pages the query finds, or of the page of the blocks, is supported")
 	}
 
 	return nil
@@ -1453,7 +1516,63 @@ func orOf(names []string, filter func(name string) Filter) Filter {
 // filter for the titles that a condition allows. Returns nil if there are no
 // such conditions.
 func (t *translator) titleFilter(page string, conditions []*condition, filter func(names []string) Filter) (Filter, error) {
-	var filters []Filter
+	matches, err := t.titleMatches(page, conditions)
+	if err != nil {
+		return nil, err
+	}
+
+	filters := make([]Filter, 0, len(matches))
+	for _, m := range matches {
+		if m.op != TitleEquals {
+			return nil, t.unsupported(m.node, "only = and contains? are supported for the title of a page that a block refers to")
+		}
+		filters = append(filters, filter(m.values))
+	}
+
+	return andOf(filters), nil
+}
+
+// pageTitleFilter translates conditions on the title of the page the query is
+// about: the page of the blocks, or the pages the query finds. Returns nil if
+// there are no such conditions.
+func (t *translator) pageTitleFilter(conditions []*condition) (Filter, error) {
+	matches, err := t.titleMatches(t.page, conditions)
+	if err != nil {
+		return nil, err
+	}
+
+	filters := make([]Filter, 0, len(matches))
+	for _, m := range matches {
+		filters = append(filters, orOf(m.values, func(value string) Filter {
+			if m.op == TitleEquals && !t.findsPages {
+				return Page(value)
+			}
+			return Title(m.op, value)
+		}))
+	}
+
+	return andOf(filters), nil
+}
+
+// titleMatch is a condition on the title of a page, which is one of values.
+type titleMatch struct {
+	node   *ednNode
+	op     TitleOp
+	values []string
+}
+
+var titleFunctions = map[string]TitleOp{
+	"clojure.string/starts-with?": TitleStartsWith,
+	"clojure.string/ends-with?":   TitleEndsWith,
+	"clojure.string/includes?":    TitleIncludes,
+}
+
+// titleMatches reads the conditions on the title of the page in a variable,
+// such as `[(contains? #{"a" "b"} ?n)]` or
+// `[(clojure.string/starts-with? ?n "projects/")]` with `[?p :block/name ?n]`,
+// and marks them as used.
+func (t *translator) titleMatches(page string, conditions []*condition) ([]titleMatch, error) {
+	var matches []titleMatch
 	for _, c := range conditions {
 		clause, isTitle := t.titles[c.subject]
 		if !isTitle || clause.items[0].text != page {
@@ -1461,28 +1580,34 @@ func (t *translator) titleFilter(page string, conditions []*condition, filter fu
 		}
 		c.used = true
 
-		var names []string
-		switch {
+		m := titleMatch{node: c.node, op: TitleEquals}
+		switch op, isFunction := titleFunctions[c.fn]; {
 		case c.fn == "contains?" && len(c.args) == 2 && c.args[1].isSymbol(c.subject):
 			values, ok := t.strings(c.args[0])
 			if !ok || len(values) == 0 {
 				return nil, t.unsupported(c.node, "expected a set of titles")
 			}
-			names = values
+			m.values = values
 		case c.fn == "=":
 			value, err := t.comparedValue(c, "=")
 			if err != nil {
 				return nil, err
 			}
-			names = []string{value}
+			m.values = []string{value}
+		case isFunction && len(c.args) == 2 && c.args[0].isSymbol(c.subject):
+			value, ok := t.scalar(c.args[1])
+			if !ok {
+				return nil, t.unsupported(c.node, "expected the text to compare the title with")
+			}
+			m.op, m.values = op, []string{value}
 		default:
-			return nil, t.unsupported(c.node, "only = and contains? are supported for the title of a page")
+			return nil, t.unsupported(c.node, "only =, contains?, clojure.string/starts-with?, ends-with? and includes? are supported for the title of a page")
 		}
 
-		filters = append(filters, filter(names))
+		matches = append(matches, m)
 	}
 
-	return andOf(filters), nil
+	return matches, nil
 }
 
 // propertyCondition translates a condition on the properties of a block or
@@ -2266,6 +2391,9 @@ func (t *translator) dateFilter(src *source, conditions []*condition) (Filter, e
 		sourceDeadline:   FieldDeadline,
 		sourceJournalDay: FieldJournal,
 	}[src.kind]
+	if src.kind == sourceJournalDay && t.findsPages {
+		field = FieldJournalPage
+	}
 
 	if len(conditions) == 0 {
 		return &DateFilter{Field: field, Op: Exists}, nil

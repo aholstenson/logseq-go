@@ -365,8 +365,39 @@ func parseFilter(e *expr) (Filter, error) {
 		}
 
 		return Between(start, end), nil
-	case "journal", "scheduled", "deadline":
+	case "journal", "scheduled", "deadline", "journal-page":
 		return parseDateFilter(e, op, args)
+	case "title":
+		if len(args) != 2 || args[0].kind != exprSymbol {
+			return nil, errorAt(e.pos, "title takes a comparison and a text, such as (title starts-with \"projects/\")")
+		}
+
+		titleOp, ok := titleOps[strings.ToLower(args[0].text)]
+		if !ok {
+			return nil, errorAt(args[0].pos, "expected =, starts-with, ends-with or includes")
+		}
+
+		text, err := parseName(args[1])
+		if err != nil {
+			return nil, err
+		}
+		return Title(titleOp, text), nil
+	case "alias":
+		name, err := parseSingleName(e, args)
+		if err != nil {
+			return nil, err
+		}
+		return Alias(name), nil
+	case "has-block":
+		if len(args) != 1 {
+			return nil, errorAt(e.pos, "has-block takes one filter")
+		}
+
+		filter, err := parseFilter(args[0])
+		if err != nil {
+			return nil, err
+		}
+		return HasBlock(filter), nil
 	case "sort-by", "sample":
 		return nil, errorAt(e.pos, "%s can only be used at the top of a query or in its top-level `and`", op)
 	}
@@ -375,9 +406,17 @@ func parseFilter(e *expr) (Filter, error) {
 }
 
 var dateFields = map[string]DateField{
-	"journal":   FieldJournal,
-	"scheduled": FieldScheduled,
-	"deadline":  FieldDeadline,
+	"journal":      FieldJournal,
+	"scheduled":    FieldScheduled,
+	"deadline":     FieldDeadline,
+	"journal-page": FieldJournalPage,
+}
+
+var titleOps = map[string]TitleOp{
+	"=":           TitleEquals,
+	"starts-with": TitleStartsWith,
+	"ends-with":   TitleEndsWith,
+	"includes":    TitleIncludes,
 }
 
 var ops = map[string]Op{

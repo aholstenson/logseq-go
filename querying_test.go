@@ -51,7 +51,7 @@ var _ = Describe("Query", func() {
 			"book.md":             "type:: book\ntags:: reading\n\n- TODO Finish chapter\n",
 			"projects___alpha.md": "- alpha\n",
 			"reading.md":          "- About reading\n",
-			"acme.md":             "- A company\n",
+			"acme.md":             "alias:: ACME Corp\n\n- A company\n",
 			"ada.md":              "organization:: [[Acme]], [[Initech]]\n\n- Engineer\n",
 			"bob.md":              "organization:: [[Initech]]\n\n- Manager\n",
 			"films.md": "- Good film\n  rating:: 8\n" +
@@ -216,6 +216,34 @@ var _ = Describe("Query", func() {
 		})
 	})
 
+	Describe("Page queries", func() {
+		It("finds journal pages by their date", func() {
+			Expect(pages("(journal-page)")).To(HaveLen(2))
+			Expect(pages("(journal-page today)")).To(HaveLen(1))
+			Expect(pages("(not (journal-page))")).To(ContainElements("tasks", "book"))
+			Expect(blocks("(and (task TODO) (journal-page today))")).To(ConsistOf("Call the bank", "Moved task", "Buy milk"))
+		})
+
+		It("finds pages by their title", func() {
+			Expect(pages(`(title starts-with "projects/")`)).To(ConsistOf("projects/alpha"))
+			Expect(pages(`(title includes "recipe")`)).To(ConsistOf("recipe one", "recipe two"))
+			Expect(pages(`(title ends-with "TWO")`)).To(ConsistOf("recipe two"))
+			Expect(pages(`(title = "Book")`)).To(ConsistOf("book"))
+			Expect(pages(`(title starts-with ".")`)).To(BeEmpty())
+			Expect(blocks(`(and (task TODO) (title starts-with "boo"))`)).To(ConsistOf("Finish chapter"))
+		})
+
+		It("finds pages by their alias", func() {
+			Expect(pages("(alias [[acme corp]])")).To(ConsistOf("acme"))
+		})
+
+		It("finds pages by the blocks on them", func() {
+			Expect(pages("(has-block (priority A))")).To(ConsistOf("tasks"))
+			Expect(pages("(not (has-block (task TODO)))")).To(And(ContainElement("films"), Not(ContainElement("book"))))
+			Expect(blocks(`(and (task TODO) (has-block "chapter"))`)).To(ConsistOf("Finish chapter"))
+		})
+	})
+
 	Describe("Sorting", func() {
 		It("sorts blocks by a property with numbers in the order of their value", func() {
 			Expect(blocks("(and (property rating) (sort-by rating asc))")).
@@ -358,6 +386,26 @@ var _ = Describe("Query", func() {
 			results := runAdvanced(`{:query [:find (pull ?b [*])
 				:where [?b :block/refs ?p] [?p :block/name ?n] [(contains? #{"reading list" "shopping"} ?n)]]}`)
 			Expect(blockPreviews(results)).To(ConsistOf("Reading List", "#shopping"))
+		})
+
+		It("finds the pages with open tasks", func() {
+			results := runAdvanced(`{:query [:find (pull ?p [*])
+				:where [?b :block/page ?p] [?b :block/marker "TODO"] [?b :block/priority "A"]]}`)
+			Expect(results.Type).To(Equal(logseq.QueryResultPages))
+			Expect(results.Pages).To(HaveLen(1))
+			Expect(results.Pages[0].Title()).To(Equal("tasks"))
+		})
+
+		It("finds the pages by the start of their title", func() {
+			results := runAdvanced(`{:query [:find (pull ?p [*])
+				:where [?p :block/name ?n] [(clojure.string/starts-with? ?n "recipe")]]}`)
+			Expect(results.Type).To(Equal(logseq.QueryResultPages))
+
+			titles := make([]string, 0, len(results.Pages))
+			for _, page := range results.Pages {
+				titles = append(titles, page.Title())
+			}
+			Expect(titles).To(ConsistOf("recipe one", "recipe two"))
 		})
 
 		It("finds the people of the current page", func() {

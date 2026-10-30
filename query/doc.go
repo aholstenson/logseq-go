@@ -47,6 +47,13 @@
 //	                         `id::` property, see ParentFilter
 //	(ancestor ((uuid)))      blocks below the block at any depth, see
 //	                         AncestorFilter
+//	(journal-page ...)       journal pages, with the same dates as
+//	                         `journal`; it matches pages, not blocks
+//	(title starts-with "x")  pages with a title that starts with the text,
+//	                         also with `=`, `ends-with` and `includes`
+//	(alias [[name]])         pages with the alias
+//	(has-block (task TODO))  pages with one or more blocks that match the
+//	                         filter
 //	(sort-by priority asc)   sort by a built-in value: `priority`,
 //	                         `scheduled`, `deadline`, `journal-day` or `title`
 //

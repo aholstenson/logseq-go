@@ -249,7 +249,22 @@ func (r *queryRunner) compile(filter query.Filter, blocks bool) (indexing.Query,
 		return propertyQuery(f.Name, f.Value), nil
 	case *query.DateFilter:
 		return r.dateQuery(f)
-	case *query.PagePropertyFilter, *query.PageTagsFilter, *query.NamespaceFilter, *query.AllPageTagsFilter:
+	case *query.TitleFilter:
+		// Blocks have the title of their page, so this matches the blocks on
+		// the pages as well.
+		return titleQuery(f)
+	case *query.HasBlockFilter:
+		subPaths, err := r.pagesWithBlocks(f.Filter)
+		if err != nil {
+			return nil, err
+		}
+
+		if blocks {
+			return indexing.OnPages(subPaths...), nil
+		}
+		return indexing.PagesAt(subPaths...), nil
+	case *query.PagePropertyFilter, *query.PageTagsFilter, *query.NamespaceFilter, *query.AllPageTagsFilter,
+		*query.AliasFilter:
 		pageQuery, err := r.compilePageFilter(filter)
 		if err != nil {
 			return nil, err
@@ -300,6 +315,8 @@ func (r *queryRunner) compilePageFilter(filter query.Filter) (indexing.Query, er
 		return indexing.InNamespace(f.Namespace), nil
 	case *query.AllPageTagsFilter:
 		return r.allPageTags()
+	case *query.AliasFilter:
+		return indexing.HasAlias(f.Alias), nil
 	}
 
 	return nil, fmt.Errorf("query: unknown page filter %T", filter)
@@ -329,6 +346,53 @@ func (r *queryRunner) allPageTags() (indexing.Query, error) {
 		return indexing.None(), nil
 	}
 	return indexing.Or(clauses...), nil
+}
+
+// pagesWithBlocks returns the sub paths of the pages with one or more blocks
+// that match the filter. The index has no joins, so the blocks are found
+// first.
+func (r *queryRunner) pagesWithBlocks(filter query.Filter) ([]string, error) {
+	if filter == nil {
+		return nil, fmt.Errorf("query: has-block has no filter")
+	}
+
+	blockQuery, err := r.compile(filter, true)
+	if err != nil {
+		return nil, err
+	}
+
+	seen := make(map[string]bool)
+	var subPaths []string
+	err = eachResult(func(opts indexing.SearchOptions) (indexing.SearchResults[*indexing.Block], error) {
+		return r.graph.index.SearchBlocks(r.ctx, blockQuery, opts)
+	}, func(block *indexing.Block) {
+		if !seen[block.PageSubPath] {
+			seen[block.PageSubPath] = true
+			subPaths = append(subPaths, block.PageSubPath)
+		}
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return subPaths, nil
+}
+
+// titleQuery matches the pages with a title that compares with the text of the
+// filter, and the blocks on them.
+func titleQuery(f *query.TitleFilter) (indexing.Query, error) {
+	switch f.Op {
+	case query.TitleEquals:
+		return indexing.PageTitleIs(f.Text), nil
+	case query.TitleStartsWith:
+		return indexing.PageTitleStartsWith(f.Text), nil
+	case query.TitleEndsWith:
+		return indexing.PageTitleEndsWith(f.Text), nil
+	case query.TitleIncludes:
+		return indexing.PageTitleIncludes(f.Text), nil
+	}
+
+	return nil, fmt.Errorf("query: unknown title comparison %d", f.Op)
 }
 
 // blocksOnPages finds the pages that match a query, and returns a query that
@@ -392,6 +456,10 @@ func (r *queryRunner) dateQuery(f *query.DateFilter) (indexing.Query, error) {
 		between = indexing.ScheduledBetween
 	case query.FieldDeadline:
 		between = indexing.DeadlineBetween
+	case query.FieldJournalPage:
+		// Journal pages and the blocks on them have the date in the same
+		// field, so this matches both.
+		between = indexing.JournalBetween
 	default:
 		return nil, fmt.Errorf("query: unknown date field %d", f.Field)
 	}

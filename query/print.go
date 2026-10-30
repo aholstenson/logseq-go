@@ -163,6 +163,21 @@ func (f *NamespaceFilter) String() string {
 	return list("namespace", formatPageRef(f.Namespace))
 }
 
+func (f *TitleFilter) String() string {
+	return list("title", titleOpNames[f.Op], formatString(f.Text))
+}
+
+func (f *AliasFilter) String() string {
+	return list("alias", formatPageRef(f.Alias))
+}
+
+func (f *HasBlockFilter) String() string {
+	if f.Filter == nil {
+		return list("has-block")
+	}
+	return list("has-block", f.Filter.String())
+}
+
 func (f *DateFilter) String() string {
 	name := dateFieldNames[f.Field]
 

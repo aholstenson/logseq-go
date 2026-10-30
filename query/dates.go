@@ -85,12 +85,17 @@ const (
 	FieldScheduled
 	// FieldDeadline is the `DEADLINE` date of a block.
 	FieldDeadline
+	// FieldJournalPage is the date of a journal page. A DateFilter on it
+	// matches pages, and the blocks on these pages in a query that finds
+	// blocks.
+	FieldJournalPage
 )
 
 var dateFieldNames = map[DateField]string{
-	FieldJournal:   "journal",
-	FieldScheduled: "scheduled",
-	FieldDeadline:  "deadline",
+	FieldJournal:     "journal",
+	FieldScheduled:   "scheduled",
+	FieldDeadline:    "deadline",
+	FieldJournalPage: "journal-page",
 }
 
 // Op is how a DateFilter compares a date.
@@ -155,6 +160,17 @@ func Between(start Date, end Date) *DateFilter {
 // OnJournal creates a filter that matches the blocks on journals.
 func OnJournal() *DateFilter {
 	return &DateFilter{Field: FieldJournal, Op: Exists}
+}
+
+// JournalPage creates a filter that compares the date of a journal page with
+// the date. The filter matches pages, not blocks.
+func JournalPage(op Op, date Date) *DateFilter {
+	return &DateFilter{Field: FieldJournalPage, Op: op, Date: date}
+}
+
+// IsJournalPage creates a filter that matches the journal pages.
+func IsJournalPage() *DateFilter {
+	return &DateFilter{Field: FieldJournalPage, Op: Exists}
 }
 
 // Scheduled creates a filter that compares the `SCHEDULED` date of a block
