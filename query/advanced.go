@@ -234,7 +234,13 @@ var queryFence = regexp.MustCompile(`(?im)^\s*#\+(BEGIN|END)_QUERY\s*$`)
 //     :block/journal-day, :block/journal?, :block/tags, :block/namespace and
 //     :page/properties
 //   - the conditions =, not=, <, <=, >, >=, contains?, get and
-//     clojure.string/includes?, and `[(get ?props :key) ?value]`
+//     clojure.string/includes?, and `[(get ?props :key) ?value]` with or
+//     without a default value
+//   - a value in a set, such as `[(contains? #{"book" "film"} ?value)]`, for
+//     values and for the titles of pages that blocks are on or refer to
+//   - a property that is set, such as `[(get ?props :key)]`
+//   - `[(missing? $ ?b :block/scheduled)]`, also for :block/marker,
+//     :block/priority, :block/deadline and the :block/journal-day of the page
 //   - the title of a page with a known title as a value, such as ?title in
 //     `[?p :block/name ?page] [?p :block/original-name ?title]`
 //   - and, or, or-join, not and not-join
@@ -961,10 +967,12 @@ func (t *translator) conjunction(clauses []*ednNode, pending []*condition) (Filt
 	t.choosePageInScope(clauses)
 
 	var local []*condition
-	var bindings, lists []*ednNode
+	var bindings, lists, missing []*ednNode
 
 	for _, clause := range clauses {
 		switch {
+		case isCondition(clause) && clause.items[0].head() == "missing?":
+			missing = append(missing, clause)
 		case isCondition(clause):
 			c, err := t.condition(clause)
 			if err != nil {
@@ -999,6 +1007,14 @@ func (t *translator) conjunction(clauses []*ednNode, pending []*condition) (Filt
 		filters = appendFilter(filters, filter)
 	}
 
+	for _, clause := range missing {
+		filter, err := t.missingFilter(clause)
+		if err != nil {
+			return nil, err
+		}
+		filters = appendFilter(filters, filter)
+	}
+
 	// Conditions on variables that got their values in an outer scope, such
 	// as in `(not [(= ?m "DONE")])`, apply to that value here.
 	for _, c := range local {
@@ -1006,8 +1022,20 @@ func (t *translator) conjunction(clauses []*ednNode, pending []*condition) (Filt
 			continue
 		}
 
+		if _, isProps := t.props[c.subject]; isProps {
+			filter, err := t.propertyCondition(c)
+			if err != nil {
+				return nil, err
+			}
+			filters = appendFilter(filters, filter)
+			continue
+		}
+
 		src, ok := t.sources[c.subject]
 		if !ok {
+			if _, isTitle := t.titles[c.subject]; isTitle {
+				return nil, t.unsupported(c.node, "conditions on the title of a page are only supported for a page that a block is on or refers to, such as in [?b :block/refs ?p]")
+			}
 			return nil, t.unsupported(c.node, "%s does not get a value in the query", c.subject)
 		}
 
@@ -1181,9 +1209,12 @@ func (t *translator) binding(clause *ednNode, conditions []*condition) (Filter, 
 	case "block/page":
 		if _, isInput := t.inputs[value.text]; isVar(value) && !isInput {
 			if value.text == t.page {
-				// This only names the page of the block. A title for it is
-				// translated with its :block/name.
-				return nil, nil
+				// This names the page of the block. A title for it is
+				// translated with its :block/name, and conditions on the
+				// title here.
+				return t.titleFilter(value.text, conditions, func(names []string) Filter {
+					return orOf(names, func(name string) Filter { return Page(name) })
+				})
 			}
 
 			// A page with a title from another clause, such as in
@@ -1211,10 +1242,9 @@ func (t *translator) binding(clause *ednNode, conditions []*condition) (Filter, 
 	case "block/name", "block/original-name":
 		name, named := t.name(value)
 		if !named {
-			// The clause only gives the title a variable.
-			if isVar(value) && len(take(conditions, value.text)) > 0 {
-				return nil, t.unsupported(clause, "conditions on the title of a page are not supported")
-			}
+			// The clause only gives the title a variable. Conditions on it
+			// are translated with the clause that uses the page, see
+			// titleFilter.
 			return nil, nil
 		}
 
@@ -1283,34 +1313,38 @@ func (t *translator) binding(clause *ednNode, conditions []*condition) (Filter, 
 			return nil, t.unsupported(clause, "expected a block, such as :current-block or [:block/uuid #uuid \"...\"]")
 		}
 		return ref.parent(), nil
-	case "block/refs", "block/path-refs":
-		if err := t.checkBlock(clause, entity); err != nil {
+	case "block/refs", "block/path-refs", "block/tags", "block/namespace":
+		if attribute == "block/tags" || attribute == "block/namespace" {
+			if entity.text != t.page {
+				return nil, t.unsupported(clause, "%s of other pages is not supported", attribute)
+			}
+		} else if err := t.checkBlock(clause, entity); err != nil {
 			return nil, err
 		}
 
-		name, ok := t.pageRefName(value)
-		if !ok {
-			return nil, t.unsupported(clause, "expected a page, such as [:block/name \"page\"]")
+		pageFilter := func(names []string) Filter {
+			switch attribute {
+			case "block/refs":
+				return orOf(names, func(name string) Filter { return Refs(name) })
+			case "block/path-refs":
+				return orOf(names, func(name string) Filter { return PageRef(name) })
+			case "block/tags":
+				return PageTags(names...)
+			}
+			return orOf(names, func(name string) Filter { return Namespace(name) })
 		}
 
-		if attribute == "block/refs" {
-			return Refs(name), nil
-		}
-		return PageRef(name), nil
-	case "block/tags", "block/namespace":
-		if entity.text != t.page {
-			return nil, t.unsupported(clause, "%s of other pages is not supported", attribute)
+		if name, ok := t.pageRefName(value); ok {
+			return pageFilter([]string{name}), nil
 		}
 
-		name, ok := t.pageRefName(value)
-		if !ok {
-			return nil, t.unsupported(clause, "expected a page, such as [:block/name \"page\"]")
+		if isVar(value) {
+			filter, err := t.titleFilter(value.text, conditions, pageFilter)
+			if err != nil || filter != nil {
+				return filter, err
+			}
 		}
-
-		if attribute == "block/tags" {
-			return PageTags(name), nil
-		}
-		return Namespace(name), nil
+		return nil, t.unsupported(clause, "expected a page, such as [:block/name \"page\"]")
 	}
 
 	return nil, t.unsupported(clause, "the attribute :%s is not supported", attribute)
@@ -1399,6 +1433,125 @@ func (t *translator) functionBinding(clause *ednNode, conditions []*condition) (
 	}
 
 	return t.bind(out, src, conditions)
+}
+
+// orOf returns a filter that matches one of the names.
+func orOf(names []string, filter func(name string) Filter) Filter {
+	filters := make([]Filter, 0, len(names))
+	for _, name := range names {
+		filters = append(filters, filter(name))
+	}
+
+	if len(filters) == 1 {
+		return filters[0]
+	}
+	return Or(filters...)
+}
+
+// titleFilter translates conditions on the title of the page in a variable,
+// such as `[(contains? #{"a" "b"} ?n)]` with `[?p :block/name ?n]`, with
+// filter for the titles that a condition allows. Returns nil if there are no
+// such conditions.
+func (t *translator) titleFilter(page string, conditions []*condition, filter func(names []string) Filter) (Filter, error) {
+	var filters []Filter
+	for _, c := range conditions {
+		clause, isTitle := t.titles[c.subject]
+		if !isTitle || clause.items[0].text != page {
+			continue
+		}
+		c.used = true
+
+		var names []string
+		switch {
+		case c.fn == "contains?" && len(c.args) == 2 && c.args[1].isSymbol(c.subject):
+			values, ok := t.strings(c.args[0])
+			if !ok || len(values) == 0 {
+				return nil, t.unsupported(c.node, "expected a set of titles")
+			}
+			names = values
+		case c.fn == "=":
+			value, err := t.comparedValue(c, "=")
+			if err != nil {
+				return nil, err
+			}
+			names = []string{value}
+		default:
+			return nil, t.unsupported(c.node, "only = and contains? are supported for the title of a page")
+		}
+
+		filters = append(filters, filter(names))
+	}
+
+	return andOf(filters), nil
+}
+
+// propertyCondition translates a condition on the properties of a block or
+// page itself, such as `[(get ?props :type)]` or `[(contains? ?props :type)]`,
+// which match when the property is set.
+func (t *translator) propertyCondition(c *condition) (Filter, error) {
+	if (c.fn != "get" && c.fn != "contains?") || len(c.args) < 2 || !c.args[0].isSymbol(c.subject) ||
+		(c.fn == "contains?" && len(c.args) != 2) || len(c.args) > 3 {
+		return nil, t.unsupported(c.node, "expected (get %s :key) for the properties", c.subject)
+	}
+
+	key, ok := keyName(c.args[1])
+	if !ok {
+		return nil, t.unsupported(c.node, "expected the name of a property")
+	}
+
+	if len(c.args) == 3 && !c.args[2].isSymbol("nil") && !c.args[2].isSymbol("false") {
+		// With a default, every block or page has a value.
+		return nil, nil
+	}
+
+	owner := t.props[c.subject]
+	switch {
+	case owner == t.block && t.result == t.block:
+		return HasProperty(key), nil
+	case owner == t.page:
+		return HasPageProperty(key), nil
+	case owner == t.block:
+		return nil, t.unsupported(c.node, "finding pages by the blocks on them is not supported")
+	}
+	return nil, t.unsupported(c.node, "properties of other blocks or pages are not supported")
+}
+
+// missingFilter translates `[(missing? $ ?b :block/scheduled)]`, which matches
+// the blocks without a value for the attribute.
+func (t *translator) missingFilter(clause *ednNode) (Filter, error) {
+	args := clause.items[0].items[1:]
+	if len(args) != 3 || !args[0].isSymbol("$") || !isVar(args[1]) || args[2].kind != ednKeyword {
+		return nil, t.unsupported(clause, "expected (missing? $ ?b :block/scheduled)")
+	}
+
+	entity, attribute := args[1], args[2].text
+	kinds := map[string]sourceKind{
+		"block/marker":    sourceMarker,
+		"block/priority":  sourcePriority,
+		"block/scheduled": sourceScheduled,
+		"block/deadline":  sourceDeadline,
+	}
+
+	var src *source
+	if kind, ok := kinds[attribute]; ok {
+		if err := t.checkBlock(clause, entity); err != nil {
+			return nil, err
+		}
+		src = &source{kind: kind, entity: entity.text}
+	} else if attribute == "block/journal-day" {
+		if err := t.checkPageOfBlock(clause, entity); err != nil {
+			return nil, err
+		}
+		src = &source{kind: sourceJournalDay, entity: entity.text}
+	} else {
+		return nil, t.unsupported(clause, "missing? is only supported for :block/marker, :block/priority, :block/scheduled, :block/deadline and :block/journal-day")
+	}
+
+	exists, err := t.sourceFilter(src, nil)
+	if err != nil {
+		return nil, err
+	}
+	return Not(exists), nil
 }
 
 // keyName returns the name of a property from a keyword or a string.
@@ -1952,22 +2105,35 @@ func (t *translator) sourceFilter(src *source, conditions []*condition) (Filter,
 
 		var filters []Filter
 		for _, c := range conditions {
-			value, err := t.comparedValue(c, "get", "contains?", "=")
-			if err != nil {
-				return nil, err
+			var values []string
+			if c.fn == "contains?" && len(c.args) == 2 && c.args[1].isSymbol(c.subject) {
+				// One of a set of values, such as (contains? #{"a" "b"} ?v).
+				set, ok := t.strings(c.args[0])
+				if !ok || len(set) == 0 {
+					return nil, t.unsupported(c.node, "expected a set of values")
+				}
+				values = set
+			} else {
+				value, err := t.comparedValue(c, "get", "contains?", "=")
+				if err != nil {
+					return nil, err
+				}
+				values = []string{value}
 			}
 
-			var filter Filter = Property(src.key, value)
-			if isPage {
-				filter = PageProperty(src.key, value)
-			}
+			filters = append(filters, orOf(values, func(value string) Filter {
+				var filter Filter = Property(src.key, value)
+				if isPage {
+					filter = PageProperty(src.key, value)
+				}
 
-			// The default is the value for the blocks or pages without
-			// the property.
-			if src.hasDefault && value == src.def {
-				filter = Or(filter, Not(has))
-			}
-			filters = append(filters, filter)
+				// The default is the value for the blocks or pages without
+				// the property.
+				if src.hasDefault && value == src.def {
+					filter = Or(filter, Not(has))
+				}
+				return filter
+			}))
 		}
 
 		if len(filters) == 0 {

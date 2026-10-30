@@ -334,6 +334,32 @@ var _ = Describe("Query", func() {
 			Expect(blockPreviews(results)).To(ConsistOf("Reading List"))
 		})
 
+		It("finds the tasks without a date", func() {
+			results := runAdvanced(`{:query [:find (pull ?b [*])
+				:where [?b :block/page ?pg] [?pg :block/name "tasks"] [?b :block/marker "TODO"]
+				[(missing? $ ?b :block/scheduled)] [(missing? $ ?b :block/deadline)]]}`)
+			Expect(blockPreviews(results)).To(ConsistOf("No dates"))
+		})
+
+		It("finds the pages with a property in a set of values", func() {
+			results := runAdvanced(`{:query [:find (pull ?p [*])
+				:where [?p :block/name] [?p :block/properties ?pp] [(get ?pp :type) ?t]
+				[(contains? #{"book" "Cognitive Recipe"} ?t)]]}`)
+			Expect(results.Type).To(Equal(logseq.QueryResultPages))
+
+			titles := make([]string, 0, len(results.Pages))
+			for _, page := range results.Pages {
+				titles = append(titles, page.Title())
+			}
+			Expect(titles).To(ConsistOf("book", "recipe one", "recipe two"))
+		})
+
+		It("finds the blocks that reference a page in a set", func() {
+			results := runAdvanced(`{:query [:find (pull ?b [*])
+				:where [?b :block/refs ?p] [?p :block/name ?n] [(contains? #{"reading list" "shopping"} ?n)]]}`)
+			Expect(blockPreviews(results)).To(ConsistOf("Reading List", "#shopping"))
+		})
+
 		It("finds the people of the current page", func() {
 			results := runAdvanced(`{:query [:find (pull ?p [*]) :in $ ?target
 				:where [?b :block/page ?p] [?p :page/properties ?props]

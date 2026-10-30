@@ -200,6 +200,19 @@ var _ = Describe("Advanced queries", func() {
 		Translates("property with nil as the default",
 			where(`[?b :block/properties ?props] [(get ?props :type nil) ?t]`),
 			"(property type)")
+		Translates("missing", where(`[?b :block/marker "TODO"] [(missing? $ ?b :block/scheduled)]`), "(and (task TODO) (not (scheduled)))")
+		Translates("missing in a not", where(`[?b :block/marker "TODO"] (not [(missing? $ ?b :block/deadline)])`),
+			"(and (task TODO) (not (not (deadline))))")
+		Translates("missing journal day", where(`[?b :block/marker "TODO"] [?b :block/page ?p] [(missing? $ ?p :block/journal-day)]`),
+			"(and (task TODO) (not (journal)))")
+		Translates("property as a condition", where(`[?b :block/properties ?props] [(get ?props :type)]`), "(property type)")
+		Translates("property with a default as a condition",
+			where(`[?b :block/marker "TODO"] [?b :block/properties ?props] [(get ?props :type "x")]`), "(task TODO)")
+		Translates("property in a set", where(`[?b :block/properties ?props] [(get ?props :type) ?t] [(contains? #{"book" "film"} ?t)]`),
+			"(or (property type book) (property type film))")
+		Translates("property in a set with a default",
+			where(`[?b :block/properties ?props] [(get ?props :type "none") ?t] [(contains? #{"none" "book"} ?t)]`),
+			"(or (or (property type none) (not (property type))) (property type book))")
 		Translates("property with get-in and a default",
 			where(`[(get-in ?b [:block/properties :type] "none") ?t] [(= ?t "none")]`),
 			"(or (property type none) (not (property type)))")
@@ -214,6 +227,25 @@ var _ = Describe("Advanced queries", func() {
 			"{:query [:find (pull ?p [*]) :where [?p :block/name ?name] [?p :block/properties ?props] [(get ?props :type) ?t] [(= ?t \"book\")]]}",
 			"(page-property type book)")
 		Translates("namespace", "{:query [:find ?p :where [?p :block/namespace [:block/name \"projects\"]]]}", "(namespace [[projects]])")
+		Translates("page property as a condition in a not",
+			`{:query [:find (pull ?p [*]) :where [?p :block/name] [?p :block/properties ?pp] (not [(get ?pp :type)])]}`,
+			"(not (page-property type))")
+		Translates("page property with contains?",
+			`{:query [:find (pull ?p [*]) :where [?p :block/name] [?p :block/properties ?pp] [(contains? ?pp :type)]]}`,
+			"(page-property type)")
+		Translates("tags with titles in a set",
+			`{:query [:find (pull ?p [*]) :where [?p :block/tags ?t] [?t :block/name ?n] [(contains? #{"book" "film"} ?n)]]}`,
+			"(page-tags [[book]] [[film]])")
+		Translates("page of a block with titles in a set",
+			where(`[?b :block/marker "TODO"] [?b :block/page ?p] [?p :block/name ?n] [(contains? #{"a" "b"} ?n)]`),
+			"(and (task TODO) (or (page [[a]]) (page [[b]])))")
+		Translates("path refs with titles in a set", where(`[?b :block/path-refs ?p] [?p :block/name ?n] [(contains? #{"a" "b"} ?n)]`),
+			"(or [[a]] [[b]])")
+		Translates("refs with a title compared", where(`[?b :block/refs ?p] [?p :block/original-name ?n] [(= ?n "Project")]`),
+			"(refs [[Project]])")
+		Translates("titles in a set for each branch of an or",
+			where(`[?p :block/name ?n] [(contains? #{"a" "b"} ?n)] (or [?b :block/refs ?p] [?b :block/page ?p])`),
+			"(or (or (refs [[a]]) (refs [[b]])) (or (page [[a]]) (page [[b]])))")
 		Translates("page property with a default",
 			`{:query [:find (pull ?p [*]) :where [?p :block/name] [?p :block/properties ?pp] [(get ?pp :status "open") ?s] [(= ?s "open")]]}`,
 			"(or (page-property status open) (not (page-property status)))")
@@ -366,6 +398,9 @@ var _ = Describe("Advanced queries", func() {
 			where(`[?b :block/page ?p] [?p :block/journal? true] (or [?b :block/marker "TODO"] [?b :block/page ?q])`),
 			"or a page with a title")
 		Unsupported("defaults that are not values", where(`[?b :block/properties ?p] [(get ?p :type [1]) ?t]`), "expected a value as the default")
+		Unsupported("missing for other attributes", where(`[?b :block/marker "TODO"] [(missing? $ ?b :block/properties)]`), "missing? is only supported")
+		Unsupported("other conditions on the title of a referenced page",
+			where(`[?b :block/refs ?p] [?p :block/name ?n] [(clojure.string/includes? ?n "x")]`), "only = and contains?")
 		Unsupported("regex conditions", where(`[?b :block/content ?c] [(re-find #"bank\d" ?c)]`), "includes?")
 	})
 })
