@@ -114,6 +114,18 @@ func ReferencesTag(page string) Query {
 	return indexing.ReferencesTag(page)
 }
 
+// PathReferences matches the blocks that are about the given page: the blocks
+// on that page, the blocks that reference it, and all blocks below a block
+// that references it. Logseq calls these the path refs of a block, and a
+// simple query such as `{{query [[page]]}}` matches on them. Page titles are
+// matched without regard for case. Matches only blocks, never pages.
+//
+// Use it with Not to leave out a part of the graph, such as all tasks below a
+// block tagged `#shopping`.
+func PathReferences(page string) Query {
+	return indexing.PathReferences(page)
+}
+
 // LinksToURL returns a query that checks if a block or page links to a
 // URL.
 func LinksToURL(url string) Query {

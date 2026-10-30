@@ -28,7 +28,7 @@ func (i idTerm) Term() []byte {
 // Increase it when the way pages or blocks are indexed changes, so that an
 // index stored on disk is built again with the new fields. Without that the
 // pages that did not change since they were indexed keep their old documents.
-const indexVersion = 1
+const indexVersion = 2
 
 // versionDocID is the id of the document that stores the version of the
 // index. It does not have a type, so searches for pages and blocks never
@@ -466,9 +466,15 @@ func (i *BlugeIndex) indexBlocks(ctx context.Context, page *Page) error {
 		return fmt.Errorf("error getting blocks: %w", err)
 	}
 
+	// The path of every block starts at the page it is on.
+	var pagePathRefs []string
+	if page.Title != "" {
+		pagePathRefs = []string{normalizeRef(page.Title)}
+	}
+
 	// Index the new blocks
 	for _, block := range page.Blocks {
-		err = i.indexBlock(idSet, page, block)
+		err = i.indexBlock(idSet, page, block, pagePathRefs)
 		if err != nil {
 			return err
 		}
@@ -524,10 +530,13 @@ func (i *BlugeIndex) getBlocks(ctx context.Context, pagePath string) (map[string
 	return idSet, nil
 }
 
-func (i *BlugeIndex) indexBlock(idSet map[string]struct{}, page *Page, block *content.Block) error {
+// indexBlock indexes a block and the blocks below it. parentPathRefs is the
+// path refs of the parent block, or of the page for a top-level block.
+func (i *BlugeIndex) indexBlock(idSet map[string]struct{}, page *Page, block *content.Block, parentPathRefs []string) error {
 	id := blockID(page, block)
+	pathRefs := pathRefsOf(parentPathRefs, block)
 
-	blugeDoc, err := i.blockToDocument(page, id, block)
+	blugeDoc, err := i.blockToDocument(page, id, block, pathRefs)
 	if err != nil {
 		return err
 	}
@@ -540,7 +549,7 @@ func (i *BlugeIndex) indexBlock(idSet map[string]struct{}, page *Page, block *co
 	delete(idSet, id)
 
 	for _, child := range block.Blocks() {
-		err = i.indexBlock(idSet, page, child)
+		err = i.indexBlock(idSet, page, child, pathRefs)
 		if err != nil {
 			return err
 		}
@@ -549,10 +558,46 @@ func (i *BlugeIndex) indexBlock(idSet map[string]struct{}, page *Page, block *co
 	return nil
 }
 
-func (i *BlugeIndex) blockToDocument(page *Page, id string, block *content.Block) (*bluge.Document, error) {
+// pathRefsOf returns the path refs of a block, which is what Logseq calls the
+// pages that a block is about: the page it is on, the pages its parent blocks
+// reference and the pages it references itself. The titles are normalized
+// with normalizeRef. parentPathRefs is the path refs of the parent block, or
+// of the page for a top-level block.
+func pathRefsOf(parentPathRefs []string, block *content.Block) []string {
+	// The full slice expression makes append copy the parent refs, so that
+	// sibling blocks do not write to the same array.
+	refs := parentPathRefs[:len(parentPathRefs):len(parentPathRefs)]
+
+	// Only the content is used, as the blocks below this block are not part
+	// of its path.
+	for _, ref := range block.Content().PageReferences() {
+		title := normalizeRef(ref.(content.PageRef).GetTo())
+		if !containsString(refs, title) {
+			refs = append(refs, title)
+		}
+	}
+
+	return refs
+}
+
+func containsString(values []string, value string) bool {
+	for _, v := range values {
+		if v == value {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (i *BlugeIndex) blockToDocument(page *Page, id string, block *content.Block, pathRefs []string) (*bluge.Document, error) {
 	blugeDoc := bluge.NewDocument(id).
 		AddField(bluge.NewKeywordField("type", "block").StoreValue()).
 		AddField(bluge.NewKeywordField("page", page.SubPath).StoreValue())
+
+	for _, ref := range pathRefs {
+		blugeDoc.AddField(bluge.NewKeywordField("path:ref", ref))
+	}
 
 	if id := block.ID(); id != "" {
 		blugeDoc.AddField(bluge.NewKeywordField("id", id).StoreValue())

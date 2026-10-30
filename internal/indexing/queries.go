@@ -202,6 +202,13 @@ func ReferencesTag(tag string) Query {
 	}
 }
 
+func PathReferences(page string) Query {
+	return &fieldRefs{
+		field:  "path",
+		target: page,
+	}
+}
+
 func LinksToURL(url string) Query {
 	return &fieldEquals{
 		field: "link",

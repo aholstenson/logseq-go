@@ -366,6 +366,23 @@ var _ = Describe("Search", func() {
 			Expect(search(logseq.ScheduledBetween(jan15, jan15.AddDate(0, 0, 1)))).To(ConsistOf("Water the plants"))
 			Expect(search(logseq.DeadlineBetween(time.Time{}, jan15))).To(ConsistOf("Buy soil"))
 		})
+
+		It("leaves out tasks below a tagged block", func() {
+			graph = openGraphWithPages(dir, map[string]string{
+				"tasks.md": "- #shopping\n  - TODO Buy milk\n" +
+					"- [[Reading List]]\n  - TODO Read a book\n" +
+					"- TODO Water the plants\n",
+			})
+
+			results, err := graph.SearchBlocks(ctx, logseq.WithQuery(logseq.And(
+				logseq.IsOpenTask(),
+				logseq.Not(logseq.PathReferences("shopping")),
+				logseq.Not(logseq.PathReferences("reading list")),
+			)))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(results.Size()).To(Equal(1))
+			Expect(results.Results()[0].Preview()).To(Equal("Water the plants"))
+		})
 	})
 
 	Describe("Search options", func() {

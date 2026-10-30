@@ -312,6 +312,17 @@ tasks, err := graph.SearchBlocks(ctx, logseq.WithQuery(logseq.And(
 )))
 ```
 
+Blocks can be found by the pages they are about. `PathReferences` matches the
+blocks on a page, the blocks that reference it, and all blocks below them:
+
+```go
+// Open tasks that are not on the Shopping page or below a #shopping block
+tasks, err := graph.SearchBlocks(ctx, logseq.WithQuery(logseq.And(
+  logseq.IsOpenTask(),
+  logseq.Not(logseq.PathReferences("Shopping")),
+)))
+```
+
 ## Limitations
 
 This library is limited to working with Markdown files. As the library provides
