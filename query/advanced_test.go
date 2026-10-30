@@ -488,6 +488,28 @@ var _ = Describe("Advanced queries", func() {
 
 		Translates("blocks below a block", withRules(below, `[?b :block/marker "TODO"] (below ?b [:block/uuid #uuid "abc"])`),
 			"(and (task TODO) (ancestor ((abc))))")
+
+		inNamespace := `[[(in-ns ?p ?ns) [?p :block/namespace ?ns]]
+			[(in-ns ?p ?ns) [?p :block/namespace ?mid] (in-ns ?mid ?ns)]]`
+		withPageRules := func(rules string, clauses string) string {
+			return "{:query [:find (pull ?p [*]) :in $ % :where " + clauses + "] :rules " + rules + "}"
+		}
+
+		Translates("pages in a namespace at any depth", withPageRules(inNamespace, `(in-ns ?p ?ns) [?ns :block/name "projects"]`),
+			"(under-namespace [[projects]])")
+		Translates("pages in a namespace with a lookup", withPageRules(inNamespace, `(in-ns ?p [:block/name "projects"])`),
+			"(under-namespace [[projects]])")
+		Translates("pages in a namespace that steps down",
+			withPageRules(`[[(in-ns ?p ?ns) [?p :block/namespace ?ns]] [(in-ns ?p ?ns) [?mid :block/namespace ?ns] (in-ns ?p ?mid)]]`,
+				`(in-ns ?p ?ns) [?ns :block/name "projects"]`),
+			"(under-namespace [[projects]])")
+		Translates("blocks on pages in a namespace",
+			withRules(inNamespace, `[?b :block/marker "TODO"] [?b :block/page ?p] (in-ns ?p ?ns) [?ns :block/name "projects"]`),
+			"(and (task TODO) (under-namespace [[projects]]))")
+		Translates("the namespaces of a page",
+			"{:query [:find (pull ?ns [*]) :in $ % :where (in-ns ?p ?ns) [?p :block/name \"projects/a/b\"]] :rules "+inNamespace+"}",
+			`(or (title = "projects/a") (title = "projects"))`)
+		Unsupported("a namespace without a title", withPageRules(inNamespace, `(in-ns ?p ?ns)`), "expected a namespace with a title")
 		Translates("the recursive definition first",
 			withRules(`[[(below ?b ?a) [?b :block/parent ?c] (below ?c ?a)] [(below ?b ?a) [?b :block/parent ?a]]]`,
 				`(below ?b [:block/uuid "abc"])`),

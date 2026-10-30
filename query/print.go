@@ -219,6 +219,9 @@ func (f *TopLevelFilter) String() string {
 }
 
 func (f *NamespaceFilter) String() string {
+	if f.AnyDepth {
+		return list("under-namespace", formatPageRef(f.Namespace))
+	}
 	return list("namespace", formatPageRef(f.Namespace))
 }
 

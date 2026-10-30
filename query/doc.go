@@ -62,6 +62,8 @@
 //	                         `starts-with`, `ends-with` and `matches`, see
 //	                         ContentFilter
 //	(alias [[name]])         pages with the alias
+//	(under-namespace [[x]])  pages in the namespace at any depth, see
+//	                         NamespaceFilter
 //	(has-block (task TODO))  pages with one or more blocks that match the
 //	                         filter; `(has-block)` for pages with blocks
 //	(property rating > 7)    blocks with a property that is a number or a

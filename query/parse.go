@@ -356,10 +356,13 @@ func parseFilter(e *expr) (Filter, error) {
 			return Parent(args[0].text), nil
 		}
 		return nil, errorAt(args[0].pos, "expected a block, such as ((uuid)) or [[page]] 0 1")
-	case "namespace":
+	case "namespace", "under-namespace":
 		name, err := parseSingleName(e, args)
 		if err != nil {
 			return nil, err
+		}
+		if op == "under-namespace" {
+			return UnderNamespace(name), nil
 		}
 		return Namespace(name), nil
 	case "property", "page-property":

@@ -57,6 +57,7 @@ var _ = Describe("Writing queries", func() {
 		Prints("ancestor by location", query.New(query.AncestorAt("Outline", 2)), "(ancestor [[Outline]] 2)")
 		Prints("refs with brackets", query.New(query.Refs("a ]] b")), `(refs "a ]] b")`)
 		Prints("namespace", query.New(query.Namespace("Projects")), "(namespace [[Projects]])")
+		Prints("namespace at any depth", query.New(query.UnderNamespace("Projects")), "(under-namespace [[Projects]])")
 		Prints("page ref with brackets", query.New(query.PageRef("a ]] b")), `(page-ref "a ]] b")`)
 		Prints("page with brackets", query.New(query.Page("a]")), `(page "a]")`)
 	})

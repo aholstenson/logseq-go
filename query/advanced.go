@@ -301,6 +301,9 @@ var queryFence = regexp.MustCompile(`(?im)^\s*#\+(BEGIN|END)_QUERY\s*$`)
 //	[(below ?b ?parent) [?b :block/parent ?parent]]
 //	[(below ?b ?parent) [?b :block/parent ?c] (below ?c ?parent)]
 //
+// and the same rule with :block/namespace, which finds the pages in a
+// namespace at any depth, see UnderNamespace.
+//
 // Keys that only change how Logseq shows the results, such as :view and
 // :table-view?, are ignored. Errors in the EDN itself are returned as
 // *ParseError.
@@ -343,7 +346,7 @@ func parseAdvanced(text string, options *parseOptions) (*AdvancedQuery, error) {
 			"parent-block":  options.parentBlock,
 		},
 		blockInputs: make(map[string]blockRef),
-		rules:       make(map[string]*ancestorRule),
+		rules:       make(map[string]*recursiveRule),
 		inlineRules: make(map[string][]*ruleDef),
 	}
 
@@ -519,7 +522,7 @@ type translator struct {
 
 	// rules are the rules from :rules that find the blocks below a block, by
 	// name.
-	rules map[string]*ancestorRule
+	rules map[string]*recursiveRule
 
 	// inlineRules are the other rules from :rules, by name. Their uses are
 	// replaced with their clauses before the query is translated, see
@@ -859,7 +862,22 @@ func (t *translator) collect(clause *ednNode, nested bool) error {
 			}
 		default:
 			if rule, ok := t.rules[head]; ok {
-				if len(clause.items) == 3 && isVar(clause.items[1+rule.child]) {
+				if len(clause.items) != 3 {
+					return nil
+				}
+
+				if rule.attribute == "block/namespace" {
+					for _, arg := range clause.items[1:] {
+						if isVar(arg) {
+							if err := t.setKind(arg, entityPage); err != nil {
+								return err
+							}
+						}
+					}
+					return nil
+				}
+
+				if isVar(clause.items[1+rule.child]) {
 					return t.setKind(clause.items[1+rule.child], entityBlock)
 				}
 				return nil
@@ -1297,6 +1315,10 @@ func (t *translator) joinOf(clause *ednNode) (join, bool) {
 	}
 
 	if rule, ok := t.rules[clause.head()]; ok && clause.kind == ednList && len(clause.items) == 3 {
+		if rule.attribute != "block/parent" {
+			return join{}, false
+		}
+
 		child, ancestor := clause.items[1+rule.child], clause.items[1+rule.ancestor]
 		switch {
 		case child.text == t.block && isBlock(ancestor):
@@ -2498,16 +2520,30 @@ func (t *translator) rule(clause *ednNode) (Filter, error) {
 	return nil, t.unsupported(clause, "the rule %s is not supported", head)
 }
 
-// ancestorRule is a rule from :rules that finds the blocks below a block at
-// any depth, such as:
+// recursiveRule is a rule from :rules that uses itself to step along an
+// attribute at any depth. With :block/parent it finds the blocks below a
+// block:
 //
 //	[(below ?b ?parent) [?b :block/parent ?parent]]
 //	[(below ?b ?parent) [?b :block/parent ?c] (below ?c ?parent)]
-type ancestorRule struct {
+//
+// With :block/namespace it finds the pages in a namespace at any depth:
+//
+//	[(in-ns ?p ?ns) [?p :block/namespace ?ns]]
+//	[(in-ns ?p ?ns) [?p :block/namespace ?mid] (in-ns ?mid ?ns)]
+type recursiveRule struct {
+	// attribute is the attribute that the rule steps along,
+	// "block/parent" or "block/namespace".
+	attribute string
+
 	// child and ancestor are the positions of the arguments for the block
-	// below and for the block above it.
+	// or page below, and for the one above it.
 	child, ancestor int
 }
+
+// recursiveAttributes are the attributes that a recursive rule can step
+// along, see recursiveRule.
+var recursiveAttributes = []string{"block/parent", "block/namespace"}
 
 // readRules reads :rules, which is a vector of rule definitions such as
 // `[(name ?a ?b) clause ...]`. The definitions with the same name make one
@@ -2533,7 +2569,7 @@ func (t *translator) readRules(node *ednNode) error {
 
 	for _, name := range names {
 		defs := definitions[name]
-		if rule, ok := readAncestorRule(name, defs); ok {
+		if rule, ok := readRecursiveRule(name, defs); ok {
 			t.rules[name] = rule
 			continue
 		}
@@ -2555,7 +2591,7 @@ func (t *translator) readRules(node *ednNode) error {
 	// that never ends.
 	for _, name := range names {
 		if t.usesRule(name, name, make(map[string]bool)) {
-			return t.unsupported(definitions[name][0], "rules that use themselves are only supported to find the blocks below a block, with :block/parent")
+			return t.unsupported(definitions[name][0], "rules that use themselves are only supported to find the blocks below a block with :block/parent, or the pages in a namespace with :block/namespace")
 		}
 	}
 
@@ -2794,18 +2830,27 @@ func asBranch(at *ednNode, clauses []*ednNode) *ednNode {
 	}, clauses...)}
 }
 
-// readAncestorRule reads the two definitions of a rule that finds the blocks
-// below a block at any depth: one where the block is directly below, and one
-// that steps up to the parent and uses the rule again. The recursive
-// definition can step from either end:
+// readRecursiveRule reads the two definitions of a recursive rule, see
+// recursiveRule: one where the block or page is directly below, and one that
+// steps up and uses the rule again. The recursive definition can step from
+// either end:
 //
 //	[(name ?b ?a) [?b :block/parent ?c] (name ?c ?a)]
 //	[(name ?b ?a) [?c :block/parent ?a] (name ?b ?c)]
-func readAncestorRule(name string, defs []*ednNode) (*ancestorRule, bool) {
+func readRecursiveRule(name string, defs []*ednNode) (*recursiveRule, bool) {
 	if len(defs) != 2 {
 		return nil, false
 	}
 
+	for _, attribute := range recursiveAttributes {
+		if rule, ok := readRecursiveRuleFor(name, defs, attribute); ok {
+			return rule, true
+		}
+	}
+	return nil, false
+}
+
+func readRecursiveRuleFor(name string, defs []*ednNode, attribute string) (*recursiveRule, bool) {
 	params := func(def *ednNode) ([]string, bool) {
 		head := def.items[0]
 		if len(head.items) != 3 || !isVar(head.items[1]) || !isVar(head.items[2]) || head.items[1].text == head.items[2].text {
@@ -2817,7 +2862,7 @@ func readAncestorRule(name string, defs []*ednNode) (*ancestorRule, bool) {
 	// parentOf returns the variables of the block and of its parent in a
 	// clause such as `[?b :block/parent ?c]`.
 	parentOf := func(clause *ednNode) (string, string, bool) {
-		if !isDataPattern(clause) || len(clause.items) != 3 || clause.items[1].text != "block/parent" ||
+		if !isDataPattern(clause) || len(clause.items) != 3 || clause.items[1].text != attribute ||
 			!isVar(clause.items[0]) || !isVar(clause.items[2]) {
 			return "", "", false
 		}
@@ -2837,7 +2882,7 @@ func readAncestorRule(name string, defs []*ednNode) (*ancestorRule, bool) {
 			continue
 		}
 
-		rule := &ancestorRule{}
+		rule := &recursiveRule{attribute: attribute}
 		switch {
 		case child == baseParams[0] && parent == baseParams[1]:
 			rule.child, rule.ancestor = 0, 1
@@ -2847,7 +2892,7 @@ func readAncestorRule(name string, defs []*ednNode) (*ancestorRule, bool) {
 			continue
 		}
 
-		if isAncestorStep(name, recursive, rule, params, parentOf) {
+		if isRecursiveStep(name, recursive, rule, params, parentOf) {
 			return rule, true
 		}
 	}
@@ -2855,12 +2900,12 @@ func readAncestorRule(name string, defs []*ednNode) (*ancestorRule, bool) {
 	return nil, false
 }
 
-// isAncestorStep returns true if a definition is the recursive step of an
-// ancestor rule, see readAncestorRule.
-func isAncestorStep(
+// isRecursiveStep returns true if a definition is the recursive step of a
+// recursive rule, see readRecursiveRule.
+func isRecursiveStep(
 	name string,
 	def *ednNode,
-	rule *ancestorRule,
+	rule *recursiveRule,
 	params func(*ednNode) ([]string, bool),
 	parentOf func(*ednNode) (string, string, bool),
 ) bool {
@@ -2898,9 +2943,13 @@ func isAncestorStep(
 
 // ancestorFilter translates a use of an ancestor rule, such as
 // `(below ?b ?parent)`, into an AncestorFilter.
-func (t *translator) ancestorFilter(clause *ednNode, rule *ancestorRule) (Filter, error) {
+func (t *translator) ancestorFilter(clause *ednNode, rule *recursiveRule) (Filter, error) {
 	if len(clause.items) != 3 {
 		return nil, t.unsupported(clause, "expected two arguments for the rule")
+	}
+
+	if rule.attribute == "block/namespace" {
+		return t.namespaceFilter(clause, rule)
 	}
 
 	if err := t.checkBlock(clause, clause.items[1+rule.child]); err != nil {
@@ -2912,6 +2961,44 @@ func (t *translator) ancestorFilter(clause *ednNode, rule *ancestorRule) (Filter
 		return nil, t.unsupported(clause, "expected a block above, such as :current-block or [:block/uuid #uuid \"...\"]")
 	}
 	return ref.ancestor(), nil
+}
+
+// namespaceFilter translates a use of a rule that finds the pages in a
+// namespace at any depth, such as `(in-ns ?p ?ns)`. With a title for the
+// namespace it matches the pages in it, see UnderNamespace. With a title for
+// the page it matches the namespaces the page is in, which its title names.
+func (t *translator) namespaceFilter(clause *ednNode, rule *recursiveRule) (Filter, error) {
+	child, ancestor := clause.items[1+rule.child], clause.items[1+rule.ancestor]
+
+	byTitle := func(name string) Filter {
+		if t.findsPages {
+			return Title(TitleEquals, name)
+		}
+		return Page(name)
+	}
+
+	switch {
+	case child.text == t.page:
+		name, ok := t.pageRefName(ancestor)
+		if !ok {
+			return nil, t.unsupported(clause, "expected a namespace with a title, such as [:block/name \"projects\"]")
+		}
+		return UnderNamespace(name), nil
+	case ancestor.text == t.page:
+		name, ok := t.pageRefName(child)
+		if !ok {
+			return nil, t.unsupported(clause, "expected a page with a title, such as [:block/name \"projects/a\"]")
+		}
+
+		namespaces := utils.NamespacesOf(name)
+		if len(namespaces) == 0 {
+			// The page is in no namespace, so nothing matches.
+			return Or(), nil
+		}
+		return orOf(namespaces, byTitle), nil
+	}
+
+	return nil, t.unsupported(clause, "expected the pages the query finds, or the page of the blocks, as one of the arguments")
 }
 
 // strings returns the strings in a value, which is a string, a keyword, a

@@ -345,6 +345,9 @@ func (r *queryRunner) compilePageFilter(filter query.Filter) (indexing.Query, er
 		}
 		return indexing.Or(clauses...), nil
 	case *query.NamespaceFilter:
+		if f.AnyDepth {
+			return indexing.UnderNamespace(f.Namespace), nil
+		}
 		return indexing.InNamespace(f.Namespace), nil
 	case *query.AllPageTagsFilter:
 		return r.allPageTags()

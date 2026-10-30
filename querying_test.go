@@ -53,12 +53,13 @@ var _ = Describe("Query", func() {
 				"- Review\n  due:: 20240120\n" +
 				"- Party\n  due:: [[Jan 15th, 2024]]\n" +
 				"- Someday\n  due:: later\n",
-			"projects___alpha.md": "- alpha\n",
-			"reading.md":          "- About reading\n",
-			"acme.md":             "alias:: ACME Corp\n\n- A company\n",
-			"ada.md":              "organization:: [[Acme]], [[Initech]]\n\n- Engineer\n",
-			"bob.md":              "organization:: [[Initech]]\n\n- Manager\n",
-			"notes.md":            "- TODO Review [[book]]\n- Visit [[recipe one]]\n- Plan [[Nowhere Page]]\n",
+			"projects___alpha.md":        "- alpha\n",
+			"projects___alpha___beta.md": "- TODO beta task\n",
+			"reading.md":                 "- About reading\n",
+			"acme.md":                    "alias:: ACME Corp\n\n- A company\n",
+			"ada.md":                     "organization:: [[Acme]], [[Initech]]\n\n- Engineer\n",
+			"bob.md":                     "organization:: [[Initech]]\n\n- Manager\n",
+			"notes.md":                   "- TODO Review [[book]]\n- Visit [[recipe one]]\n- Plan [[Nowhere Page]]\n",
 			"meetings.md": "- Weekly sync #meeting\n" +
 				"  - TODO Send notes\n" +
 				"  - Discussed budget\n" +
@@ -231,6 +232,7 @@ var _ = Describe("Query", func() {
 
 		It("finds pages in a namespace", func() {
 			Expect(pages("(namespace [[projects]])")).To(ConsistOf("projects/alpha"))
+			Expect(pages("(under-namespace [[projects]])")).To(ConsistOf("projects/alpha", "projects/alpha/beta"))
 		})
 
 		It("finds all pages without a filter", func() {
@@ -263,7 +265,7 @@ var _ = Describe("Query", func() {
 		})
 
 		It("finds pages by their title", func() {
-			Expect(pages(`(title starts-with "projects/")`)).To(ConsistOf("projects/alpha"))
+			Expect(pages(`(title starts-with "projects/")`)).To(ConsistOf("projects/alpha", "projects/alpha/beta"))
 			Expect(pages(`(title includes "recipe")`)).To(ConsistOf("recipe one", "recipe two"))
 			Expect(pages(`(title ends-with "TWO")`)).To(ConsistOf("recipe two"))
 			Expect(pages(`(title = "Book")`)).To(ConsistOf("book"))
@@ -516,6 +518,14 @@ var _ = Describe("Query", func() {
 			}
 			Expect(titles).To(ContainElement("tasks"))
 			Expect(titles).ToNot(ContainElement("empty"))
+		})
+
+		It("finds the pages in a namespace at any depth with a recursive rule", func() {
+			results := runAdvanced(`{:query [:find (pull ?b [*]) :in $ %
+				:where [?b :block/marker "TODO"] [?b :block/page ?p] (in-ns ?p ?ns) [?ns :block/name "projects"]]
+				:rules [[(in-ns ?p ?ns) [?p :block/namespace ?ns]]
+				        [(in-ns ?p ?ns) [?p :block/namespace ?mid] (in-ns ?mid ?ns)]]}`)
+			Expect(blockPreviews(results)).To(ConsistOf("beta task"))
 		})
 
 		It("finds the recipes", func() {

@@ -106,6 +106,7 @@ var _ = Describe("Parsing queries", func() {
 		ParsesFilter("(ancestor [[Outline]] 2)", query.AncestorAt("Outline", 2))
 		ParsesFilter("(and (task TODO) (parent ((abc))))", query.And(query.Task(content.TaskStatusTodo), query.Parent("abc")))
 		ParsesFilter("(namespace [[Projects]])", query.Namespace("Projects"))
+		ParsesFilter("(under-namespace [[Projects]])", query.UnderNamespace("Projects"))
 		ParsesFilter("(between -7d today)", query.Between(query.Relative("-7d"), query.Today()))
 		ParsesFilter("(between -7 +7)", query.Between(query.Relative("-7d"), query.Relative("+7d")))
 		ParsesFilter("(between :-2w :+1m)", query.Between(query.Relative("-2w"), query.Relative("+1m")))

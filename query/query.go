@@ -549,16 +549,28 @@ func AllPageTags() *AllPageTagsFilter {
 	return &AllPageTagsFilter{}
 }
 
-// NamespaceFilter matches the pages directly in a namespace, so `Parent`
-// matches `Parent/Child` but not `Parent/Child/Grandchild`.
+// NamespaceFilter matches the pages in a namespace. If AnyDepth is false it
+// matches the pages directly in it, so `Parent` matches `Parent/Child` but not
+// `Parent/Child/Grandchild`, and is written as `(namespace [[Parent]])`. If
+// AnyDepth is true it matches both, and is written as
+// `(under-namespace [[Parent]])`.
 type NamespaceFilter struct {
 	Namespace string
+
+	// AnyDepth is true to match the pages in the namespace at any depth.
+	AnyDepth bool
 }
 
 // Namespace creates a filter that matches the pages directly in the
 // namespace.
 func Namespace(namespace string) *NamespaceFilter {
 	return &NamespaceFilter{Namespace: namespace}
+}
+
+// UnderNamespace creates a filter that matches the pages in the namespace at
+// any depth.
+func UnderNamespace(namespace string) *NamespaceFilter {
+	return &NamespaceFilter{Namespace: namespace, AnyDepth: true}
 }
 
 // TitleFilter matches the pages with a title that compares with the text. The
