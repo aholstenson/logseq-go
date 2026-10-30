@@ -416,6 +416,13 @@ type source struct {
 
 	// key is the name of the property for sourceProperty.
 	key string
+
+	// def is the value of a property that is not set, for sourceProperty
+	// with a default value, such as "none" in `(get ?props :type "none")`.
+	def string
+
+	// hasDefault is true if def is set.
+	hasDefault bool
 }
 
 // condition is a clause such as `[(< ?d ?today)]` that compares the value of
@@ -543,7 +550,7 @@ func (t *translator) translate(queryNode *ednNode, inputsNode *ednNode) (*Query,
 	t.props = make(map[string]string)
 	t.sources = make(map[string]*source)
 	for _, clause := range where {
-		if err := t.collect(clause); err != nil {
+		if err := t.collect(clause, false); err != nil {
 			return nil, err
 		}
 	}
@@ -698,21 +705,23 @@ var (
 
 // collect goes through a clause and its nested clauses to learn which
 // variables are blocks and which are pages, before the clauses are translated.
-func (t *translator) collect(clause *ednNode) error {
+// nested is true for clauses in an `or` or a `not`, which only apply in their
+// own scope.
+func (t *translator) collect(clause *ednNode, nested bool) error {
 	switch clause.kind {
 	case ednList:
 		head := clause.head()
 		switch head {
 		case "and", "or", "not":
 			for _, item := range clause.items[1:] {
-				if err := t.collect(item); err != nil {
+				if err := t.collect(item, nested || head != "and"); err != nil {
 					return err
 				}
 			}
 		case "or-join", "not-join":
 			if len(clause.items) > 1 {
 				for _, item := range clause.items[2:] {
-					if err := t.collect(item); err != nil {
+					if err := t.collect(item, true); err != nil {
 						return err
 					}
 				}
@@ -769,7 +778,9 @@ func (t *translator) collect(clause *ednNode) error {
 			}
 		}
 
-		if attribute == "block/page" && isVar(value) {
+		// A page of a block in an `or` or a `not` is only the page of the
+		// block in that scope, see conjunction.
+		if attribute == "block/page" && isVar(value) && !nested {
 			t.pageOf[value.text] = entity.text
 		}
 
@@ -947,6 +958,8 @@ func (t *translator) blockRef(node *ednNode) (blockRef, bool) {
 // pending come from an outer scope and are applied where their variables get
 // their values.
 func (t *translator) conjunction(clauses []*ednNode, pending []*condition) (Filter, error) {
+	t.choosePageInScope(clauses)
+
 	var local []*condition
 	var bindings, lists []*ednNode
 
@@ -1006,6 +1019,31 @@ func (t *translator) conjunction(clauses []*ednNode, pending []*condition) (Filt
 	}
 
 	return andOf(filters), nil
+}
+
+// choosePageInScope makes ?p the page of the block for the clauses, from a
+// clause such as `[?b :block/page ?p]` in a branch of an `or` or in a `not`.
+// The scope keeps it until it ends, see scoped. A page with a title is not
+// chosen, as its title can come from a clause outside the scope, and the
+// clause is translated as a filter for the page with that title instead.
+func (t *translator) choosePageInScope(clauses []*ednNode) {
+	if t.page != "" || t.block == "" {
+		return
+	}
+
+	for _, clause := range clauses {
+		if !isDataPattern(clause) || len(clause.items) != 3 || clause.items[1].text != "block/page" || clause.items[0].text != t.block {
+			continue
+		}
+
+		value := clause.items[2]
+		_, isInput := t.inputs[value.text]
+		_, named := t.names[value.text]
+		if isVar(value) && !isInput && !named {
+			t.page = value.text
+			return
+		}
+	}
 }
 
 func unused(conditions []*condition) []*condition {
@@ -1142,9 +1180,23 @@ func (t *translator) binding(clause *ednNode, conditions []*condition) (Filter, 
 	switch attribute {
 	case "block/page":
 		if _, isInput := t.inputs[value.text]; isVar(value) && !isInput {
-			// This only names the page of the block. A title for it is
-			// translated with its :block/name.
-			return nil, nil
+			if value.text == t.page {
+				// This only names the page of the block. A title for it is
+				// translated with its :block/name.
+				return nil, nil
+			}
+
+			// A page with a title from another clause, such as in
+			// `(or [?b :block/refs ?p] [?b :block/page ?p])`.
+			name, named := t.names[value.text]
+			if !named {
+				return nil, t.unsupported(clause, "expected the page of the blocks the query finds, or a page with a title")
+			}
+
+			if err := t.checkBlock(clause, entity); err != nil {
+				return nil, err
+			}
+			return Page(name), nil
 		}
 
 		if err := t.checkBlock(clause, entity); err != nil {
@@ -1294,6 +1346,7 @@ func (t *translator) functionBinding(clause *ednNode, conditions []*condition) (
 	out := clause.items[1]
 
 	var entity, key string
+	var def *ednNode
 	switch {
 	case call.head() == "get" && (len(call.items) == 3 || len(call.items) == 4) && isVar(call.items[1]):
 		owner, ok := t.props[call.items[1].text]
@@ -1306,7 +1359,10 @@ func (t *translator) functionBinding(clause *ednNode, conditions []*condition) (
 			return nil, t.unsupported(clause, "expected the name of a property")
 		}
 		entity, key = owner, name
-	case call.head() == "get-in" && len(call.items) >= 3 && isVar(call.items[1]):
+		if len(call.items) == 4 {
+			def = call.items[3]
+		}
+	case call.head() == "get-in" && (len(call.items) == 3 || len(call.items) == 4) && isVar(call.items[1]):
 		path := call.items[2]
 		if path.kind != ednVector || len(path.items) != 2 || path.items[0].kind != ednKeyword ||
 			(path.items[0].text != "block/properties" && path.items[0].text != "page/properties") {
@@ -1318,8 +1374,20 @@ func (t *translator) functionBinding(clause *ednNode, conditions []*condition) (
 			return nil, t.unsupported(clause, "expected the name of a property")
 		}
 		entity, key = call.items[1].text, name
+		if len(call.items) == 4 {
+			def = call.items[3]
+		}
 	default:
 		return nil, t.unsupported(clause, "only getting a property with get is supported")
+	}
+
+	src := &source{kind: sourceProperty, entity: entity, key: key}
+	if def != nil && !def.isSymbol("nil") {
+		value, ok := t.scalar(def)
+		if !ok {
+			return nil, t.unsupported(def, "expected a value as the default")
+		}
+		src.def, src.hasDefault = value, true
 	}
 
 	if entity != t.block && entity != t.page {
@@ -1330,7 +1398,7 @@ func (t *translator) functionBinding(clause *ednNode, conditions []*condition) (
 		return nil, t.unsupported(clause, "finding pages by the blocks on them is not supported")
 	}
 
-	return t.bind(out, &source{kind: sourceProperty, entity: entity, key: key}, conditions)
+	return t.bind(out, src, conditions)
 }
 
 // keyName returns the name of a property from a keyword or a string.
@@ -1424,9 +1492,11 @@ func (t *translator) scoped(f func() (Filter, error)) (Filter, error) {
 	for k, v := range t.sources {
 		saved[k] = v
 	}
+	savedPage := t.page
 
 	filter, err := f()
 	t.sources = saved
+	t.page = savedPage
 	return filter, err
 }
 
@@ -1875,6 +1945,11 @@ func (t *translator) sourceFilter(src *source, conditions []*condition) (Filter,
 	case sourceProperty:
 		isPage := src.entity == t.page
 
+		var has Filter = HasProperty(src.key)
+		if isPage {
+			has = HasPageProperty(src.key)
+		}
+
 		var filters []Filter
 		for _, c := range conditions {
 			value, err := t.comparedValue(c, "get", "contains?", "=")
@@ -1882,18 +1957,25 @@ func (t *translator) sourceFilter(src *source, conditions []*condition) (Filter,
 				return nil, err
 			}
 
+			var filter Filter = Property(src.key, value)
 			if isPage {
-				filters = append(filters, PageProperty(src.key, value))
-			} else {
-				filters = append(filters, Property(src.key, value))
+				filter = PageProperty(src.key, value)
 			}
+
+			// The default is the value for the blocks or pages without
+			// the property.
+			if src.hasDefault && value == src.def {
+				filter = Or(filter, Not(has))
+			}
+			filters = append(filters, filter)
 		}
 
 		if len(filters) == 0 {
-			if isPage {
-				return HasPageProperty(src.key), nil
+			if src.hasDefault {
+				// Every block or page has a value, if only the default.
+				return nil, nil
 			}
-			return HasProperty(src.key), nil
+			return has, nil
 		}
 		return andOf(filters), nil
 	}

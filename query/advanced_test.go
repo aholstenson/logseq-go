@@ -185,6 +185,24 @@ var _ = Describe("Advanced queries", func() {
 		Translates("block property", where(`[?b :block/properties ?props] [(get ?props :status) ?s] [(= ?s "draft")]`), "(property status draft)")
 		Translates("block property with get-in", where(`[(get-in ?b [:block/properties :status]) ?s] [(= ?s "draft")]`), "(property status draft)")
 		Translates("has block property", where(`[?b :block/properties ?props] [(get ?props :status) ?s]`), "(property status)")
+		Translates("property with a default that is compared",
+			where(`[?b :block/properties ?props] [(get ?props :type "none") ?t] [(= ?t "none")]`),
+			"(or (property type none) (not (property type)))")
+		Translates("property with a default that is not compared",
+			where(`[?b :block/properties ?props] [(get ?props :type "none") ?t] [(= ?t "book")]`),
+			"(property type book)")
+		Translates("property with a default without conditions",
+			where(`[?b :block/marker "TODO"] [?b :block/properties ?props] [(get ?props :type "none") ?t]`),
+			"(task TODO)")
+		Translates("property with a default in a not",
+			where(`[?b :block/marker "TODO"] [?b :block/properties ?props] [(get ?props :type "none") ?t] (not [(= ?t "none")])`),
+			"(and (task TODO) (not (or (property type none) (not (property type)))))")
+		Translates("property with nil as the default",
+			where(`[?b :block/properties ?props] [(get ?props :type nil) ?t]`),
+			"(property type)")
+		Translates("property with get-in and a default",
+			where(`[(get-in ?b [:block/properties :type] "none") ?t] [(= ?t "none")]`),
+			"(or (property type none) (not (property type)))")
 	})
 
 	Describe("Pages of blocks", func() {
@@ -196,6 +214,9 @@ var _ = Describe("Advanced queries", func() {
 			"{:query [:find (pull ?p [*]) :where [?p :block/name ?name] [?p :block/properties ?props] [(get ?props :type) ?t] [(= ?t \"book\")]]}",
 			"(page-property type book)")
 		Translates("namespace", "{:query [:find ?p :where [?p :block/namespace [:block/name \"projects\"]]]}", "(namespace [[projects]])")
+		Translates("page property with a default",
+			`{:query [:find (pull ?p [*]) :where [?p :block/name] [?p :block/properties ?pp] [(get ?pp :status "open") ?s] [(= ?s "open")]]}`,
+			"(or (page-property status open) (not (page-property status)))")
 	})
 
 	Describe("Inputs", func() {
@@ -259,6 +280,17 @@ var _ = Describe("Advanced queries", func() {
 		Translates("or without join", where(`(or [?b :block/marker "TODO"] [?b :block/priority "A"])`), "(or (task TODO) (priority A))")
 		Translates("not-join", where(`[?b :block/marker "TODO"] (not-join [?b] [?b :block/path-refs [:block/name "later"]])`),
 			"(and (task TODO) (not [[later]]))")
+		Translates("page with a title in a branch of an or",
+			where(`[?p :block/name "project"] (or [?b :block/refs ?p] [?b :block/page ?p]) [?b :block/marker "TODO"]`),
+			"(and (task TODO) (or (refs [[project]]) (page [[project]])))")
+		Translates("title of the page in a branch of an or",
+			where(`[?b :block/marker "TODO"] [?b :block/page ?p] (or [?p :block/name "x"] [?p :block/journal? true])`),
+			"(and (task TODO) (or (page [[x]]) (journal)))")
+		Translates("page in a not", where(`[?b :block/marker "TODO"] (not [?b :block/page ?p] [?p :block/journal? true])`),
+			"(and (task TODO) (not (journal)))")
+		Translates("pages with titles in each branch",
+			where(`(or (and [?b :block/page ?p] [?p :block/name "a"]) (and [?b :block/page ?q] [?q :block/name "b"]))`),
+			"(or (page [[a]]) (page [[b]]))")
 	})
 
 	Describe("Simple queries in :query", func() {
@@ -330,6 +362,10 @@ var _ = Describe("Advanced queries", func() {
 		Unsupported("empty sets", where(`[?b :block/marker ?m] [(contains? #{} ?m)]`), "expected a set of values")
 		Unsupported("pages by title", "{:query [:find ?p :where [?p :block/name \"x\"]]}", "pages by their title")
 		Unsupported("conditions on titles", "{:query [:find ?p :where [?p :block/name ?n] [(clojure.string/starts-with? ?n \"x\")]]}", "title of a page")
+		Unsupported("another page without a title",
+			where(`[?b :block/page ?p] [?p :block/journal? true] (or [?b :block/marker "TODO"] [?b :block/page ?q])`),
+			"or a page with a title")
+		Unsupported("defaults that are not values", where(`[?b :block/properties ?p] [(get ?p :type [1]) ?t]`), "expected a value as the default")
 		Unsupported("regex conditions", where(`[?b :block/content ?c] [(re-find #"bank\d" ?c)]`), "includes?")
 	})
 })

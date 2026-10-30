@@ -319,6 +319,21 @@ var _ = Describe("Query", func() {
 			Expect(titles).To(ConsistOf("recipe one", "recipe two"))
 		})
 
+		It("finds the blocks with a property that is not the default", func() {
+			results := runAdvanced(`{:query [:find (pull ?b [*])
+				:where [?b :block/page ?pg] [?pg :block/name "tasks"] [?b :block/properties ?p]
+				[(get ?p :status "none") ?s] (not [(= ?s "none")])]}`)
+			Expect(blockPreviews(results)).To(ConsistOf("A note"))
+		})
+
+		It("finds the blocks on or about the current page", func() {
+			// The page has no file, so only the branch for the refs matches.
+			results := runAdvanced(`{:query [:find (pull ?b [*]) :in $ ?name
+				:where [?p :block/name ?name] (or [?b :block/refs ?p] [?b :block/page ?p])]
+				:inputs ["reading list"]}`)
+			Expect(blockPreviews(results)).To(ConsistOf("Reading List"))
+		})
+
 		It("finds the people of the current page", func() {
 			results := runAdvanced(`{:query [:find (pull ?p [*]) :in $ ?target
 				:where [?b :block/page ?p] [?p :page/properties ?props]
