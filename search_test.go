@@ -249,6 +249,35 @@ var _ = Describe("Search", func() {
 			Expect(page).ToNot(BeNil())
 		})
 
+		It("returns the properties of found blocks", func() {
+			graph = openGraphWithPages(dir, map[string]string{
+				"templates.md": "- first\n- Daily\n  template:: Daily\n  template-including-parent:: false\n",
+			})
+
+			results, err := graph.SearchBlocks(ctx,
+				logseq.WithQuery(logseq.HasProperty("template")),
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(results.Size()).To(Equal(1))
+			Expect(results.Results()[0].Properties()).To(Equal(map[string]string{
+				"template":                  "Daily",
+				"template-including-parent": "false",
+			}))
+		})
+
+		It("returns no properties for blocks without properties", func() {
+			graph = openGraphWithPages(dir, map[string]string{
+				"plain.md": "- plain4block here\n",
+			})
+
+			results, err := graph.SearchBlocks(ctx,
+				logseq.WithQuery(logseq.ContentMatches("plain4block")),
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(results.Size()).To(Equal(1))
+			Expect(results.Results()[0].Properties()).To(BeEmpty())
+		})
+
 		It("reports correct page metadata on block results", func() {
 			graph = openGraphWithPages(dir, map[string]string{
 				"mypage.md": "- some unique3content here\n",

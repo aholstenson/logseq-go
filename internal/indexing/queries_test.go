@@ -384,6 +384,38 @@ var _ = Describe("Queries", func() {
 		})
 	})
 
+	Describe("Block properties", func() {
+		It("returns the property values of found blocks", func() {
+			indexPage(idx, "pages/a.md", "Page A",
+				content.NewBlock(content.NewParagraph(content.NewText("first"))),
+				content.NewBlock(
+					content.NewParagraph(content.NewText("Daily")),
+					content.NewProperties(
+						content.NewProperty("template", content.NewText("Daily")),
+						content.NewProperty("type", content.NewPageLink("Journal")),
+					),
+				),
+			)
+
+			results := searchBlocks(idx, indexing.PropertyEquals("template", "Daily"))
+			Expect(results).To(HaveLen(1))
+			Expect(results[0].PropertyValues).To(Equal(map[string]string{
+				"template": "Daily",
+				"type":     "Journal",
+			}))
+		})
+
+		It("returns no property values for blocks without properties", func() {
+			indexPage(idx, "pages/a.md", "Page A",
+				content.NewBlock(content.NewParagraph(content.NewText("first"))),
+			)
+
+			results := searchBlocks(idx, indexing.ContentMatches("first"))
+			Expect(results).To(HaveLen(1))
+			Expect(results[0].PropertyValues).To(BeNil())
+		})
+	})
+
 	Describe("References", func() {
 		It("matches pages that reference another page", func() {
 			indexPage(idx, "pages/a.md", "Page A",

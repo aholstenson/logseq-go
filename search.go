@@ -189,6 +189,12 @@ type BlockResult interface {
 	// Preview gets a preview of the block.
 	Preview() string
 
+	// Properties returns the plain text values of the block properties, keyed
+	// by property name. References such as `[[Page]]` are returned as the
+	// title of the page they point to. Properties without a value are not
+	// included. To get the full content of the properties, open the block.
+	Properties() map[string]string
+
 	// OpenPage opens the page that this block belongs to.
 	OpenPage() (Page, error)
 
@@ -203,6 +209,7 @@ type blockResultImpl struct {
 
 	id       string
 	preview  string
+	props    map[string]string
 	location []int
 
 	opener func() (Page, error)
@@ -226,6 +233,10 @@ func (b *blockResultImpl) ID() string {
 
 func (b *blockResultImpl) Preview() string {
 	return b.preview
+}
+
+func (b *blockResultImpl) Properties() map[string]string {
+	return b.props
 }
 
 func (b *blockResultImpl) OpenPage() (Page, error) {

@@ -132,4 +132,9 @@ type Block struct {
 
 	// Preview is a preview of the block.
 	Preview string
+
+	// PropertyValues is the plain text values of the block properties, keyed
+	// by property name. Nil if the block has no properties. Only used when
+	// searching.
+	PropertyValues map[string]string
 }

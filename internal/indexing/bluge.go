@@ -454,7 +454,7 @@ func (i *BlugeIndex) blockToDocument(page *Page, id string, block *content.Block
 	// Look up the properties without creating them, as indexing should not
 	// modify the block.
 	if props := block.FindProperties(); props != nil {
-		i.transferProperties(blugeDoc, props, false)
+		i.transferProperties(blugeDoc, props, true)
 	}
 	i.transferRefs(blugeDoc, "pages", block)
 	i.transferLinks(blugeDoc, block)
@@ -903,6 +903,14 @@ func mapMatchToBlock(match *search.DocumentMatch) *Block {
 			block.ID = string(value)
 		case "preview":
 			block.Preview = string(value)
+		default:
+			if name, ok := storedPropertyName(field); ok {
+				if block.PropertyValues == nil {
+					block.PropertyValues = make(map[string]string)
+				}
+
+				block.PropertyValues[name] = string(value)
+			}
 		}
 
 		return true

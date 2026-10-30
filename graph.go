@@ -1050,6 +1050,7 @@ func (g *Graph) searchBlocks(ctx context.Context, opts []SearchOption, source pa
 
 			id:       block.ID,
 			preview:  block.Preview,
+			props:    block.PropertyValues,
 			location: block.Location,
 
 			opener: func() (Page, error) {
