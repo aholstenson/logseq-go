@@ -154,6 +154,55 @@ var _ = Describe("Sorting", func() {
 		})
 	})
 
+	Describe("by property", func() {
+		withProperty := func(text string, name string, value string) *content.Block {
+			return content.NewBlock(
+				content.NewParagraph(content.NewText(text)),
+				content.NewProperties(content.NewProperty(name, content.NewText(value))),
+			)
+		}
+
+		BeforeEach(func() {
+			indexPage(idx, "pages/a.md", "Page A",
+				withProperty("ten", "rating", "10"),
+				withProperty("text", "rating", "Good"),
+				withProperty("nine and a half", "rating", "9.5"),
+				textBlock(text("none")),
+				withProperty("minus two", "rating", "-2"),
+				withProperty("lower text", "rating", "fine"),
+				withProperty("minus one", "rating", "-1"),
+			)
+		})
+
+		It("sorts numbers by value and before text, with no value last", func() {
+			results := sortedBlocks(idx, indexing.All(), indexing.SearchOptions{
+				SortBy: []indexing.SortField{sortBy(indexing.SortFieldProperty("rating"), true)},
+			})
+			Expect(results).To(Equal([]string{"minus two", "minus one", "nine and a half", "ten", "lower text", "text", "none"}))
+		})
+
+		It("sorts in descending order, with no value last", func() {
+			results := sortedBlocks(idx, indexing.All(), indexing.SearchOptions{
+				SortBy: []indexing.SortField{sortBy(indexing.SortFieldProperty("rating"), false)},
+			})
+			Expect(results).To(Equal([]string{"text", "lower text", "ten", "nine and a half", "minus one", "minus two", "none"}))
+		})
+
+		It("sorts pages by a page property", func() {
+			page := func(subPath string, title string, value string) {
+				indexPage(idx, subPath, title, content.NewBlock(
+					content.NewProperties(content.NewProperty("year", content.NewText(value))),
+				))
+			}
+			page("pages/b.md", "B", "2001")
+			page("pages/c.md", "C", "1999")
+			page("pages/d.md", "D", "2020")
+
+			Expect(sortedPages(idx, indexing.HasProperty("year"), sortBy(indexing.SortFieldProperty("year"), true))).
+				To(Equal([]string{"C", "B", "D"}))
+		})
+	})
+
 	Describe("by title", func() {
 		BeforeEach(func() {
 			indexPage(idx, "pages/b.md", "beta", textBlock(text("on beta")))

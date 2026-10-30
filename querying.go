@@ -59,7 +59,10 @@ func QueryAt(now time.Time) QueryOption {
 
 // Query runs a query on the graph and returns all of the results, in the
 // order of the sort of the query. Without a sort the results are in the order
-// of how well they match.
+// of how well they match. When the results are sorted by a property, values
+// that are numbers sort by their value and before values that are text, and
+// text sorts without regard for case. Results without a value come last in
+// both orders.
 //
 // The same as in Logseq, a query finds blocks if one or more of its filters
 // match blocks, such as `(task TODO)` or `[[page]]`, and pages if all of its
@@ -160,7 +163,10 @@ func querySortFields(sorts []query.Sort) ([]indexing.SortField, error) {
 		case query.SortTitle:
 			name = indexing.SortFieldTitle
 		case query.SortProperty:
-			return nil, fmt.Errorf("%w: sorting by the property %q", ErrUnsupportedQuery, s.Property)
+			if s.Property == "" {
+				return nil, fmt.Errorf("query: the property to sort by has no name")
+			}
+			name = indexing.SortFieldProperty(s.Property)
 		default:
 			return nil, fmt.Errorf("query: unknown sort field %d", s.Field)
 		}

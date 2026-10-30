@@ -3,6 +3,8 @@ package indexing
 import (
 	"context"
 	"fmt"
+	"math"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -28,7 +30,7 @@ func (i idTerm) Term() []byte {
 // Increase it when the way pages or blocks are indexed changes, so that an
 // index stored on disk is built again with the new fields. Without that the
 // pages that did not change since they were indexed keep their old documents.
-const indexVersion = 5
+const indexVersion = 6
 
 // versionDocID is the id of the document that stores the version of the
 // index. It does not have a type, so searches for pages and blocks never
@@ -744,7 +746,31 @@ func (i *BlugeIndex) transferProperties(doc *bluge.Document, properties *content
 			value.StoreValue()
 		}
 		doc.AddField(value)
+		doc.AddField(bluge.NewKeywordField(SortFieldProperty(prop.Name), sortableValue(s)).Sortable())
 	}
+}
+
+var numberPattern = regexp.MustCompile(`^-?\d+(\.\d+)?$`)
+
+// sortableValue returns the value of a property in a form that sorts in the
+// correct order as bytes. Numbers sort by their value and before text, and
+// text sorts without regard for case.
+func sortableValue(value string) string {
+	if numberPattern.MatchString(value) {
+		if f, err := strconv.ParseFloat(value, 64); err == nil {
+			// Setting the sign bit of positive numbers and flipping all bits
+			// of negative numbers gives bits that sort as the numbers do.
+			bits := math.Float64bits(f)
+			if bits>>63 == 0 {
+				bits |= 1 << 63
+			} else {
+				bits = ^bits
+			}
+			return fmt.Sprintf("n%016x", bits)
+		}
+	}
+
+	return "t" + strings.ToLower(value)
 }
 
 // transferRefs indexes the page references in the nodes and the nodes below

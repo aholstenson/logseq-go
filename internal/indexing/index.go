@@ -70,6 +70,13 @@ const (
 	SortFieldTitle = "title:sort"
 )
 
+// SortFieldProperty returns the field that sorts pages and blocks by the value
+// of a property. Numbers sort by their value and before text, and text sorts
+// without regard for case.
+func SortFieldProperty(name string) string {
+	return "prop:" + name + ":sort"
+}
+
 type SearchResults[V any] interface {
 	// Size is the number of results available in this result set.
 	Size() int

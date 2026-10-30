@@ -51,6 +51,9 @@ var _ = Describe("Query", func() {
 			"recipe two.md":       "type:: Cognitive Recipe\n\n- step two\n",
 			"book.md":             "type:: book\ntags:: reading\n\n- TODO Finish chapter\n",
 			"projects___alpha.md": "- alpha\n",
+			"films.md": "- Good film\n  rating:: 8\n" +
+				"- Great film\n  rating:: 10\n" +
+				"- Fine film\n  rating:: 6\n",
 		})
 	})
 
@@ -194,6 +197,38 @@ var _ = Describe("Query", func() {
 
 		It("matches nothing when no page matches", func() {
 			Expect(blocks("(and (task TODO) (page-property type nothing))")).To(BeEmpty())
+		})
+	})
+
+	Describe("Sorting", func() {
+		It("sorts blocks by a property with numbers in the order of their value", func() {
+			Expect(blocks("(and (property rating) (sort-by rating asc))")).
+				To(Equal([]string{"Fine film", "Good film", "Great film"}))
+		})
+
+		It("sorts by a property in descending order if no order is given", func() {
+			Expect(blocks("(and (property rating) (sort-by rating))")).
+				To(Equal([]string{"Great film", "Good film", "Fine film"}))
+		})
+
+		It("sorts pages by a page property", func() {
+			Expect(pages("(and (page-property type) (sort-by type asc))")[0]).To(Equal("book"))
+			Expect(pages("(and (page-property type) (sort-by type desc))")[2]).To(Equal("book"))
+		})
+
+		It("sorts by a property in an advanced query", func() {
+			advanced, err := query.ParseAdvanced(`{:query (property rating)
+				:result-transform (fn [r] (reverse (sort-by (fn [b] (get-in b [:block/properties :rating])) r)))}`)
+			Expect(err).ToNot(HaveOccurred())
+
+			results, err := graph.Query(ctx, advanced.Query, logseq.QueryAt(now))
+			Expect(err).ToNot(HaveOccurred())
+
+			previews := make([]string, 0, len(results.Blocks))
+			for _, block := range results.Blocks {
+				previews = append(previews, block.Preview())
+			}
+			Expect(previews).To(Equal([]string{"Great film", "Good film", "Fine film"}))
 		})
 	})
 
@@ -361,10 +396,9 @@ var _ = Describe("Query", func() {
 			Expect(errors.Is(queryError("(all-page-tags)"), logseq.ErrUnsupportedQuery)).To(BeTrue())
 		})
 
-		It("does not sort by properties yet", func() {
-			err := queryError("(and (task TODO) (sort-by rating asc))")
-			Expect(errors.Is(err, logseq.ErrUnsupportedQuery)).To(BeTrue())
-			Expect(err.Error()).To(ContainSubstring(`"rating"`))
+		It("reports a sort by a property without a name in a query built in code", func() {
+			_, err := graph.Query(ctx, query.New(nil).SortByProperty("", query.Asc))
+			Expect(err).To(MatchError(ContainSubstring("has no name")))
 		})
 
 		It("reports a journal title that is not a date", func() {
