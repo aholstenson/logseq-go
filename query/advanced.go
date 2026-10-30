@@ -153,6 +153,8 @@ var queryFence = regexp.MustCompile(`(?im)^\s*#\+(BEGIN|END)_QUERY\s*$`)
 //     :page/properties
 //   - the conditions =, not=, <, <=, >, >=, contains?, get and
 //     clojure.string/includes?, and `[(get ?props :key) ?value]`
+//   - the title of a page with a known title as a value, such as ?title in
+//     `[?p :block/name ?page] [?p :block/original-name ?title]`
 //   - and, or, or-join, not and not-join
 //   - the rules of simple queries, such as `(task ?b #{"TODO"})`
 //   - a :query that is a simple query, such as `(and (task TODO) [[page]])`
@@ -358,6 +360,9 @@ type translator struct {
 	// names maps the variable of a page to its title, from
 	// `[?p :block/name "title"]`.
 	names map[string]string
+	// titles maps a variable for the title of a page to the clause that
+	// gives it, such as `[?p :block/original-name ?title]`.
+	titles map[string]*ednNode
 	// props maps the variable of properties to the variable of the block or
 	// page they belong to, from `[?p :block/properties ?props]`.
 	props map[string]string
@@ -434,6 +439,7 @@ func (t *translator) translate(queryNode *ednNode, inputsNode *ednNode) (*Query,
 	t.kinds = make(map[string]entityKind)
 	t.pageOf = make(map[string]string)
 	t.names = make(map[string]string)
+	t.titles = make(map[string]*ednNode)
 	t.props = make(map[string]string)
 	t.sources = make(map[string]*source)
 	for _, clause := range where {
@@ -441,6 +447,8 @@ func (t *translator) translate(queryNode *ednNode, inputsNode *ednNode) (*Query,
 			return nil, err
 		}
 	}
+
+	t.readTitles()
 
 	if err := t.chooseEntities(find[0]); err != nil {
 		return nil, err
@@ -659,11 +667,29 @@ func (t *translator) collect(clause *ednNode) error {
 					return t.unsupported(clause, "a variable for two different pages is not supported")
 				}
 				t.names[entity.text] = name
+			} else if isVar(value) {
+				t.titles[value.text] = clause
 			}
 		}
 	}
 
 	return nil
+}
+
+// readTitles reads a variable for the title of a page with a known title as
+// that title, the same as an input. This is the ?title in
+// `[?p :block/name ?page] [?p :block/original-name ?title]`, which can then
+// be compared with a value, such as in `[(get ?values ?title)]`.
+func (t *translator) readTitles() {
+	for variable, clause := range t.titles {
+		name, ok := t.names[clause.items[0].text]
+		if !ok {
+			continue
+		}
+
+		value := clause.items[2]
+		t.inputs[variable] = &ednNode{kind: ednString, text: name, pos: value.pos, end: value.end}
+	}
 }
 
 func (t *translator) setKind(node *ednNode, kind entityKind) error {

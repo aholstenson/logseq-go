@@ -51,6 +51,9 @@ var _ = Describe("Query", func() {
 			"book.md":             "type:: book\ntags:: reading\n\n- TODO Finish chapter\n",
 			"projects___alpha.md": "- alpha\n",
 			"reading.md":          "- About reading\n",
+			"acme.md":             "- A company\n",
+			"ada.md":              "organization:: [[Acme]], [[Initech]]\n\n- Engineer\n",
+			"bob.md":              "organization:: [[Initech]]\n\n- Manager\n",
 			"films.md": "- Good film\n  rating:: 8\n" +
 				"- Great film\n  rating:: 10\n" +
 				"- Fine film\n  rating:: 6\n",
@@ -246,8 +249,8 @@ var _ = Describe("Query", func() {
 	})
 
 	Describe("Advanced queries", func() {
-		runAdvanced := func(text string) *logseq.QueryResults {
-			advanced, err := query.ParseAdvanced(text)
+		runAdvanced := func(text string, opts ...query.ParseOption) *logseq.QueryResults {
+			advanced, err := query.ParseAdvanced(text, opts...)
 			Expect(err).ToNot(HaveOccurred())
 
 			results, err := graph.Query(ctx, advanced.Query, logseq.QueryAt(now))
@@ -314,6 +317,22 @@ var _ = Describe("Query", func() {
 				titles = append(titles, page.Title())
 			}
 			Expect(titles).To(ConsistOf("recipe one", "recipe two"))
+		})
+
+		It("finds the people of the current page", func() {
+			results := runAdvanced(`{:query [:find (pull ?p [*]) :in $ ?target
+				:where [?b :block/page ?p] [?p :page/properties ?props]
+				[(get ?props :organization) ?t]
+				[?me-low :block/name ?target] [?me-low :block/original-name ?me]
+				[(get ?t ?me)]]
+				:inputs [:current-page]}`, query.WithCurrentPage("Acme"))
+			Expect(results.Type).To(Equal(logseq.QueryResultPages))
+
+			titles := make([]string, 0, len(results.Pages))
+			for _, page := range results.Pages {
+				titles = append(titles, page.Title())
+			}
+			Expect(titles).To(ConsistOf("ada"))
 		})
 	})
 

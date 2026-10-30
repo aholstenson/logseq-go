@@ -65,6 +65,26 @@ var _ = Describe("Queries in nodes", func() {
 			Expect(err).To(MatchError(ContainSubstring("given with WithQueryPage")))
 		})
 
+		It("reads the title of the current page as a value", func() {
+			advanced, err := query.ParseAdvanced(`{:query [:find (pull ?p [*]) :in $ ?target
+				:where [?b :block/page ?p] [?p :page/properties ?props]
+				[(get ?props :organization) ?t]
+				[?me-low :block/name ?target] [?me-low :block/original-name ?me]
+				[(get ?t ?me)]]
+				:inputs [:current-page]}`, query.WithCurrentPage("Acme"))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(advanced.Query.String()).To(Equal("(page-property organization Acme)"))
+		})
+
+		It("reads the title before the clause that names the page", func() {
+			advanced, err := query.ParseAdvanced(`{:query [:find (pull ?b [*]) :in $ ?target
+				:where [?p :block/original-name ?title] [?p :block/name ?target]
+				[?b :block/properties ?props] [(get ?props :owner) ?o] [(contains? ?o ?title)]]
+				:inputs [:current-page]}`, query.WithCurrentPage("Ada"))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(advanced.Query.String()).To(Equal("(property owner Ada)"))
+		})
+
 	})
 
 	Describe("Inputs for blocks", func() {
