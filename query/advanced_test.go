@@ -172,6 +172,8 @@ var _ = Describe("Advanced queries", func() {
 		Translates("content", where(`[?b :block/content ?c] [(clojure.string/includes? ?c "bank")]`), `"bank"`)
 		Translates("path refs with a name", where(`[?b :block/path-refs ?p] [?p :block/name "project"]`), "[[project]]")
 		Translates("path refs with a lookup", where(`[?b :block/path-refs [:block/original-name "Project"]]`), "[[Project]]")
+		Translates("refs with a name", where(`[?b :block/refs ?p] [?p :block/name "project"]`), "(refs [[project]])")
+		Translates("refs with a lookup", where(`[?b :block/refs [:block/name "project"]]`), "(refs [[project]])")
 		Translates("page by name", where(`[?b :block/page ?p] [?p :block/name "project"] [?b :block/marker "TODO"]`),
 			"(and (page [[project]]) (task TODO))")
 		Translates("page by lookup", where(`[?b :block/page [:block/name "project"]]`), "(page [[project]])")
@@ -281,7 +283,6 @@ var _ = Describe("Advanced queries", func() {
 	})
 
 	Describe("Unsupported", func() {
-		Unsupported("own references", where(`[?b :block/refs [:block/name "x"]]`), ":block/path-refs is")
 		Unsupported("current page", `{:query [:find (pull ?b [*]) :in $ ?p :where [?b :block/page ?p]] :inputs [:current-page]}`, "the input :current-page")
 		Unsupported("time inputs", `{:query [:find (pull ?b [*]) :in $ ?t :where [?b :block/scheduled ?d] [(< ?d ?t)]] :inputs [:right-now-ms]}`, "time of day")
 		Unsupported("custom rules", `{:query [:find ?b :where (my-rule ?b)] :rules [[(my-rule ?b) [?b :block/marker "TODO"]]]}`, "custom rules")

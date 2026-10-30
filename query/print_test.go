@@ -31,6 +31,8 @@ var _ = Describe("Writing queries", func() {
 		Prints("has page property", query.New(query.HasPageProperty("type")), "(page-property type)")
 		Prints("page tags", query.New(query.PageTags("book", "to read")), "(page-tags [[book]] [[to read]])")
 		Prints("all page tags", query.New(query.AllPageTags()), "(all-page-tags)")
+		Prints("refs", query.New(query.Refs("My Page")), "(refs [[My Page]])")
+		Prints("refs with brackets", query.New(query.Refs("a ]] b")), `(refs "a ]] b")`)
 		Prints("namespace", query.New(query.Namespace("Projects")), "(namespace [[Projects]])")
 		Prints("page ref with brackets", query.New(query.PageRef("a ]] b")), `(page-ref "a ]] b")`)
 		Prints("page with brackets", query.New(query.Page("a]")), `(page "a]")`)

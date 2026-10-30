@@ -101,6 +101,10 @@ func (f *PageRefFilter) String() string {
 	return formatPageRef(f.Page)
 }
 
+func (f *RefsFilter) String() string {
+	return list("refs", formatPageRef(f.Page))
+}
+
 func (f *FullTextFilter) String() string {
 	return formatString(f.Text)
 }

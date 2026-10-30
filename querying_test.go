@@ -50,7 +50,7 @@ var _ = Describe("Query", func() {
 			"recipe two.md":       "type:: Cognitive Recipe\n\n- step two\n",
 			"book.md":             "type:: book\ntags:: reading\n\n- TODO Finish chapter\n",
 			"projects___alpha.md": "- alpha\n",
-			"reading.md": "- About reading\n",
+			"reading.md":          "- About reading\n",
 			"films.md": "- Good film\n  rating:: 8\n" +
 				"- Great film\n  rating:: 10\n" +
 				"- Fine film\n  rating:: 6\n",
@@ -173,6 +173,11 @@ var _ = Describe("Query", func() {
 
 		It("finds pages by tags", func() {
 			Expect(pages("(page-tags reading)")).To(ConsistOf("book"))
+		})
+
+		It("finds only the blocks that reference a page themselves with refs", func() {
+			Expect(blocks("(refs shopping)")).To(ConsistOf("#shopping"))
+			Expect(blocks("[[shopping]]")).To(ConsistOf("#shopping", "Buy milk"))
 		})
 
 		It("finds the pages that other pages use as tags", func() {

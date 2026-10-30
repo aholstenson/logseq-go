@@ -63,7 +63,7 @@ func findsBlocks(filter Filter) bool {
 		return anyFindsBlocks(f.Filters)
 	case *NotFilter:
 		return findsBlocks(f.Filter)
-	case *PageRefFilter, *FullTextFilter, *TaskFilter, *PriorityFilter,
+	case *PageRefFilter, *RefsFilter, *FullTextFilter, *TaskFilter, *PriorityFilter,
 		*PageFilter, *PropertyFilter, *DateFilter:
 		return true
 	}
@@ -205,6 +205,20 @@ func PageRef(page string) *PageRefFilter {
 	return &PageRefFilter{Page: page}
 }
 
+// RefsFilter matches the blocks that reference a page in their own content or
+// properties. Unlike PageRefFilter it does not match the blocks below them or
+// the blocks on the page. Logseq calls these the refs of a block. It is written
+// as `(refs [[page]])`.
+type RefsFilter struct {
+	Page string
+}
+
+// Refs creates a filter that matches the blocks that reference the page
+// themselves.
+func Refs(page string) *RefsFilter {
+	return &RefsFilter{Page: page}
+}
+
 // FullTextFilter matches the blocks that contain the text. It is written as
 // the text in quotes.
 type FullTextFilter struct {
@@ -302,6 +316,7 @@ func (*NotFilter) isFilter()          {}
 func (*TaskFilter) isFilter()         {}
 func (*PriorityFilter) isFilter()     {}
 func (*PageRefFilter) isFilter()      {}
+func (*RefsFilter) isFilter()         {}
 func (*FullTextFilter) isFilter()     {}
 func (*PageFilter) isFilter()         {}
 func (*PropertyFilter) isFilter()     {}

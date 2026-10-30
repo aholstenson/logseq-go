@@ -262,6 +262,12 @@ func parseFilter(e *expr) (Filter, error) {
 			return nil, err
 		}
 		return PageRef(name), nil
+	case "refs":
+		name, err := parseSingleName(e, args)
+		if err != nil {
+			return nil, err
+		}
+		return Refs(name), nil
 	case "namespace":
 		name, err := parseSingleName(e, args)
 		if err != nil {

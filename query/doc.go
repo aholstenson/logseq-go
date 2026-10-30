@@ -41,6 +41,8 @@
 //	                         on; a range is written as `between`
 //	(page-ref "title")       the same as [[title]], for titles that have
 //	                         brackets
+//	(refs [[page]])          blocks that reference the page themselves,
+//	                         without the blocks below them, see RefsFilter
 //	(sort-by priority asc)   sort by a built-in value: `priority`,
 //	                         `scheduled`, `deadline`, `journal-day` or `title`
 //

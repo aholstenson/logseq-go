@@ -122,8 +122,8 @@ var queryFence = regexp.MustCompile(`(?im)^\s*#\+(BEGIN|END)_QUERY\s*$`)
 //   - :in and :inputs with date inputs such as `:today` or `:-7d`, page names
 //     and numbers
 //   - the attributes :block/marker, :block/priority, :block/scheduled,
-//     :block/deadline, :block/content, :block/page, :block/path-refs,
-//     :block/properties, :block/name, :block/original-name,
+//     :block/deadline, :block/content, :block/page, :block/refs,
+//     :block/path-refs, :block/properties, :block/name, :block/original-name,
 //     :block/journal-day, :block/journal?, :block/tags, :block/namespace and
 //     :page/properties
 //   - the conditions =, not=, <, <=, >, >=, contains?, get and
@@ -135,10 +135,10 @@ var queryFence = regexp.MustCompile(`(?im)^\s*#\+(BEGIN|END)_QUERY\s*$`)
 //
 // The inputs `:current-page` and `:query-page` depend on where the query is,
 // and are supported when the page is given with WithCurrentPage and
-// WithQueryPage. The inputs `:current-block` and `:parent-block`, and
-// :block/refs and :rules are not supported. Keys that only change how Logseq
-// shows the results, such as :view and :table-view?, are ignored. Errors in
-// the EDN itself are returned as *ParseError.
+// WithQueryPage. The inputs `:current-block` and `:parent-block`, and :rules
+// are not supported. Keys that only change how Logseq shows the results, such
+// as :view and :table-view?, are ignored. Errors in the EDN itself are
+// returned as *ParseError.
 func ParseAdvanced(text string, opts ...ParseOption) (*AdvancedQuery, error) {
 	options := &parseOptions{}
 	for _, opt := range opts {
@@ -983,7 +983,7 @@ func (t *translator) binding(clause *ednNode, conditions []*condition) (Filter, 
 
 		t.props[value.text] = entity.text
 		return nil, nil
-	case "block/path-refs":
+	case "block/refs", "block/path-refs":
 		if err := t.checkBlock(clause, entity); err != nil {
 			return nil, err
 		}
@@ -991,6 +991,10 @@ func (t *translator) binding(clause *ednNode, conditions []*condition) (Filter, 
 		name, ok := t.pageRefName(value)
 		if !ok {
 			return nil, t.unsupported(clause, "expected a page, such as [:block/name \"page\"]")
+		}
+
+		if attribute == "block/refs" {
+			return Refs(name), nil
 		}
 		return PageRef(name), nil
 	case "block/tags", "block/namespace":
@@ -1007,8 +1011,6 @@ func (t *translator) binding(clause *ednNode, conditions []*condition) (Filter, 
 			return PageTags(name), nil
 		}
 		return Namespace(name), nil
-	case "block/refs":
-		return nil, t.unsupported(clause, "the references of only the block itself are not supported, :block/path-refs is")
 	}
 
 	return nil, t.unsupported(clause, "the attribute :%s is not supported", attribute)

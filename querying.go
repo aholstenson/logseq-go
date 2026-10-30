@@ -241,6 +241,8 @@ func (r *queryRunner) compile(filter query.Filter, blocks bool) (indexing.Query,
 		return indexing.Or(clauses...), nil
 	case *query.PageRefFilter:
 		return indexing.PathReferences(f.Page), nil
+	case *query.RefsFilter:
+		return indexing.References(f.Page), nil
 	case *query.FullTextFilter:
 		return indexing.ContentMatches(f.Text), nil
 	case *query.PageFilter:

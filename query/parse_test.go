@@ -70,6 +70,8 @@ var _ = Describe("Parsing queries", func() {
 		ParsesFilter("(page-tags book #reading [[to read]])", query.PageTags("book", "reading", "to read"))
 		ParsesFilter("(page-tags [book reading])", query.PageTags("book", "reading"))
 		ParsesFilter("(all-page-tags)", query.AllPageTags())
+		ParsesFilter("(refs [[My Page]])", query.Refs("My Page"))
+		ParsesFilter("(refs #tag)", query.Refs("tag"))
 		ParsesFilter("(namespace [[Projects]])", query.Namespace("Projects"))
 		ParsesFilter("(between -7d today)", query.Between(query.Relative("-7d"), query.Today()))
 		ParsesFilter("(between -7 +7)", query.Between(query.Relative("-7d"), query.Relative("+7d")))
