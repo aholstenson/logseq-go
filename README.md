@@ -356,6 +356,28 @@ next, ok := logseq.ParseDateInput(":3d-after", time.Now())
 // next.Time is midnight three days from today
 ```
 
+### Query model
+
+The `query` package is a model of queries that can be built in code, read
+from text and written back as text. The text form is the simple query syntax
+of Logseq, the part inside `{{query ...}}`, with additions for task dates and
+sorting. Dates such as `today` stay relative, so a stored query keeps its
+meaning from day to day.
+
+```go
+q, err := query.Parse("(and (task TODO LATER) (scheduled < today) (sort-by priority asc))")
+
+// The same query, built in code
+q = query.New(query.And(
+  query.Task(content.TaskStatusTodo, content.TaskStatusLater),
+  query.Scheduled(query.Less, query.Today()),
+)).SortBy(query.SortPriority, query.Asc)
+
+q.String() // (and (task TODO LATER) (scheduled < today) (sort-by priority asc))
+```
+
+See the documentation of the `query` package for the full syntax.
+
 ## Limitations
 
 This library is limited to working with Markdown files. As the library provides
