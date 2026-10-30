@@ -1,5 +1,11 @@
 package indexing
 
+import (
+	"time"
+
+	"github.com/aholstenson/logseq-go/content"
+)
+
 type Query interface {
 	isQuery()
 }
@@ -55,6 +61,16 @@ type fieldRefs struct {
 }
 
 func (f *fieldRefs) isQuery() {}
+
+// dateRange matches a date field from start, inclusive, to end, exclusive. A
+// zero time leaves that end of the range open.
+type dateRange struct {
+	field string
+	start time.Time
+	end   time.Time
+}
+
+func (d *dateRange) isQuery() {}
 
 func All() *all {
 	return &all{}
@@ -190,5 +206,72 @@ func LinksToURL(url string) Query {
 	return &fieldEquals{
 		field: "link",
 		value: url,
+	}
+}
+
+func IsTask() Query {
+	return Or(IsOpenTask(), IsClosedTask())
+}
+
+func IsOpenTask() Query {
+	return &fieldEquals{
+		field: "task:state",
+		value: "open",
+	}
+}
+
+func IsClosedTask() Query {
+	return &fieldEquals{
+		field: "task:state",
+		value: "closed",
+	}
+}
+
+func TaskStatusIs(statuses ...content.TaskStatus) Query {
+	clauses := make([]Query, 0, len(statuses))
+	for _, status := range statuses {
+		marker := status.String()
+		if marker == "" {
+			continue
+		}
+
+		clauses = append(clauses, &fieldEquals{
+			field: "task",
+			value: marker,
+		})
+	}
+
+	if len(clauses) == 0 {
+		return None()
+	}
+
+	return Or(clauses...)
+}
+
+func PriorityIs(priority content.Priority) Query {
+	value := priorityValue(priority)
+	if value == "" {
+		return None()
+	}
+
+	return &fieldEquals{
+		field: "priority",
+		value: value,
+	}
+}
+
+func ScheduledBetween(start time.Time, end time.Time) Query {
+	return &dateRange{
+		field: "scheduled",
+		start: start,
+		end:   end,
+	}
+}
+
+func DeadlineBetween(start time.Time, end time.Time) Query {
+	return &dateRange{
+		field: "deadline",
+		start: start,
+		end:   end,
 	}
 }

@@ -458,6 +458,7 @@ func (i *BlugeIndex) blockToDocument(page *Page, id string, block *content.Block
 	}
 	i.transferRefs(blugeDoc, "pages", block)
 	i.transferLinks(blugeDoc, block)
+	transferTask(blugeDoc, block)
 
 	var fullText strings.Builder
 	plainText0(block.Content(), &fullText)
@@ -467,6 +468,47 @@ func (i *BlugeIndex) blockToDocument(page *Page, id string, block *content.Block
 	blugeDoc.AddField(bluge.NewTextField("preview", preview).StoreValue())
 
 	return blugeDoc, nil
+}
+
+// transferTask indexes the status, priority and dates of a task so that
+// tasks can be queried.
+func transferTask(doc *bluge.Document, block *content.Block) {
+	if status := block.TaskStatus(); status != content.TaskStatusNone {
+		doc.AddField(bluge.NewKeywordField("task", status.String()))
+
+		state := "open"
+		if status.IsClosed() {
+			state = "closed"
+		}
+		doc.AddField(bluge.NewKeywordField("task:state", state))
+	}
+
+	if priority := priorityValue(block.Priority()); priority != "" {
+		doc.AddField(bluge.NewKeywordField("priority", priority))
+	}
+
+	if scheduled := block.Scheduled(); scheduled != nil {
+		doc.AddField(bluge.NewDateTimeField("scheduled", scheduled.Date))
+	}
+
+	if deadline := block.Deadline(); deadline != nil {
+		doc.AddField(bluge.NewDateTimeField("deadline", deadline.Date))
+	}
+}
+
+// priorityValue is the value a priority is indexed as, or an empty string for
+// no priority.
+func priorityValue(priority content.Priority) string {
+	switch priority {
+	case content.PriorityA:
+		return "A"
+	case content.PriorityB:
+		return "B"
+	case content.PriorityC:
+		return "C"
+	}
+
+	return ""
 }
 
 // blockID returns a semi-stable ID based on the location of the block on the
@@ -757,6 +799,8 @@ func mapQuery(q Query) bluge.Query {
 		}
 
 		return bluge.NewTermQuery(value).SetField(query.field)
+	case *dateRange:
+		return bluge.NewDateRangeQuery(query.start, query.end).SetField(query.field)
 	case *fieldRefs:
 		if query.tag {
 			return bluge.NewTermQuery(normalizeRef(query.target)).SetField(query.field + ":tag")

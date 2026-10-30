@@ -263,6 +263,19 @@ for _, r := range blocks.Results() {
 }
 ```
 
+Tasks can be found by their status, priority and dates:
+
+```go
+// Open tasks with priority A that have a deadline before the end of today
+now := time.Now()
+endOfToday := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, time.Local)
+tasks, err := graph.SearchBlocks(ctx, logseq.WithQuery(logseq.And(
+  logseq.IsOpenTask(),
+  logseq.PriorityIs(content.PriorityA),
+  logseq.DeadlineBetween(time.Time{}, endOfToday),
+)))
+```
+
 ## Limitations
 
 This library is limited to working with Markdown files. As the library provides

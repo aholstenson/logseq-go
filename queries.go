@@ -1,6 +1,11 @@
 package logseq
 
-import "github.com/aholstenson/logseq-go/internal/indexing"
+import (
+	"time"
+
+	"github.com/aholstenson/logseq-go/content"
+	"github.com/aholstenson/logseq-go/internal/indexing"
+)
 
 type Query = indexing.Query
 
@@ -113,4 +118,56 @@ func ReferencesTag(page string) Query {
 // URL.
 func LinksToURL(url string) Query {
 	return indexing.LinksToURL(url)
+}
+
+// IsTask matches the blocks that have a task marker, such as `TODO` or `DONE`.
+func IsTask() Query {
+	return indexing.IsTask()
+}
+
+// IsOpenTask matches the blocks with a task that is not finished, such as
+// `TODO`, `DOING` or `WAITING`. See content.TaskStatus.IsOpen.
+func IsOpenTask() Query {
+	return indexing.IsOpenTask()
+}
+
+// IsClosedTask matches the blocks with a task that is finished, either as
+// `DONE` or as cancelled. See content.TaskStatus.IsClosed.
+func IsClosedTask() Query {
+	return indexing.IsClosedTask()
+}
+
+// TaskStatusIs matches the blocks with a task that has one of the given
+// statuses. The two spellings of cancelled are different statuses, so pass
+// both content.TaskStatusCancelled and content.TaskStatusCanceled to match
+// all cancelled tasks. Matches nothing if no known status is given.
+func TaskStatusIs(statuses ...content.TaskStatus) Query {
+	return indexing.TaskStatusIs(statuses...)
+}
+
+// PriorityIs matches the blocks that have the given priority, such as `[#A]`.
+// Matches nothing for content.PriorityNone, use Not with the other priorities
+// to find blocks without a priority.
+func PriorityIs(priority content.Priority) Query {
+	return indexing.PriorityIs(priority)
+}
+
+// ScheduledBetween matches the blocks with a `SCHEDULED` date from start,
+// inclusive, to end, exclusive. A zero time leaves that end of the range open,
+// so passing two zero times matches every block with a scheduled date.
+//
+// A date without a time of day is at midnight in the local time zone, so a
+// range that covers a whole day matches it.
+func ScheduledBetween(start, end time.Time) Query {
+	return indexing.ScheduledBetween(start, end)
+}
+
+// DeadlineBetween matches the blocks with a `DEADLINE` date from start,
+// inclusive, to end, exclusive. A zero time leaves that end of the range open,
+// so passing two zero times matches every block with a deadline.
+//
+// A date without a time of day is at midnight in the local time zone, so a
+// range that covers a whole day matches it.
+func DeadlineBetween(start, end time.Time) Query {
+	return indexing.DeadlineBetween(start, end)
 }

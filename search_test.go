@@ -7,6 +7,7 @@ import (
 	"time"
 
 	logseq "github.com/aholstenson/logseq-go"
+	"github.com/aholstenson/logseq-go/content"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -334,6 +335,36 @@ var _ = Describe("Search", func() {
 			Expect(block).ToNot(BeNil())
 			Expect(page).ToNot(BeNil())
 			Expect(block.ID()).To(Equal("aaaa1111-bb22-cc33-dd44-eeeeeeee5555"))
+		})
+	})
+
+	Describe("Tasks", func() {
+		It("finds tasks by status, priority and date", func() {
+			graph = openGraphWithPages(dir, map[string]string{
+				"tasks.md": "- TODO [#A] Water the plants\n  SCHEDULED: <2024-01-15 Mon>\n" +
+					"- DONE Buy soil\n  DEADLINE: <2024-01-10 Wed>\n" +
+					"- Not a task\n",
+			})
+
+			search := func(query logseq.Query) []string {
+				results, err := graph.SearchBlocks(ctx, logseq.WithQuery(query))
+				Expect(err).ToNot(HaveOccurred())
+
+				previews := make([]string, 0, results.Size())
+				for _, result := range results.Results() {
+					previews = append(previews, result.Preview())
+				}
+				return previews
+			}
+
+			jan15 := time.Date(2024, time.January, 15, 0, 0, 0, 0, time.Local)
+
+			Expect(search(logseq.IsTask())).To(ConsistOf("Water the plants", "Buy soil"))
+			Expect(search(logseq.IsOpenTask())).To(ConsistOf("Water the plants"))
+			Expect(search(logseq.TaskStatusIs(content.TaskStatusDone))).To(ConsistOf("Buy soil"))
+			Expect(search(logseq.PriorityIs(content.PriorityA))).To(ConsistOf("Water the plants"))
+			Expect(search(logseq.ScheduledBetween(jan15, jan15.AddDate(0, 0, 1)))).To(ConsistOf("Water the plants"))
+			Expect(search(logseq.DeadlineBetween(time.Time{}, jan15))).To(ConsistOf("Buy soil"))
 		})
 	})
 
