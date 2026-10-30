@@ -458,6 +458,15 @@ var _ = Describe("Query", func() {
 			Expect(blockPreviews(results)).To(ConsistOf("Good film", "Great film"))
 		})
 
+		It("keeps the results that the function of filter or remove is true for", func() {
+			results := runAdvanced(`{:query (page [[tasks]])
+				:result-transform (fn [r] (->> r
+					(filter (fn [b] (= "TODO" (:block/marker b))))
+					(remove #(some? (:block/scheduled %)))
+					(sort-by :block/deadline)))}`)
+			Expect(blockPreviews(results)).To(Equal([]string{"Due today", "No dates"}))
+		})
+
 		It("finds the recipes", func() {
 			results := runAdvanced(`{:query [:find (pull ?p [*])
 				:where [?b :block/page ?p] [?p :page/properties ?props]

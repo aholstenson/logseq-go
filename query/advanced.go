@@ -277,7 +277,11 @@ var queryFence = regexp.MustCompile(`(?im)^\s*#\+(BEGIN|END)_QUERY\s*$`)
 //   - and, or, or-join, not and not-join
 //   - the rules of simple queries, such as `(task ?b #{"TODO"})`
 //   - a :query that is a simple query, such as `(and (task TODO) [[page]])`
-//   - a :result-transform that sorts with sort-by, and reverse
+//   - a :result-transform that sorts with sort-by and reverse, and keeps
+//     results with filter or remove, also with ->>; the function of filter or
+//     remove can use and, or, not, not=, nil?, some? and the conditions of
+//     :where on values such as `(:block/marker b)` or
+//     `(get-in b [:block/properties :type])`
 //
 // The inputs `:current-page` and `:query-page` depend on where the query is,
 // and are supported when the page is given with WithCurrentPage and
@@ -397,11 +401,12 @@ func parseAdvanced(text string, options *parseOptions) (*AdvancedQuery, error) {
 	}
 
 	if transformNode != nil {
-		sorts, err := t.resultTransform(transformNode)
+		sorts, filter, err := t.resultTransform(transformNode, q.FindsBlocks())
 		if err != nil {
 			return nil, err
 		}
 		q.Sort = append(q.Sort, sorts...)
+		q.Filter = withFilter(q.Filter, filter)
 	}
 
 	result.Query = q
@@ -3319,49 +3324,332 @@ func shiftDate(date Date, days int) (Date, bool) {
 }
 
 // resultTransform translates a :result-transform that sorts the results, such
-// as `(fn [result] (sort-by (fn [b] (get b :block/priority "Z")) result))`.
-func (t *translator) resultTransform(node *ednNode) ([]Sort, error) {
+// as `(fn [result] (sort-by (fn [b] (get b :block/priority "Z")) result))`,
+// or that keeps some of them, such as
+// `(fn [result] (filter (fn [b] (= "TODO" (:block/marker b))) result))`. It
+// returns the sort order and the filter for the results that are kept.
+// findsBlocks tells if the results are blocks or pages.
+func (t *translator) resultTransform(node *ednNode, findsBlocks bool) ([]Sort, Filter, error) {
 	if node.head() != "fn" || len(node.items) != 3 || node.items[1].kind != ednVector ||
 		len(node.items[1].items) != 1 || node.items[1].items[0].kind != ednSymbol {
-		return nil, t.unsupported(node, "only a :result-transform that sorts with sort-by is supported")
+		return nil, nil, t.unsupported(node, "only a :result-transform that sorts with sort-by or keeps results with filter or remove is supported")
 	}
 
-	return t.sortBody(node.items[2], node.items[1].items[0].text)
+	transform := &transform{t: t, results: node.items[1].items[0].text, findsBlocks: findsBlocks}
+	if err := transform.body(node.items[2]); err != nil {
+		return nil, nil, err
+	}
+	return transform.sorts, andOf(transform.filters), nil
 }
 
-func (t *translator) sortBody(body *ednNode, results string) ([]Sort, error) {
+// transform holds what a :result-transform does to the results.
+type transform struct {
+	t *translator
+
+	// results is the name of the parameter of the function, which is the
+	// results of the query.
+	results string
+
+	// findsBlocks tells if the results are blocks or pages.
+	findsBlocks bool
+
+	sorts   []Sort
+	filters []Filter
+}
+
+// body reads the body of the function, which is the results or the results
+// with functions applied to them.
+func (tr *transform) body(body *ednNode) error {
+	if body.isSymbol(tr.results) {
+		return nil
+	}
+
 	switch body.head() {
+	case "->>":
+		if len(body.items) < 2 {
+			break
+		}
+		return tr.body(threadLast(body))
 	case "reverse":
 		if len(body.items) != 2 {
 			break
 		}
 
-		sorts, err := t.sortBody(body.items[1], results)
-		if err != nil {
-			return nil, err
+		before := len(tr.sorts)
+		if err := tr.body(body.items[1]); err != nil {
+			return err
+		}
+		if len(tr.sorts) == before {
+			return tr.t.unsupported(body, "reverse is only supported for the results of sort-by")
 		}
 
-		for i := range sorts {
-			if sorts[i].Order == Asc {
-				sorts[i].Order = Desc
+		// sort-by puts its sort first, so the sorts inside reverse are the
+		// first ones.
+		for i := 0; i < len(tr.sorts)-before; i++ {
+			if tr.sorts[i].Order == Asc {
+				tr.sorts[i].Order = Desc
 			} else {
-				sorts[i].Order = Asc
+				tr.sorts[i].Order = Asc
 			}
 		}
-		return sorts, nil
+		return nil
 	case "sort-by":
-		if len(body.items) != 3 || !body.items[2].isSymbol(results) {
+		if len(body.items) != 3 {
 			break
 		}
 
-		sort, err := t.sortKey(body.items[1])
+		if err := tr.body(body.items[2]); err != nil {
+			return err
+		}
+
+		sort, err := tr.t.sortKey(body.items[1])
+		if err != nil {
+			return err
+		}
+		// The last sort decides the order, so it comes first.
+		tr.sorts = append([]Sort{sort}, tr.sorts...)
+		return nil
+	case "filter", "remove":
+		if len(body.items) != 3 {
+			break
+		}
+
+		if err := tr.body(body.items[2]); err != nil {
+			return err
+		}
+
+		filter, err := tr.predicate(body.items[1])
+		if err != nil {
+			return err
+		}
+		if body.head() == "remove" {
+			filter = Not(filter)
+		}
+		tr.filters = append(tr.filters, filter)
+		return nil
+	}
+
+	return tr.t.unsupported(body, "only a :result-transform that sorts with sort-by or keeps results with filter or remove is supported")
+}
+
+// threadLast rewrites `(->> r (filter f) (sort-by k))` as
+// `(sort-by k (filter f r))`.
+func threadLast(node *ednNode) *ednNode {
+	value := node.items[1]
+	for _, step := range node.items[2:] {
+		next := &ednNode{kind: ednList, pos: step.pos, end: step.end}
+		if step.kind == ednList {
+			next.items = append(append(next.items, step.items...), value)
+		} else {
+			next.items = []*ednNode{step, value}
+		}
+		value = next
+	}
+	return value
+}
+
+// predicate translates the function of filter or remove, such as
+// `(fn [b] (= "TODO" (:block/marker b)))`, `#(get-in % [:block/properties :type])`
+// or `:block/marker`, into the filter for the results it returns true for.
+func (tr *transform) predicate(node *ednNode) (Filter, error) {
+	switch {
+	case node.kind == ednKeyword:
+		return tr.test(&ednNode{kind: ednList, items: []*ednNode{node, {kind: ednSymbol, text: "%"}}, pos: node.pos, end: node.end}, "%")
+	case node.head() == "fn" && len(node.items) == 3 && node.items[1].kind == ednVector &&
+		len(node.items[1].items) == 1 && node.items[1].items[0].kind == ednSymbol:
+		return tr.test(node.items[2], node.items[1].items[0].text)
+	case node.kind == ednTagged && node.text == "fn" && len(node.items) == 1:
+		return tr.test(node.items[0], "%")
+	}
+
+	return nil, tr.t.unsupported(node, "expected a function such as (fn [b] (= \"TODO\" (:block/marker b)))")
+}
+
+// test translates the body of a predicate, where param is the result. The
+// values of the result, such as `(:block/marker b)`, are given to the
+// translator as clauses on a query for one result, so that the same
+// conditions are supported as in :where. `and`, `or`, `not`, `not=` and
+// `nil?` are translated here, as a value that is not set makes a condition
+// false in :where but `not=` true in Clojure.
+func (tr *transform) test(expr *ednNode, param string) (Filter, error) {
+	switch expr.head() {
+	case "and", "or":
+		var filters []Filter
+		for _, item := range expr.items[1:] {
+			filter, err := tr.test(item, param)
+			if err != nil {
+				return nil, err
+			}
+			filters = append(filters, filter)
+		}
+
+		if expr.head() == "or" {
+			return Or(filters...), nil
+		}
+		return And(filters...), nil
+	case "not":
+		if len(expr.items) != 2 {
+			break
+		}
+
+		filter, err := tr.test(expr.items[1], param)
 		if err != nil {
 			return nil, err
 		}
-		return []Sort{sort}, nil
+		return Not(filter), nil
+	case "not=":
+		equal := &ednNode{kind: ednList, pos: expr.pos, end: expr.end,
+			items: append([]*ednNode{{kind: ednSymbol, text: "=", pos: expr.items[0].pos, end: expr.items[0].end}}, expr.items[1:]...)}
+		filter, err := tr.test(equal, param)
+		if err != nil {
+			return nil, err
+		}
+		return Not(filter), nil
+	case "nil?", "some?":
+		if len(expr.items) != 2 {
+			break
+		}
+
+		filter, err := tr.value(expr.items[1], param, nil, expr)
+		if err != nil {
+			return nil, err
+		}
+		if expr.head() == "nil?" {
+			return Not(filter), nil
+		}
+		return filter, nil
 	}
 
-	return nil, t.unsupported(body, "only a :result-transform that sorts with sort-by is supported")
+	if path, _ := keyPath(expr, param); len(path) > 0 {
+		// A value on its own is true when it is set.
+		return tr.value(expr, param, nil, expr)
+	}
+
+	if expr.kind != ednList || expr.head() == "" {
+		return nil, tr.t.unsupported(expr, "expected a condition on a value of the result, such as (= \"TODO\" (:block/marker %s))", param)
+	}
+
+	var access *ednNode
+	for _, arg := range expr.items[1:] {
+		if path, _ := keyPath(arg, param); len(path) == 0 {
+			continue
+		}
+		if access != nil {
+			return nil, tr.t.unsupported(expr, "comparing two values of the result is not supported")
+		}
+		access = arg
+	}
+	if access == nil {
+		return nil, tr.t.unsupported(expr, "expected a condition on a value of the result, such as (= \"TODO\" (:block/marker %s))", param)
+	}
+
+	return tr.value(access, param, expr, expr)
+}
+
+// value translates a condition on one value of the result, such as
+// `(:block/marker b)` in `(= "TODO" (:block/marker b))`. Without a condition
+// it matches the results that have the value, or for an attribute that is
+// true or false, such as :block/journal?, the results where it is true.
+func (tr *transform) value(access *ednNode, param string, condition *ednNode, node *ednNode) (Filter, error) {
+	path, hasDefault := keyPath(access, param)
+	if len(path) == 0 {
+		return nil, tr.t.unsupported(access, "expected a value of the result, such as (:block/marker %s)", param)
+	}
+	if hasDefault {
+		return nil, tr.t.unsupported(access, "default values are not supported in the function of filter or remove")
+	}
+
+	at := func(kind ednKind, text string, items ...*ednNode) *ednNode {
+		return &ednNode{kind: kind, text: text, items: items, pos: node.pos, end: node.end}
+	}
+	variable := func(name string) *ednNode { return at(ednSymbol, name) }
+
+	result := variable("?_result")
+	value := variable("?_value")
+	clauses := []*ednNode{at(ednKeyword, "find"), result, at(ednKeyword, "where")}
+	if !tr.findsBlocks {
+		clauses = append(clauses, at(ednVector, "", result, at(ednKeyword, "block/name")))
+	}
+
+	entity := result
+	for i, key := range path {
+		if key.kind != ednKeyword {
+			return nil, tr.t.unsupported(access, "expected keywords in the path of the value")
+		}
+
+		last := i == len(path)-1
+		if (key.text == "block/properties" || key.text == "page/properties") && i == len(path)-2 {
+			props := variable(fmt.Sprintf("?_props%d", i))
+			get := at(ednList, "", variable("get"), props, path[i+1])
+			clauses = append(clauses, at(ednVector, "", entity, key, props), at(ednVector, "", get, value))
+			break
+		}
+
+		next := value
+		switch {
+		case !last:
+			next = variable(fmt.Sprintf("?_entity%d", i))
+		case condition == nil && strings.HasSuffix(key.text, "?"):
+			next = variable("true")
+		}
+		clauses = append(clauses, at(ednVector, "", entity, key, next))
+		entity = next
+	}
+
+	if condition != nil {
+		call := at(ednList, "")
+		for _, item := range condition.items {
+			if item == access {
+				item = value
+			}
+			call.items = append(call.items, item)
+		}
+		clauses = append(clauses, at(ednVector, "", call))
+	}
+
+	q, err := tr.t.sub().translate(at(ednVector, "", clauses...), nil)
+	if err != nil {
+		return nil, err
+	}
+	if q.Filter == nil {
+		// The condition is true for every result.
+		return And(), nil
+	}
+	return q.Filter, nil
+}
+
+// sub returns a translator for another query in the same text, with the
+// same options and rules but none of the inputs.
+func (t *translator) sub() *translator {
+	return &translator{
+		src:         t.src,
+		inputs:      make(map[string]*ednNode),
+		pages:       t.pages,
+		blocks:      t.blocks,
+		blockInputs: make(map[string]blockRef),
+		rules:       t.rules,
+		inlineRules: t.inlineRules,
+	}
+}
+
+// withFilter adds a filter that the results must match as well.
+func withFilter(filter Filter, other Filter) Filter {
+	switch {
+	case other == nil:
+		return filter
+	case filter == nil:
+		return other
+	}
+
+	var filters []Filter
+	for _, f := range []Filter{filter, other} {
+		if and, ok := f.(*AndFilter); ok {
+			filters = append(filters, and.Filters...)
+		} else {
+			filters = append(filters, f)
+		}
+	}
+	return And(filters...)
 }
 
 // sortKey reads the key that sort-by sorts on: a keyword such as
@@ -3372,9 +3660,9 @@ func (t *translator) sortKey(node *ednNode) (Sort, error) {
 	case node.kind == ednKeyword:
 		path = []*ednNode{node}
 	case node.head() == "fn" && len(node.items) == 3 && node.items[1].kind == ednVector && len(node.items[1].items) == 1:
-		path = keyPath(node.items[2], node.items[1].items[0].text)
+		path, _ = keyPath(node.items[2], node.items[1].items[0].text)
 	case node.kind == ednTagged && node.text == "fn" && len(node.items) == 1:
-		path = keyPath(node.items[0], "%")
+		path, _ = keyPath(node.items[0], "%")
 	}
 
 	if sort, ok := sortForPath(path); ok {
@@ -3385,23 +3673,37 @@ func (t *translator) sortKey(node *ednNode) (Sort, error) {
 }
 
 // keyPath returns the keys that an expression such as `(get b :k "default")`,
-// `(:k b)` or `(get-in b [:a :b])` looks up in the result named param.
-func keyPath(expr *ednNode, param string) []*ednNode {
+// `(:k b)`, `(get-in b [:a :b])` or `(:b (:a b))` looks up in the result
+// named param, and true if a lookup has a default value. The path is empty
+// for the result itself, and nil for other expressions.
+func keyPath(expr *ednNode, param string) ([]*ednNode, bool) {
+	if expr.isSymbol(param) {
+		return []*ednNode{}, false
+	}
 	if expr.kind != ednList || len(expr.items) < 2 {
-		return nil
+		return nil, false
 	}
 
 	first := expr.items[0]
+	var from *ednNode
+	var keys []*ednNode
+	var withDefault bool
 	switch {
-	case first.isSymbol("get") && len(expr.items) >= 3 && expr.items[1].isSymbol(param) && expr.items[2].kind == ednKeyword:
-		return []*ednNode{expr.items[2]}
-	case first.isSymbol("get-in") && len(expr.items) >= 3 && expr.items[1].isSymbol(param) && expr.items[2].kind == ednVector:
-		return expr.items[2].items
-	case first.kind == ednKeyword && expr.items[1].isSymbol(param):
-		return []*ednNode{first}
+	case first.isSymbol("get") && (len(expr.items) == 3 || len(expr.items) == 4) && expr.items[2].kind == ednKeyword:
+		from, keys, withDefault = expr.items[1], expr.items[2:3], len(expr.items) == 4
+	case first.isSymbol("get-in") && (len(expr.items) == 3 || len(expr.items) == 4) && expr.items[2].kind == ednVector:
+		from, keys, withDefault = expr.items[1], expr.items[2].items, len(expr.items) == 4
+	case first.kind == ednKeyword && (len(expr.items) == 2 || len(expr.items) == 3):
+		from, keys, withDefault = expr.items[1], expr.items[:1], len(expr.items) == 3
+	default:
+		return nil, false
 	}
 
-	return nil
+	base, baseDefault := keyPath(from, param)
+	if base == nil {
+		return nil, false
+	}
+	return append(base, keys...), withDefault || baseDefault
 }
 
 func sortForPath(path []*ednNode) (Sort, bool) {

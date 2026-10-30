@@ -564,8 +564,44 @@ var _ = Describe("Advanced queries", func() {
 		Translates("journal day", withTransform(`(fn [r] (sort-by (fn [b] (get-in b [:block/page :block/journal-day])) r))`), "(and (task TODO) (sort-by journal-day asc))")
 		Translates("page title", withTransform(`(fn [r] (sort-by (fn [b] (get-in b [:block/page :block/original-name])) r))`), "(and (task TODO) (sort-by title asc))")
 		Translates("property", withTransform(`(fn [r] (sort-by (fn [b] (get-in b [:block/properties :rating])) r))`), "(and (task TODO) (sort-by rating asc))")
-		Unsupported("other transforms", withTransform(`(fn [r] (filter :block/marker r))`), "only a :result-transform that sorts")
+		Translates("sorts in turn", withTransform(`(fn [r] (sort-by :block/priority (sort-by :block/deadline r)))`),
+			"(and (task TODO) (sort-by priority asc) (sort-by deadline asc))")
+		Translates("filter", withTransform(`(fn [r] (filter (fn [b] (= "A" (:block/priority b))) r))`), "(and (task TODO) (priority A))")
+		Translates("filter with a keyword", withTransform(`(fn [r] (filter :block/scheduled r))`), "(and (task TODO) (scheduled))")
+		Translates("remove", withTransform(`(fn [r] (remove #(contains? #{"A" "B"} (:block/priority %)) r))`),
+			"(and (task TODO) (not (priority A B)))")
+		Translates("not= is true without the value", withTransform(`(fn [r] (filter (fn [b] (not= "A" (:block/priority b))) r))`),
+			"(and (task TODO) (not (priority A)))")
+		Translates("and, nil? and some?",
+			withTransform(`(fn [r] (filter (fn [b] (and (some? (:block/scheduled b)) (nil? (:block/deadline b)))) r))`),
+			"(and (task TODO) (scheduled) (not (deadline)))")
+		Translates("or", withTransform(`(fn [r] (filter (fn [b] (or (:block/scheduled b) (:block/deadline b))) r))`),
+			"(and (task TODO) (or (scheduled) (deadline)))")
+		Translates("a property", withTransform(`(fn [r] (filter (fn [b] (= "book" (:type (:block/properties b)))) r))`),
+			"(and (task TODO) (property type book))")
+		Translates("a property as a number", withTransform(`(fn [r] (filter (fn [b] (> (get-in b [:block/properties :rating]) 7)) r))`),
+			"(and (task TODO) (property rating > 7))")
+		Translates("the title of the page",
+			withTransform(`(fn [r] (filter (fn [b] (clojure.string/includes? (get-in b [:block/page :block/original-name]) "Meet")) r))`),
+			`(and (task TODO) (page (title includes "Meet")))`)
+		Translates("true or false", withTransform(`(fn [r] (filter (fn [b] (:block/journal? (:block/page b))) r))`), "(and (task TODO) (journal))")
+		Translates("->> with filter and sort-by",
+			withTransform(`(fn [r] (->> r (filter (fn [b] (contains? #{"A" "B"} (:block/priority b)))) (sort-by :block/priority) reverse))`),
+			"(and (task TODO) (priority A B) (sort-by priority desc))")
+		Translates("filter on pages", `{:query (page-property type) :result-transform (fn [r] (remove (fn [p] (:block/journal? p)) r))}`,
+			"(and (page-property type) (not (journal-page)))")
+		Translates("filter on the pages of a Datalog query",
+			`{:query [:find (pull ?p [*]) :where [?p :block/name]] :result-transform (fn [r] (filter (fn [p] (= "book" (get-in p [:block/properties :type]))) r))}`,
+			"(page-property type book)")
+
+		Unsupported("other transforms", withTransform(`(fn [r] (take 5 r))`), "only a :result-transform that sorts")
 		Unsupported("other sort keys", withTransform(`(fn [r] (sort-by :block/content r))`), "only sorting by")
+		Unsupported("reverse without a sort", withTransform(`(fn [r] (reverse (filter :block/scheduled r)))`), "reverse is only supported")
+		Unsupported("two values of the result",
+			withTransform(`(fn [r] (filter (fn [b] (= (:block/scheduled b) (:block/deadline b))) r))`), "two values of the result")
+		Unsupported("a default in filter", withTransform(`(fn [r] (filter (fn [b] (= "A" (get b :block/priority "A"))) r))`),
+			"default values are not supported")
+		Unsupported("a condition on something else", withTransform(`(fn [r] (filter (fn [b] (= 1 1)) r))`), "expected a condition on a value")
 	})
 
 	Describe("EDN", func() {
