@@ -164,10 +164,18 @@ var queryFence = regexp.MustCompile(`(?im)^\s*#\+(BEGIN|END)_QUERY\s*$`)
 // and are supported when the page is given with WithCurrentPage and
 // WithQueryPage. The inputs `:current-block` and `:parent-block` are supported
 // when the UUID of the block is given with WithCurrentBlock and
-// WithParentBlock, as the parent of the blocks in `[?b :block/parent ?block]`.
-// :rules are not supported. Keys that only change how Logseq shows the
-// results, such as :view and :table-view?, are ignored. Errors in the EDN itself are
-// returned as *ParseError.
+// WithParentBlock, as the parent of the blocks in `[?b :block/parent ?block]`
+// or as the block above them in a rule such as the one below.
+//
+// Of the :rules, the recursive rule that finds the blocks below a block at any
+// depth is supported, and is translated into an AncestorFilter:
+//
+//	[(below ?b ?parent) [?b :block/parent ?parent]]
+//	[(below ?b ?parent) [?b :block/parent ?c] (below ?c ?parent)]
+//
+// Other rules are not supported. Keys that only change how Logseq shows the
+// results, such as :view and :table-view?, are ignored. Errors in the EDN
+// itself are returned as *ParseError.
 func ParseAdvanced(text string, opts ...ParseOption) (*AdvancedQuery, error) {
 	options := &parseOptions{}
 	for _, opt := range opts {
@@ -208,10 +216,11 @@ func ParseAdvanced(text string, opts ...ParseOption) (*AdvancedQuery, error) {
 			"parent-block":  options.parentBlock,
 		},
 		blockInputs: make(map[string]string),
+		rules:       make(map[string]*ancestorRule),
 	}
 
 	result := &AdvancedQuery{}
-	var queryNode, inputsNode, transformNode *ednNode
+	var queryNode, inputsNode, transformNode, rulesNode *ednNode
 	for i := 0; i < len(root.items); i += 2 {
 		key, value := root.items[i], root.items[i+1]
 		if key.kind != ednKeyword {
@@ -230,12 +239,18 @@ func ParseAdvanced(text string, opts ...ParseOption) (*AdvancedQuery, error) {
 		case "result-transform":
 			transformNode = value
 		case "rules":
-			return nil, t.unsupported(value, "custom rules are not supported")
+			rulesNode = value
 		}
 	}
 
 	if queryNode == nil {
 		return nil, errorAt(root.pos, "the query has no :query")
+	}
+
+	if rulesNode != nil {
+		if err := t.readRules(rulesNode); err != nil {
+			return nil, err
+		}
 	}
 
 	var q *Query
@@ -352,6 +367,9 @@ type translator struct {
 	// blockInputs maps the variables in :in that are blocks to their UUIDs.
 	// They are kept out of inputs, as they can not be read as values.
 	blockInputs map[string]string
+
+	// rules are the rules from :rules, by name.
+	rules map[string]*ancestorRule
 
 	kinds map[string]entityKind
 	// pageOf maps the variable of a page to the variable of a block on it,
@@ -536,8 +554,13 @@ func (t *translator) checkBlockInputs(node *ednNode) error {
 		return nil
 	}
 
+	if _, isRule := t.rules[node.head()]; isRule && node.kind == ednList {
+		// The rule checks its arguments when it is translated.
+		return nil
+	}
+
 	if _, isBlock := t.blockInputs[node.text]; isBlock && isVar(node) {
-		return t.unsupported(node, "a block from :in is only supported as the parent in [?b :block/parent %s]", node.text)
+		return t.unsupported(node, "a block from :in is only supported as the parent in [?b :block/parent %s] or in a rule for the blocks below it", node.text)
 	}
 
 	for _, item := range node.items {
@@ -613,6 +636,13 @@ func (t *translator) collect(clause *ednNode) error {
 				}
 			}
 		default:
+			if rule, ok := t.rules[head]; ok {
+				if len(clause.items) == 3 && isVar(clause.items[1+rule.child]) {
+					return t.setKind(clause.items[1+rule.child], entityBlock)
+				}
+				return nil
+			}
+
 			if len(clause.items) > 1 && isVar(clause.items[1]) {
 				if blockRules[head] {
 					return t.setKind(clause.items[1], entityBlock)
@@ -1321,6 +1351,10 @@ func (t *translator) scoped(f func() (Filter, error)) (Filter, error) {
 // rule translates a rule from simple queries, such as `(task ?b #{"TODO"})`.
 func (t *translator) rule(clause *ednNode) (Filter, error) {
 	head := clause.head()
+	if rule, ok := t.rules[head]; ok {
+		return t.ancestorFilter(clause, rule)
+	}
+
 	if head == "" || len(clause.items) < 2 || !isVar(clause.items[1]) {
 		return nil, t.unsupported(clause, "expected a rule such as (task ?b #{\"TODO\"})")
 	}
@@ -1435,6 +1469,171 @@ func (t *translator) rule(clause *ednNode) (Filter, error) {
 	}
 
 	return nil, t.unsupported(clause, "the rule %s is not supported", head)
+}
+
+// ancestorRule is a rule from :rules that finds the blocks below a block at
+// any depth, such as:
+//
+//	[(below ?b ?parent) [?b :block/parent ?parent]]
+//	[(below ?b ?parent) [?b :block/parent ?c] (below ?c ?parent)]
+type ancestorRule struct {
+	// child and ancestor are the positions of the arguments for the block
+	// below and for the block above it.
+	child, ancestor int
+}
+
+// readRules reads :rules, which is a vector of rule definitions such as
+// `[(name ?a ?b) clause ...]`. The definitions with the same name make one
+// rule, which matches when one of them matches.
+func (t *translator) readRules(node *ednNode) error {
+	if node.kind != ednVector {
+		return t.unsupported(node, "expected a vector of rules")
+	}
+
+	var names []string
+	definitions := make(map[string][]*ednNode)
+	for _, def := range node.items {
+		if def.kind != ednVector || len(def.items) < 2 || def.items[0].head() == "" {
+			return t.unsupported(def, "expected a rule such as [(name ?a ?b) clause ...]")
+		}
+
+		name := def.items[0].head()
+		if _, seen := definitions[name]; !seen {
+			names = append(names, name)
+		}
+		definitions[name] = append(definitions[name], def)
+	}
+
+	for _, name := range names {
+		defs := definitions[name]
+		rule, ok := readAncestorRule(name, defs)
+		if !ok {
+			return t.unsupported(defs[0], "only the recursive rule for the blocks below a block, with :block/parent, is supported in :rules")
+		}
+		t.rules[name] = rule
+	}
+
+	return nil
+}
+
+// readAncestorRule reads the two definitions of a rule that finds the blocks
+// below a block at any depth: one where the block is directly below, and one
+// that steps up to the parent and uses the rule again. The recursive
+// definition can step from either end:
+//
+//	[(name ?b ?a) [?b :block/parent ?c] (name ?c ?a)]
+//	[(name ?b ?a) [?c :block/parent ?a] (name ?b ?c)]
+func readAncestorRule(name string, defs []*ednNode) (*ancestorRule, bool) {
+	if len(defs) != 2 {
+		return nil, false
+	}
+
+	params := func(def *ednNode) ([]string, bool) {
+		head := def.items[0]
+		if len(head.items) != 3 || !isVar(head.items[1]) || !isVar(head.items[2]) || head.items[1].text == head.items[2].text {
+			return nil, false
+		}
+		return []string{head.items[1].text, head.items[2].text}, true
+	}
+
+	// parentOf returns the variables of the block and of its parent in a
+	// clause such as `[?b :block/parent ?c]`.
+	parentOf := func(clause *ednNode) (string, string, bool) {
+		if !isDataPattern(clause) || len(clause.items) != 3 || clause.items[1].text != "block/parent" ||
+			!isVar(clause.items[0]) || !isVar(clause.items[2]) {
+			return "", "", false
+		}
+		return clause.items[0].text, clause.items[2].text, true
+	}
+
+	for i, base := range defs {
+		recursive := defs[1-i]
+
+		baseParams, ok := params(base)
+		if !ok || len(base.items) != 2 {
+			continue
+		}
+
+		child, parent, ok := parentOf(base.items[1])
+		if !ok {
+			continue
+		}
+
+		rule := &ancestorRule{}
+		switch {
+		case child == baseParams[0] && parent == baseParams[1]:
+			rule.child, rule.ancestor = 0, 1
+		case child == baseParams[1] && parent == baseParams[0]:
+			rule.child, rule.ancestor = 1, 0
+		default:
+			continue
+		}
+
+		if isAncestorStep(name, recursive, rule, params, parentOf) {
+			return rule, true
+		}
+	}
+
+	return nil, false
+}
+
+// isAncestorStep returns true if a definition is the recursive step of an
+// ancestor rule, see readAncestorRule.
+func isAncestorStep(
+	name string,
+	def *ednNode,
+	rule *ancestorRule,
+	params func(*ednNode) ([]string, bool),
+	parentOf func(*ednNode) (string, string, bool),
+) bool {
+	vars, ok := params(def)
+	if !ok || len(def.items) != 3 {
+		return false
+	}
+	below, above := vars[rule.child], vars[rule.ancestor]
+
+	var call *ednNode
+	var child, parent string
+	for _, clause := range def.items[1:] {
+		if c, p, ok := parentOf(clause); ok {
+			child, parent = c, p
+		} else if clause.kind == ednList && clause.head() == name && len(clause.items) == 3 {
+			call = clause
+		}
+	}
+
+	if call == nil || child == "" || !isVar(call.items[1]) || !isVar(call.items[2]) {
+		return false
+	}
+
+	callBelow, callAbove := call.items[1+rule.child].text, call.items[1+rule.ancestor].text
+	isParam := func(v string) bool { return v == below || v == above }
+
+	// Step up from the block: its parent is below the block above.
+	if child == below && !isParam(parent) && callBelow == parent && callAbove == above {
+		return true
+	}
+
+	// Step down from the block above: the block is below one of its children.
+	return parent == above && !isParam(child) && callBelow == below && callAbove == child
+}
+
+// ancestorFilter translates a use of an ancestor rule, such as
+// `(below ?b ?parent)`, into an AncestorFilter.
+func (t *translator) ancestorFilter(clause *ednNode, rule *ancestorRule) (Filter, error) {
+	if len(clause.items) != 3 {
+		return nil, t.unsupported(clause, "expected two arguments for the rule")
+	}
+
+	if err := t.checkBlock(clause, clause.items[1+rule.child]); err != nil {
+		return nil, err
+	}
+
+	id, ok := t.blockID(clause.items[1+rule.ancestor])
+	if !ok {
+		return nil, t.unsupported(clause, "expected a block above, such as :current-block or [:block/uuid #uuid \"...\"]")
+	}
+	return Ancestor(id), nil
 }
 
 // strings returns the strings in a value, which is a string, a keyword, a

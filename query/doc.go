@@ -45,6 +45,8 @@
 //	                         without the blocks below them, see RefsFilter
 //	(parent ((uuid)))        blocks directly below the block with the
 //	                         `id::` property, see ParentFilter
+//	(ancestor ((uuid)))      blocks below the block at any depth, see
+//	                         AncestorFilter
 //	(sort-by priority asc)   sort by a built-in value: `priority`,
 //	                         `scheduled`, `deadline`, `journal-day` or `title`
 //

@@ -438,6 +438,16 @@ var _ = Describe("Query", func() {
 			Expect(run(`{:query [:find (pull ?b [*]) :in $ ?p :where [?b :block/marker "TODO"] [?b :block/parent ?p]] :inputs [:parent-block]}`)).
 				To(ConsistOf("Sibling"))
 		})
+
+		It("finds the blocks below a block at any depth with a rule", func() {
+			rules := `:rules [[(below ?b ?a) [?b :block/parent ?a]]
+				[(below ?b ?a) [?b :block/parent ?c] (below ?c ?a)]]`
+
+			Expect(run(`{:query [:find (pull ?b [*]) :in $ ?c % :where (below ?b ?c)] :inputs [:current-block] ` + rules + `}`)).
+				To(ConsistOf("First child", "Grandchild", "Second child"))
+			Expect(run(`{:query [:find (pull ?b [*]) :in $ ?p % :where [?b :block/marker "TODO"] (below ?b ?p)] :inputs [:parent-block] ` + rules + `}`)).
+				To(ConsistOf("First child", "Grandchild", "Second child", "Sibling"))
+		})
 	})
 
 	Describe("Results", func() {

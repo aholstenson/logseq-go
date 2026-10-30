@@ -112,6 +112,16 @@ var _ = Describe("Queries in nodes", func() {
 			Expect(err).To(MatchError(ContainSubstring("given with WithParentBlock")))
 		})
 
+		It("reads :parent-block as the block above the blocks in a rule", func() {
+			advanced, err := query.ParseAdvanced(`{:query [:find (pull ?b [*]) :in $ ?parent %
+				:where [?p :block/name "action"] [?b :block/refs ?p] (check-parent ?b ?parent)]
+				:rules [[(check-parent ?b ?parent) [?b :block/parent ?parent]]
+				        [(check-parent ?b ?parent) [?b :block/parent ?c] (check-parent ?c ?parent)]]
+				:inputs [:parent-block]}`, query.WithParentBlock("abc"))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(advanced.Query.String()).To(Equal("(and (refs [[action]]) (ancestor ((abc))))"))
+		})
+
 		It("does not read the block in other clauses", func() {
 			_, err := query.ParseAdvanced(`{:query [:find (pull ?b [*]) :in $ ?c
 				:where [?c :block/page ?p] [?b :block/page ?p]] :inputs [:current-block]}`,

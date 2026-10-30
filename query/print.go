@@ -121,6 +121,14 @@ func (f *ParentFilter) String() string {
 	return list("parent", "(("+f.Block+"))")
 }
 
+func (f *AncestorFilter) String() string {
+	if !isBlockID(f.Block) {
+		return list("ancestor", formatString(f.Block))
+	}
+
+	return list("ancestor", "(("+f.Block+"))")
+}
+
 func (f *PropertyFilter) String() string {
 	return propertyString("property", f.Name, f.Value)
 }

@@ -65,6 +65,9 @@ var _ = Describe("References of blocks", func() {
 
 		Expect(previewsOf(searchBlocks(idx, indexing.ParentIs("parent-id")))).To(ConsistOf("first child", "second child"))
 		Expect(previewsOf(searchBlocks(idx, indexing.ParentIs("second-id")))).To(BeEmpty())
+
+		Expect(previewsOf(searchBlocks(idx, indexing.AncestorIs("parent-id")))).To(ConsistOf("first child", "grandchild", "second child"))
+		Expect(previewsOf(searchBlocks(idx, indexing.AncestorIs("second-id")))).To(BeEmpty())
 	})
 
 	It("does not add properties to blocks without an id", func() {

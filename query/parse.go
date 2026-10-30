@@ -262,13 +262,16 @@ func parseFilter(e *expr) (Filter, error) {
 			return nil, err
 		}
 		return PageRef(name), nil
-	case "parent":
+	case "parent", "ancestor":
 		if len(args) != 1 {
-			return nil, errorAt(e.pos, "parent takes one block, such as ((uuid))")
+			return nil, errorAt(e.pos, "%s takes one block, such as ((uuid))", op)
 		}
 
 		switch args[0].kind {
 		case exprBlockRef, exprString, exprSymbol:
+			if op == "ancestor" {
+				return Ancestor(args[0].text), nil
+			}
 			return Parent(args[0].text), nil
 		}
 		return nil, errorAt(args[0].pos, "expected a block, such as ((uuid))")

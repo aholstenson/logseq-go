@@ -30,7 +30,7 @@ func (i idTerm) Term() []byte {
 // Increase it when the way pages or blocks are indexed changes, so that an
 // index stored on disk is built again with the new fields. Without that the
 // pages that did not change since they were indexed keep their old documents.
-const indexVersion = 8
+const indexVersion = 9
 
 // versionDocID is the id of the document that stores the version of the
 // index. It does not have a type, so searches for pages and blocks never
@@ -628,6 +628,13 @@ func (i *BlugeIndex) blockToDocument(page *Page, id string, block *content.Block
 	if parent, ok := block.Parent().(*content.Block); ok {
 		if id := parent.ID(); id != "" {
 			blugeDoc.AddField(bluge.NewKeywordField("parent", id))
+		}
+	}
+
+	// The same is true for the blocks above the block at any depth.
+	for parent, ok := block.Parent().(*content.Block); ok; parent, ok = parent.Parent().(*content.Block) {
+		if id := parent.ID(); id != "" {
+			blugeDoc.AddField(bluge.NewKeywordField("ancestor", id))
 		}
 	}
 

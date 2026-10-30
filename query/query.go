@@ -64,7 +64,7 @@ func findsBlocks(filter Filter) bool {
 	case *NotFilter:
 		return findsBlocks(f.Filter)
 	case *PageRefFilter, *RefsFilter, *FullTextFilter, *TaskFilter, *PriorityFilter,
-		*PageFilter, *ParentFilter, *PropertyFilter, *DateFilter:
+		*PageFilter, *ParentFilter, *AncestorFilter, *PropertyFilter, *DateFilter:
 		return true
 	}
 
@@ -253,6 +253,19 @@ func Parent(block string) *ParentFilter {
 	return &ParentFilter{Block: block}
 }
 
+// AncestorFilter matches the blocks below a block at any depth: its children,
+// the children of those and so on. The block is named by its UUID, the same
+// as for ParentFilter. It is written as `(ancestor ((uuid)))`.
+type AncestorFilter struct {
+	Block string
+}
+
+// Ancestor creates a filter that matches the blocks below the block with the
+// UUID at any depth.
+func Ancestor(block string) *AncestorFilter {
+	return &AncestorFilter{Block: block}
+}
+
 // PropertyFilter matches the blocks with a property. If Value is set, the
 // property must have that value, or reference a page with that title.
 type PropertyFilter struct {
@@ -333,6 +346,7 @@ func (*RefsFilter) isFilter()         {}
 func (*FullTextFilter) isFilter()     {}
 func (*PageFilter) isFilter()         {}
 func (*ParentFilter) isFilter()       {}
+func (*AncestorFilter) isFilter()     {}
 func (*PropertyFilter) isFilter()     {}
 func (*PagePropertyFilter) isFilter() {}
 func (*PageTagsFilter) isFilter()     {}

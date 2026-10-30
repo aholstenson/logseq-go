@@ -129,6 +129,15 @@ func ParentIs(id string) Query {
 	}
 }
 
+// AncestorIs matches the blocks below the block with the id at any depth,
+// which is the value of its `id` property.
+func AncestorIs(id string) Query {
+	return &fieldEquals{
+		field: "ancestor",
+		value: id,
+	}
+}
+
 func ContentMatches(text string) Query {
 	return &fieldMatches{
 		field: "content",

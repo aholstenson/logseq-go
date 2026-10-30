@@ -224,6 +224,37 @@ var _ = Describe("Advanced queries", func() {
 		Translates("page-tags", "{:query [:find (pull ?p [*]) :where (page-tags ?p #{\"book\" \"film\"})]}", "(page-tags [[book]] [[film]])")
 	})
 
+	Describe("Custom rules", func() {
+		below := `[[(below ?b ?a) [?b :block/parent ?a]]
+			[(below ?b ?a) [?b :block/parent ?c] (below ?c ?a)]]`
+		withRules := func(rules string, clauses string) string {
+			return "{:query [:find (pull ?b [*]) :in $ % :where " + clauses + "] :rules " + rules + "}"
+		}
+
+		Translates("blocks below a block", withRules(below, `[?b :block/marker "TODO"] (below ?b [:block/uuid #uuid "abc"])`),
+			"(and (task TODO) (ancestor ((abc))))")
+		Translates("the recursive definition first",
+			withRules(`[[(below ?b ?a) [?b :block/parent ?c] (below ?c ?a)] [(below ?b ?a) [?b :block/parent ?a]]]`,
+				`(below ?b [:block/uuid "abc"])`),
+			"(ancestor ((abc)))")
+		Translates("the block above first, stepping down",
+			withRules(`[[(above ?a ?b) [?b :block/parent ?a]] [(above ?a ?b) [?c :block/parent ?a] (above ?c ?b)]]`,
+				`(above [:block/uuid "abc"] ?b)`),
+			"(ancestor ((abc)))")
+		Translates("a rule with the name of a built-in rule",
+			withRules(`[[(task ?b ?a) [?b :block/parent ?a]] [(task ?b ?a) [?b :block/parent ?c] (task ?c ?a)]]`,
+				`(task ?b [:block/uuid "abc"])`),
+			"(ancestor ((abc)))")
+
+		Unsupported("other rules", withRules(`[[(todo ?b) [?b :block/marker "TODO"]]]`, `(todo ?b)`), "only the recursive rule")
+		Unsupported("only the direct step",
+			withRules(`[[(below ?b ?a) [?b :block/parent ?a]]]`, `(below ?b [:block/uuid "abc"])`), "only the recursive rule")
+		Unsupported("a step that does not go up",
+			withRules(`[[(below ?b ?a) [?b :block/parent ?a]] [(below ?b ?a) [?c :block/parent ?b] (below ?c ?a)]]`,
+				`(below ?b [:block/uuid "abc"])`), "only the recursive rule")
+		Unsupported("a block above that is not known", withRules(below, `[?b :block/marker "TODO"] (below ?b ?a)`), "expected a block above")
+	})
+
 	Describe("Combinations", func() {
 		Translates("or without join", where(`(or [?b :block/marker "TODO"] [?b :block/priority "A"])`), "(or (task TODO) (priority A))")
 		Translates("not-join", where(`[?b :block/marker "TODO"] (not-join [?b] [?b :block/path-refs [:block/name "later"]])`),
@@ -286,7 +317,6 @@ var _ = Describe("Advanced queries", func() {
 	Describe("Unsupported", func() {
 		Unsupported("current page", `{:query [:find (pull ?b [*]) :in $ ?p :where [?b :block/page ?p]] :inputs [:current-page]}`, "the input :current-page")
 		Unsupported("time inputs", `{:query [:find (pull ?b [*]) :in $ ?t :where [?b :block/scheduled ?d] [(< ?d ?t)]] :inputs [:right-now-ms]}`, "time of day")
-		Unsupported("custom rules", `{:query [:find ?b :where (my-rule ?b)] :rules [[(my-rule ?b) [?b :block/marker "TODO"]]]}`, "custom rules")
 		Unsupported("two variables in find", `{:query [:find ?b ?p :where [?b :block/page ?p]]}`, "one variable or pull")
 		Unsupported("comparing variables", where(`[?b :block/scheduled ?s] [?b :block/deadline ?d] [(< ?s ?d)]`), "two variables")
 		Unsupported("parents that are not inputs", where(`[?b :block/parent ?parent]`), "expected a block")
