@@ -26,6 +26,61 @@ type AdvancedQuery struct {
 	Collapsed bool
 }
 
+// ParseOption is an option for ParseAdvanced and ParseNode.
+type ParseOption func(*parseOptions)
+
+type parseOptions struct {
+	currentPage string
+	queryPage   string
+}
+
+// WithCurrentPage gives the title of the page that the input `:current-page`
+// of an advanced query stands for. In Logseq that is the page that is shown,
+// which is the page with the query, unless the query is shown in an embed or
+// in the references of another page.
+func WithCurrentPage(title string) ParseOption {
+	return func(o *parseOptions) {
+		o.currentPage = title
+	}
+}
+
+// WithQueryPage gives the title of the page that the input `:query-page` of
+// an advanced query stands for, which is the page the query is written on.
+func WithQueryPage(title string) ParseOption {
+	return func(o *parseOptions) {
+		o.queryPage = title
+	}
+}
+
+var pageOptionNames = map[string]string{
+	"current-page": "WithCurrentPage",
+	"query-page":   "WithQueryPage",
+}
+
+// ParseNode reads the query in a node of a page: a simple query written as
+// `{{query ...}}`, which is a *content.Query, or an advanced query written
+// between `#+BEGIN_QUERY` and `#+END_QUERY`, which is a *content.QueryCommand.
+// Nodes such as these are found with content.IsQuery, and the block that
+// holds one with content.BlockOf.
+//
+// A simple query is read with Parse, and returned without a title. An
+// advanced query is read with ParseAdvanced, which the options are given to.
+// Run the query with Graph.Query in the logseq package.
+func ParseNode(node content.Node, opts ...ParseOption) (*AdvancedQuery, error) {
+	switch n := node.(type) {
+	case *content.Query:
+		q, err := Parse(n.Query)
+		if err != nil {
+			return nil, err
+		}
+		return &AdvancedQuery{Query: q}, nil
+	case *content.QueryCommand:
+		return ParseAdvanced(n.Query, opts...)
+	}
+
+	return nil, fmt.Errorf("query: %T is not a query", node)
+}
+
 // ErrUnsupported is wrapped by the errors of ParseAdvanced for queries that
 // can not be translated into a Query.
 var ErrUnsupported = errors.New("not supported")
@@ -78,10 +133,18 @@ var queryFence = regexp.MustCompile(`(?im)^\s*#\+(BEGIN|END)_QUERY\s*$`)
 //   - a :query that is a simple query, such as `(and (task TODO) [[page]])`
 //   - a :result-transform that sorts with sort-by, and reverse
 //
-// Inputs that depend on where the query is, such as `:current-page`, are not
-// supported. Neither are :block/refs, :rules or :view. Errors in the EDN
-// itself are returned as *ParseError.
-func ParseAdvanced(text string) (*AdvancedQuery, error) {
+// The inputs `:current-page` and `:query-page` depend on where the query is,
+// and are supported when the page is given with WithCurrentPage and
+// WithQueryPage. The inputs `:current-block` and `:parent-block`, and
+// :block/refs and :rules are not supported. Keys that only change how Logseq
+// shows the results, such as :view and :table-view?, are ignored. Errors in
+// the EDN itself are returned as *ParseError.
+func ParseAdvanced(text string, opts ...ParseOption) (*AdvancedQuery, error) {
+	options := &parseOptions{}
+	for _, opt := range opts {
+		opt(options)
+	}
+
 	// The fences are replaced with spaces so that offsets stay the same.
 	text = queryFence.ReplaceAllStringFunc(text, func(s string) string {
 		return strings.Repeat(" ", len(s))
@@ -107,6 +170,10 @@ func ParseAdvanced(text string) (*AdvancedQuery, error) {
 	t := &translator{
 		src:    text,
 		inputs: make(map[string]*ednNode),
+		pages: map[string]string{
+			"current-page": options.currentPage,
+			"query-page":   options.queryPage,
+		},
 	}
 
 	result := &AdvancedQuery{}
@@ -240,6 +307,10 @@ type translator struct {
 	// inputs are the values of the variables in :in.
 	inputs map[string]*ednNode
 
+	// pages are the titles of the pages that the inputs :current-page and
+	// :query-page stand for, empty if they are not known.
+	pages map[string]string
+
 	kinds map[string]entityKind
 	// pageOf maps the variable of a page to the variable of a block on it,
 	// from `[?b :block/page ?p]`.
@@ -371,6 +442,17 @@ func (t *translator) readInputs(queryNode *ednNode, in []*ednNode, inputsNode *e
 
 	for i, v := range vars {
 		input := inputs[i]
+		if title, isPage := t.pages[input.text]; isPage && input.kind == ednKeyword {
+			if title == "" {
+				return t.unsupported(input, "the input :%s needs the title of the page, given with %s", input.text, pageOptionNames[input.text])
+			}
+
+			// The input is read as the title of the page, the same as an
+			// input such as "[[page]]".
+			t.inputs[v.text] = &ednNode{kind: ednString, text: title, pos: input.pos, end: input.end}
+			continue
+		}
+
 		if input.kind == ednKeyword {
 			if _, ok := utils.ParseQueryDateInput(input.text, time.Now()); !ok {
 				return t.unsupported(input, "the input :%s is not supported", input.text)

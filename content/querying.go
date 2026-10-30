@@ -112,3 +112,29 @@ func (n NodeList) PageReferences() NodeList {
 
 	return refs
 }
+
+// IsQuery matches the nodes that hold a Logseq query: a simple query written
+// as `{{query ...}}`, which is a *Query, and an advanced query written between
+// `#+BEGIN_QUERY` and `#+END_QUERY`, which is a *QueryCommand. The query
+// package reads both with query.ParseNode.
+func IsQuery() NodePredicate {
+	return IsEither(IsOfType[*Query](), IsOfType[*QueryCommand]())
+}
+
+// BlockOf returns the closest block that holds the node, or the node itself
+// if it is a block. Returns nil if the node is not in a block.
+func BlockOf(node Node) *Block {
+	for node != nil {
+		if block, ok := node.(*Block); ok {
+			return block
+		}
+
+		parent := node.Parent()
+		if parent == nil {
+			return nil
+		}
+		node = parent
+	}
+
+	return nil
+}

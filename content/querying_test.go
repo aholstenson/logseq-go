@@ -48,4 +48,26 @@ var _ = Describe("Querying", func() {
 			Expect(block.Children().PageReferences()).To(BeEmpty())
 		})
 	})
+
+	Describe("Queries", func() {
+		simple := content.NewQuery("(task TODO)")
+		advanced := content.NewQueryCommand("{:query [:find ?b :where [?b :block/marker \"TODO\"]]}")
+		inner := content.NewBlock(content.NewParagraph(content.NewText("see "), simple))
+		outer := content.NewBlock(advanced, inner)
+
+		It("finds simple and advanced queries", func() {
+			Expect(outer.Children().FilterDeep(content.IsQuery())).To(EqualsNodes(advanced, simple))
+		})
+
+		It("finds the block that holds a node", func() {
+			Expect(content.BlockOf(simple)).To(BeIdenticalTo(inner))
+			Expect(content.BlockOf(advanced)).To(BeIdenticalTo(outer))
+			Expect(content.BlockOf(inner)).To(BeIdenticalTo(inner))
+		})
+
+		It("returns nil for a node that is not in a block", func() {
+			Expect(content.BlockOf(content.NewText("alone"))).To(BeNil())
+			Expect(content.BlockOf(nil)).To(BeNil())
+		})
+	})
 })

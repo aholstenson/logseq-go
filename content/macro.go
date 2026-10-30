@@ -52,7 +52,9 @@ func (m *Macro) isInline() {}
 
 var _ InlineNode = (*Macro)(nil)
 
-// Query represents a simple query in the source, on the form `{{query datalog query}}`.
+// Query represents a simple query in the source, on the form
+// `{{query (and (task TODO) [[page]])}}`. Query holds the text inside the
+// macro. The query package reads it with query.ParseNode.
 type Query struct {
 	baseNode
 

@@ -269,6 +269,55 @@ var _ = Describe("Query", func() {
 		})
 	})
 
+	Describe("Queries on pages", func() {
+		It("finds the queries on a page and runs them", func() {
+			Expect(os.WriteFile(filepath.Join(graph.Directory(), "pages", "project.md"), []byte(
+				"- Open tasks {{query (and (task TODO) [[project]])}}\n"+
+					"- #+BEGIN_QUERY\n"+
+					"  {:title [:b \"Linked tasks\"]\n"+
+					"   :query [:find (pull ?b [*]) :in $ ?page\n"+
+					"           :where [?b :block/marker \"TODO\"] [?b :block/path-refs ?p] [?p :block/name ?page]]\n"+
+					"   :inputs [:current-page]}\n"+
+					"  #+END_QUERY\n",
+			), 0o644)).To(Succeed())
+			Expect(os.WriteFile(filepath.Join(graph.Directory(), "pages", "work.md"), []byte(
+				"- TODO Write the docs for [[project]]\n- TODO Something else\n",
+			), 0o644)).To(Succeed())
+			graph.Close()
+
+			var err error
+			graph, err = logseq.Open(ctx, graph.Directory(), logseq.WithInMemoryIndex())
+			Expect(err).ToNot(HaveOccurred())
+
+			page, err := graph.OpenPage("project")
+			Expect(err).ToNot(HaveOccurred())
+
+			var nodes content.NodeList
+			for _, block := range page.Blocks() {
+				nodes = append(nodes, block.Children().FilterDeep(content.IsQuery())...)
+			}
+			Expect(nodes).To(HaveLen(2))
+
+			var titles, previews []string
+			for _, node := range nodes {
+				Expect(content.BlockOf(node)).ToNot(BeNil())
+
+				advanced, err := query.ParseNode(node, query.WithCurrentPage(page.Title()))
+				Expect(err).ToNot(HaveOccurred())
+				titles = append(titles, advanced.Title)
+
+				results, err := graph.Query(ctx, advanced.Query, logseq.QueryAt(now))
+				Expect(err).ToNot(HaveOccurred())
+				for _, block := range results.Blocks {
+					previews = append(previews, block.Preview())
+				}
+			}
+
+			Expect(titles).To(Equal([]string{"", "Linked tasks"}))
+			Expect(previews).To(Equal([]string{"Write the docs for project", "Write the docs for project"}))
+		})
+	})
+
 	Describe("Results", func() {
 		It("picks a sample of the results", func() {
 			results := blocks("(and (task TODO) (sort-by priority asc) (sample 2))")

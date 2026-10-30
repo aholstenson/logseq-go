@@ -46,7 +46,9 @@ func (h *AdvancedCommand) isBlock() {}
 var _ BlockNode = (*AdvancedCommand)(nil)
 
 // QueryCommand is a command represented by #+BEGIN_QUERY..#+END_QUERY in
-// a block.
+// a block, which holds an advanced query of Logseq. Query holds the text
+// between the two lines, which is a map of EDN. The query package reads it
+// with query.ParseNode.
 type QueryCommand struct {
 	baseNode
 
