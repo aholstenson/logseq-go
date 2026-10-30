@@ -103,13 +103,15 @@ func HasAlias(alias string) Query {
 }
 
 // References returns a query that matches if the given page is referenced
-// both as a link and a tag.
+// both as a link and a tag. A block matches if its own content references the
+// page, not if a block below it does. Use PathReferences to also match the
+// blocks below a reference.
 func References(page string) Query {
 	return indexing.References(page)
 }
 
 // ReferencesTag returns a query that matches if the given page is
-// referenced as a tag.
+// referenced as a tag. A block matches if its own content has the tag.
 func ReferencesTag(page string) Query {
 	return indexing.ReferencesTag(page)
 }
@@ -127,7 +129,7 @@ func PathReferences(page string) Query {
 }
 
 // LinksToURL returns a query that checks if a block or page links to a
-// URL.
+// URL. A block matches if its own content has the link.
 func LinksToURL(url string) Query {
 	return indexing.LinksToURL(url)
 }

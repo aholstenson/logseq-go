@@ -62,6 +62,15 @@ var _ = Describe("Linked references", func() {
 		Expect(previews(results)).To(ConsistOf("see target for more"))
 	})
 
+	It("finds only the block with the link, not its parents", func() {
+		graph = openGraphWithPages(dir, map[string]string{
+			"target.md":   "- content of target\n",
+			"referrer.md": "- parent\n  - child\n    - see [[target]]\n  - sibling\n",
+		})
+
+		Expect(previews(linkedReferences("target"))).To(ConsistOf("see target"))
+	})
+
 	It("finds blocks that tag the page", func() {
 		graph = openGraphWithPages(dir, map[string]string{
 			"target.md":   "- content of target\n",

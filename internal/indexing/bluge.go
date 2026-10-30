@@ -28,7 +28,7 @@ func (i idTerm) Term() []byte {
 // Increase it when the way pages or blocks are indexed changes, so that an
 // index stored on disk is built again with the new fields. Without that the
 // pages that did not change since they were indexed keep their old documents.
-const indexVersion = 4
+const indexVersion = 5
 
 // versionDocID is the id of the document that stores the version of the
 // index. It does not have a type, so searches for pages and blocks never
@@ -422,14 +422,14 @@ func (i *BlugeIndex) pageToDocument(doc *Page) (*bluge.Document, error) {
 
 	if doc.Properties != nil {
 		i.transferProperties(blugeDoc, doc.Properties, true)
-		i.transferRefs(blugeDoc, "pages", doc.Properties)
+		i.transferRefs(blugeDoc, "pages", doc.Properties.Children())
 	}
 
 	// References in the block a page opens with are references of the page
 	// itself. The pre-block holding the content before the first bullet is part
 	// of that opening, so it is taken together with the first bullet.
 	for _, block := range doc.Blocks {
-		i.transferRefs(blugeDoc, "pages", block)
+		i.transferRefs(blugeDoc, "pages", block.Children())
 
 		if !block.IsPreBlock() {
 			break
@@ -449,7 +449,7 @@ func (i *BlugeIndex) pageToDocument(doc *Page) (*bluge.Document, error) {
 
 	var fullText strings.Builder
 	for idx, block := range doc.Blocks {
-		i.transferLinks(blugeDoc, block)
+		i.transferLinks(blugeDoc, block.Children())
 
 		if idx > 0 {
 			fullText.WriteString("\n\n")
@@ -618,8 +618,11 @@ func (i *BlugeIndex) blockToDocument(page *Page, id string, block *content.Block
 	if props := block.FindProperties(); props != nil {
 		i.transferProperties(blugeDoc, props, true)
 	}
-	i.transferRefs(blugeDoc, "pages", block)
-	i.transferLinks(blugeDoc, block)
+	// Only the content of the block itself is used, as the blocks below it
+	// are indexed on their own. Logseq calls these the refs of a block, and
+	// PathReferences matches on the refs of the parents as well.
+	i.transferRefs(blugeDoc, "pages", block.Content())
+	i.transferLinks(blugeDoc, block.Content())
 	transferTask(blugeDoc, block)
 
 	var fullText strings.Builder
@@ -728,7 +731,7 @@ func (i *BlugeIndex) transferProperties(doc *bluge.Document, properties *content
 		// property, also when the property has no value.
 		doc.AddField(bluge.NewKeywordField("props", normalizeRef(prop.Name)))
 
-		i.transferRefs(doc, "prop:"+prop.Name, prop)
+		i.transferRefs(doc, "prop:"+prop.Name, prop.Children())
 
 		s := plainText(prop.Children())
 		if s == "" {
@@ -744,8 +747,10 @@ func (i *BlugeIndex) transferProperties(doc *bluge.Document, properties *content
 	}
 }
 
-func (i *BlugeIndex) transferRefs(doc *bluge.Document, field string, root content.HasChildren) {
-	refs := root.Children().PageReferences()
+// transferRefs indexes the page references in the nodes and the nodes below
+// them, as both a link and, for hashtags, a tag.
+func (i *BlugeIndex) transferRefs(doc *bluge.Document, field string, nodes content.NodeList) {
+	refs := nodes.PageReferences()
 	for _, ref := range refs {
 		doc.AddField(bluge.NewKeywordField(field+":ref", normalizeRef(ref.(content.PageRef).GetTo())))
 
@@ -764,8 +769,10 @@ func normalizeRef(title string) string {
 	return strings.ToLower(title)
 }
 
-func (i *BlugeIndex) transferLinks(doc *bluge.Document, root content.HasChildren) {
-	links := root.Children().FilterDeep(content.IsOfType[content.HasLinkURL]())
+// transferLinks indexes the URLs that the nodes and the nodes below them link
+// to.
+func (i *BlugeIndex) transferLinks(doc *bluge.Document, nodes content.NodeList) {
+	links := nodes.FilterDeep(content.IsOfType[content.HasLinkURL]())
 	for _, link := range links {
 		doc.AddField(bluge.NewKeywordField("link", link.(content.HasLinkURL).GetURL()))
 	}
