@@ -28,7 +28,7 @@ func (i idTerm) Term() []byte {
 // Increase it when the way pages or blocks are indexed changes, so that an
 // index stored on disk is built again with the new fields. Without that the
 // pages that did not change since they were indexed keep their old documents.
-const indexVersion = 3
+const indexVersion = 4
 
 // versionDocID is the id of the document that stores the version of the
 // index. It does not have a type, so searches for pages and blocks never
@@ -412,6 +412,8 @@ func (i *BlugeIndex) pageToDocument(doc *Page) (*bluge.Document, error) {
 		blugeDoc.AddField(bluge.NewDateTimeField("date", doc.Date).StoreValue())
 	}
 
+	addTitleSort(blugeDoc, doc)
+
 	// Aliases are matched the same way references are, so that a page can be
 	// found via a title that only differs in case from the alias.
 	for _, alias := range doc.Aliases {
@@ -605,6 +607,8 @@ func (i *BlugeIndex) blockToDocument(page *Page, id string, block *content.Block
 		blugeDoc.AddField(bluge.NewDateTimeField("date", page.Date))
 	}
 
+	addTitleSort(blugeDoc, page)
+
 	if id := block.ID(); id != "" {
 		blugeDoc.AddField(bluge.NewKeywordField("id", id).StoreValue())
 	}
@@ -642,7 +646,8 @@ func transferTask(doc *bluge.Document, block *content.Block) {
 	}
 
 	if priority := priorityValue(block.Priority()); priority != "" {
-		doc.AddField(bluge.NewKeywordField("priority", priority))
+		// The values A, B and C sort in the order of the priorities.
+		doc.AddField(bluge.NewKeywordField("priority", priority).Sortable())
 	}
 
 	if scheduled := block.Scheduled(); scheduled != nil {
@@ -652,6 +657,17 @@ func transferTask(doc *bluge.Document, block *content.Block) {
 	if deadline := block.Deadline(); deadline != nil {
 		doc.AddField(bluge.NewDateTimeField("deadline", deadline.Date))
 	}
+}
+
+// addTitleSort adds the title of the page to a document of the page or of a
+// block on it, so that results can be sorted by title. The title field itself
+// is split into words, which can not be sorted on.
+func addTitleSort(doc *bluge.Document, page *Page) {
+	if page.Title == "" {
+		return
+	}
+
+	doc.AddField(bluge.NewKeywordField(SortFieldTitle, normalizeRef(page.Title)).Sortable())
 }
 
 // priorityValue is the value a priority is indexed as, or an empty string for

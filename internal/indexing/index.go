@@ -48,9 +48,27 @@ type SearchOptions struct {
 }
 
 type SortField struct {
+	// Field is the field to sort by, one of the SortField constants.
 	Field string
 	Asc   bool
 }
+
+// The fields that results can be sorted by. Results without a value for the
+// field come last in both orders.
+const (
+	// SortFieldPriority sorts tasks by priority, as A, B and C.
+	SortFieldPriority = "priority"
+	// SortFieldScheduled sorts blocks by their `SCHEDULED` date.
+	SortFieldScheduled = "scheduled"
+	// SortFieldDeadline sorts blocks by their `DEADLINE` date.
+	SortFieldDeadline = "deadline"
+	// SortFieldJournalDate sorts journals, and the blocks on them, by the date
+	// of the journal.
+	SortFieldJournalDate = "date"
+	// SortFieldTitle sorts pages by title, and blocks by the title of their
+	// page, without regard for case.
+	SortFieldTitle = "title:sort"
+)
 
 type SearchResults[V any] interface {
 	// Size is the number of results available in this result set.

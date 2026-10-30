@@ -341,8 +341,12 @@ tasks, err := graph.SearchBlocks(ctx, logseq.WithQuery(logseq.And(
     logseq.ScheduledBetween(today, tomorrow),
     logseq.DeadlineBetween(today, tomorrow),
   ),
-)))
+)), logseq.WithSort(logseq.SortByPriority, logseq.Ascending))
 ```
+
+Results are sorted by how well they match, unless `WithSort` is used. Results
+can be sorted by priority, scheduled date, deadline, journal date and title.
+Results without a value, such as tasks without a priority, come last.
 
 ## Limitations
 

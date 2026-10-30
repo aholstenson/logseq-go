@@ -61,6 +61,67 @@ func WithQuery(q Query) SearchOption {
 	}
 }
 
+// SortField is a value that search results can be sorted by, see WithSort.
+type SortField int
+
+const (
+	// SortByPriority sorts tasks by priority, so A comes before B and B before
+	// C in ascending order.
+	SortByPriority SortField = iota
+	// SortByScheduled sorts blocks by their `SCHEDULED` date.
+	SortByScheduled
+	// SortByDeadline sorts blocks by their `DEADLINE` date.
+	SortByDeadline
+	// SortByJournalDate sorts journals, and the blocks on them, by the date of
+	// the journal.
+	SortByJournalDate
+	// SortByTitle sorts pages by title, and blocks by the title of the page
+	// they are on. Titles are sorted without regard for case.
+	SortByTitle
+)
+
+// SortOrder is the direction of a sort, see WithSort.
+type SortOrder int
+
+const (
+	// Ascending sorts from the lowest value, such as the earliest date or
+	// priority A, to the highest.
+	Ascending SortOrder = iota
+	// Descending sorts from the highest value to the lowest.
+	Descending
+)
+
+// WithSort sorts the results by a field. Results without a value for the
+// field, such as tasks without a priority, come last in both orders. Without
+// this option the results are sorted by how well they match the query.
+//
+// This option can be used multiple times. The results are then sorted by the
+// first field, and results with the same value for it by the next field.
+func WithSort(field SortField, order SortOrder) SearchOption {
+	return func(o *searchOptions) {
+		name := ""
+		switch field {
+		case SortByPriority:
+			name = indexing.SortFieldPriority
+		case SortByScheduled:
+			name = indexing.SortFieldScheduled
+		case SortByDeadline:
+			name = indexing.SortFieldDeadline
+		case SortByJournalDate:
+			name = indexing.SortFieldJournalDate
+		case SortByTitle:
+			name = indexing.SortFieldTitle
+		default:
+			return
+		}
+
+		o.sortBy = append(o.sortBy, indexing.SortField{
+			Field: name,
+			Asc:   order == Ascending,
+		})
+	}
+}
+
 // eachResult goes through every result of a search, fetching them in batches so
 // that searches with more results than are wanted in memory at once can be
 // walked through.

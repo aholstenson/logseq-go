@@ -389,6 +389,27 @@ var _ = Describe("Search", func() {
 			Expect(results.Results()[0].Preview()).To(Equal("Call the bank"))
 		})
 
+		It("sorts tasks by priority with tasks without a priority last", func() {
+			graph = openGraphWithPages(dir, map[string]string{
+				"tasks.md": "- TODO No priority\n" +
+					"- TODO [#C] Low\n" +
+					"- LATER [#A] High\n" +
+					"- TODO [#B] Medium\n",
+			})
+
+			results, err := graph.SearchBlocks(ctx,
+				logseq.WithQuery(logseq.IsOpenTask()),
+				logseq.WithSort(logseq.SortByPriority, logseq.Ascending),
+			)
+			Expect(err).ToNot(HaveOccurred())
+
+			previews := make([]string, 0, results.Size())
+			for _, result := range results.Results() {
+				previews = append(previews, result.Preview())
+			}
+			Expect(previews).To(Equal([]string{"High", "Medium", "Low", "No priority"}))
+		})
+
 		It("leaves out tasks below a tagged block", func() {
 			graph = openGraphWithPages(dir, map[string]string{
 				"tasks.md": "- #shopping\n  - TODO Buy milk\n" +
