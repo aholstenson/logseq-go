@@ -59,6 +59,12 @@ func (t *tagParser) Parse(parent ast.Node, block text.Reader, pc parser.Context)
 
 	line = line[1:]
 
+	// Logseq does not make tags in the text of a link, so
+	// "[Teams:#](https://a.com/)" is a link and not a tag.
+	if insideLinkLabel(parent) && closesAsInlineLink(line) {
+		return nil
+	}
+
 	// Two # in sequence is not a tag, but the second # can start a tag.
 	if len(line) > 0 && line[0] == '#' {
 		return nil
@@ -115,6 +121,39 @@ func (t *tagParser) Parse(parent ast.Node, block text.Reader, pc parser.Context)
 	}
 	block.Advance(seg.Len())
 	return &n
+}
+
+// insideLinkLabel returns true if the inline content of parent has a "[" or
+// "![" that Goldmark has not closed yet. Goldmark keeps each open bracket as
+// a node of the kind "LinkLabelState" until it finds the closing "]".
+func insideLinkLabel(parent ast.Node) bool {
+	for c := parent.LastChild(); c != nil; c = c.PreviousSibling() {
+		if c.Kind().String() == "LinkLabelState" {
+			return true
+		}
+	}
+	return false
+}
+
+// closesAsInlineLink returns true if rest has the "]" that closes the open
+// link label, and a "(" comes directly after it. Brackets in rest must be in
+// balanced pairs, and a backslash escapes the character after it.
+func closesAsInlineLink(rest []byte) bool {
+	depth := 0
+	for i := 0; i < len(rest); i++ {
+		switch rest[i] {
+		case '\\':
+			i++
+		case '[':
+			depth++
+		case ']':
+			if depth == 0 {
+				return i+1 < len(rest) && rest[i+1] == '('
+			}
+			depth--
+		}
+	}
+	return false
 }
 
 var _ parser.InlineParser = (*tagParser)(nil)

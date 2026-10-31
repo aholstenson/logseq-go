@@ -440,6 +440,53 @@ var _ = Describe("Parsing", func() {
 			)))
 		})
 
+		It("does not parse a tag in the text of a link", func() {
+			block, err := markdown.ParseString("**08:54** #Article [Smaller Teams:#](https://a.com/) #Readwise")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewStrong(content.NewText("08:54")),
+					content.NewText(" "),
+					content.NewHashtag("Article"),
+					content.NewText(" "),
+					content.NewLink(
+						"https://a.com/",
+						content.NewText("Smaller Teams:#"),
+					),
+					content.NewText(" "),
+					content.NewHashtag("Readwise"),
+				),
+			)))
+		})
+
+		It("does not parse a tag with a name in the text of a link", func() {
+			block, err := markdown.ParseString("[a #tag [b] c](https://a.com/)")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewLink(
+						"https://a.com/",
+						content.NewText("a #tag [b] c"),
+					),
+				),
+			)))
+		})
+
+		It("parses a tag in brackets that are not a link", func() {
+			block, err := markdown.ParseString("[a #tag] (b)")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("[a "),
+					content.NewHashtag("tag]"),
+					content.NewText(" (b)"),
+				),
+			)))
+		})
+
 		It("can parse link with escaped characters", func() {
 			block, err := markdown.ParseString("[This is a link](https://example.com\\)\\*\\[\\])")
 			Expect(err).ToNot(HaveOccurred())

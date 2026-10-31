@@ -101,6 +101,9 @@ var _ = Describe("Parsing then outputting", func() {
 		FullyEqual("Hash followed by a space", "issue # 5")
 		FullyEqual("Hash at the end of a word", "C# is fine")
 		FullyEqual("Hash at the end of a line", "content #")
+		FullyEqual("Hash inside a word", "C#Sharp and C#, C")
+		FullyEqual("Tag with trailing punctuation", "a #tag, b")
+		FullyEqual("Hash in the text of a link", "**08:54** #Article [Smaller Teams:#](https://a.com/) #Readwise")
 	})
 
 	Describe("Heading", func() {
