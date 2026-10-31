@@ -741,6 +741,39 @@ var _ = Describe("Query", func() {
 			Expect(advanced.GroupByPage).To(BeFalse())
 		})
 
+		It("returns the results in the order of the table", func() {
+			Expect(os.WriteFile(filepath.Join(graph.Directory(), "pages", "ratings.md"), []byte(
+				"- {{query (property rating)}}\n"+
+					"  query-table:: true\n"+
+					"  query-sort-by:: rating\n"+
+					"  query-sort-desc:: false\n",
+			), 0o644)).To(Succeed())
+			graph.Close()
+
+			var err error
+			graph, err = logseq.Open(ctx, graph.Directory(), logseq.WithInMemoryIndex())
+			Expect(err).ToNot(HaveOccurred())
+
+			page, err := graph.OpenPage("ratings")
+			Expect(err).ToNot(HaveOccurred())
+
+			nodes := page.Blocks()[0].Children().FilterDeep(content.IsQuery())
+			Expect(nodes).To(HaveLen(1))
+
+			advanced, err := query.ParseNode(nodes[0])
+			Expect(err).ToNot(HaveOccurred())
+			Expect(advanced.TableProperties).To(BeNil())
+
+			results, err := graph.Query(ctx, advanced.Query)
+			Expect(err).ToNot(HaveOccurred())
+
+			previews := make([]string, 0, len(results.Blocks))
+			for _, result := range results.Blocks {
+				previews = append(previews, result.Preview())
+			}
+			Expect(previews).To(Equal([]string{"Fine film", "Good film", "Great film"}))
+		})
+
 		Describe("with the block of the query", func() {
 			BeforeEach(func() {
 				Expect(os.WriteFile(filepath.Join(graph.Directory(), "pages", "notes.md"), []byte(

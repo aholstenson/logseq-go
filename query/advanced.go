@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"regexp/syntax"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -48,6 +49,24 @@ type AdvancedQuery struct {
 	// ParseNode can read the property, as ParseAdvanced does not get the
 	// block.
 	TableView bool
+
+	// TableProperties are the names of the columns of the table, from the
+	// property `query-properties::` of the block with the query, such as
+	// `[:block :page :rating]`. Nil if the block does not have the property,
+	// in which case Logseq shows a column for each property in the results.
+	TableProperties []string
+
+	// TableSortBy is the column that Logseq sorts the table by: the name of a
+	// property, or `page`, `block`, `created-at` or `updated-at`. It is the
+	// value of the property `query-sort-by::` of the block with the query. If
+	// the block does not have the property, it is `updated-at`, or empty if
+	// the query has a `(sort-by ...)` of its own, which keeps the order of
+	// the query.
+	TableSortBy string
+
+	// TableSortDesc is true if the table is sorted in descending order. It is
+	// false if the block with the query has `query-sort-desc:: false`.
+	TableSortDesc bool
 
 	// BreadcrumbShow is true if Logseq shows the parent blocks above each
 	// block that the query finds. It is the value of `:breadcrumb-show?`, and
@@ -205,9 +224,17 @@ var inputOptionNames = map[string]string{
 // by its location on the page given with WithQueryPage, see ParentFilter, so
 // give that option for queries in blocks without the property.
 //
-// The property `query-table::` of the block with the query is read into
-// AdvancedQuery.TableView. Run the query with Graph.Query in the logseq
-// package.
+// The properties `query-table::`, `query-properties::`, `query-sort-by::` and
+// `query-sort-desc::` of the block with the query are read into the fields
+// for the table. Run the query with Graph.Query in the logseq package.
+//
+// Logseq shows the results in a table when TableView is true, and always
+// when the query finds pages. In a table, Logseq sorts the results by
+// TableSortBy. ParseNode then adds this sort to the start of Query.Sort, so
+// that Graph.Query returns the results in the same order. This is only done
+// for a property or `page`, as the index can not sort by the other columns,
+// and only for a query without a limit, as Logseq sorts the table after the
+// results are limited.
 func ParseNode(node content.Node, opts ...ParseOption) (*AdvancedQuery, error) {
 	var result *AdvancedQuery
 	switch n := node.(type) {
@@ -222,6 +249,8 @@ func ParseNode(node content.Node, opts ...ParseOption) (*AdvancedQuery, error) {
 			GroupByPage:         q.ByPage == nil || *q.ByPage,
 			RemoveBlockChildren: true,
 			TableView:           table,
+			TableSortBy:         defaultTableSortBy(n.Query),
+			TableSortDesc:       true,
 			BreadcrumbShow:      true,
 		}
 	case *content.QueryCommand:
@@ -249,14 +278,80 @@ func ParseNode(node content.Node, opts ...ParseOption) (*AdvancedQuery, error) {
 		return nil, fmt.Errorf("query: %T is not a query", node)
 	}
 
-	if block := content.BlockOf(node); block != nil && isTruthyProperty(block, "query-table") {
-		result.TableView = true
+	if block := content.BlockOf(node); block != nil {
+		if isTruthyProperty(block, "query-table") {
+			result.TableView = true
+		}
+		if columns, ok := propertyText(block, "query-properties"); ok {
+			result.TableProperties = tableColumns(columns)
+		}
+		if column, ok := propertyText(block, "query-sort-by"); ok && column != "" {
+			result.TableSortBy = strings.TrimPrefix(column, ":")
+		}
+		if desc, ok := propertyText(block, "query-sort-desc"); ok && desc != "" {
+			result.TableSortDesc = desc != "false"
+		}
 	}
 	if result.TableView {
 		result.GroupByPage = false
 	}
 
+	if (result.TableView || !result.Query.FindsBlocks()) && result.Query.Limit == 0 {
+		if sort, ok := tableSort(result.TableSortBy, result.TableSortDesc); ok {
+			result.Query.Sort = append([]Sort{sort}, result.Query.Sort...)
+		}
+	}
+
 	return result, nil
+}
+
+// defaultTableSortBy returns the column that Logseq sorts a table by when the
+// block with the query does not have the property `query-sort-by::`. Logseq
+// keeps the order of the query if the text has `(sort-by`, also in a
+// :result-transform, and else sorts by the time the blocks were changed.
+func defaultTableSortBy(text string) string {
+	if strings.Contains(text, "(sort-by") {
+		return ""
+	}
+
+	return "updated-at"
+}
+
+// tableSort returns the sort for a column of a table, and false for a column
+// that the index can not sort by.
+func tableSort(column string, desc bool) (Sort, bool) {
+	order := Asc
+	if desc {
+		order = Desc
+	}
+
+	switch column {
+	case "", "block", "created-at", "updated-at":
+		return Sort{}, false
+	case "page":
+		return Sort{Field: SortTitle, Order: order}, true
+	}
+
+	return Sort{Field: SortProperty, Property: column, Order: order}, true
+}
+
+// tableColumns reads the value of `query-properties::`, which is a vector of
+// keywords such as `[:block :page :rating]`. The same as in Logseq, a value
+// that can not be read gives no columns.
+func tableColumns(text string) []string {
+	r := &ednReader{input: text}
+	node, err := r.read()
+	if err != nil || (node.kind != ednVector && node.kind != ednList) {
+		return nil
+	}
+
+	columns := make([]string, 0, len(node.items))
+	for _, item := range node.items {
+		if item.kind == ednKeyword && !slices.Contains(columns, item.text) {
+			columns = append(columns, item.text)
+		}
+	}
+	return columns
 }
 
 // cutTable returns the text of a simple query without the word `table` at the
@@ -283,20 +378,31 @@ func cutTable(text string) (string, bool) {
 // isTruthyProperty returns true if Logseq treats the value of the property of
 // the block as true: the property has a value, and the value is not `false`.
 func isTruthyProperty(block *content.Block, name string) bool {
+	v, _ := propertyText(block, name)
+	return v != "" && v != "false"
+}
+
+// propertyText returns the text of the value of the property of the block,
+// and false if the block does not have the property.
+func propertyText(block *content.Block, name string) (string, bool) {
 	properties := block.FindProperties()
 	if properties == nil {
-		return false
+		return "", false
+	}
+
+	property := properties.GetAsNode(name)
+	if property == nil {
+		return "", false
 	}
 
 	var value strings.Builder
-	for _, node := range properties.Get(name) {
+	for _, node := range property.Children() {
 		if text, ok := node.(*content.Text); ok {
 			value.WriteString(text.Value)
 		}
 	}
 
-	v := strings.TrimSpace(value.String())
-	return v != "" && v != "false"
+	return strings.TrimSpace(value.String()), true
 }
 
 func newParseOptions(opts []ParseOption) *parseOptions {
@@ -473,7 +579,12 @@ func parseAdvanced(text string, options *parseOptions) (*AdvancedQuery, error) {
 		inlineRules: make(map[string][]*ruleDef),
 	}
 
-	result := &AdvancedQuery{RemoveBlockChildren: true, BreadcrumbShow: true}
+	result := &AdvancedQuery{
+		RemoveBlockChildren: true,
+		TableSortBy:         defaultTableSortBy(text),
+		TableSortDesc:       true,
+		BreadcrumbShow:      true,
+	}
 	var tableViewNode *ednNode
 	var queryNode, inputsNode, transformNode, rulesNode, groupByPageNode *ednNode
 	for i := 0; i < len(root.items); i += 2 {

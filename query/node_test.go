@@ -21,15 +21,21 @@ var _ = Describe("Queries in nodes", func() {
 	})
 
 	Describe("Table view", func() {
-		// inBlock returns a simple query in a block with the value of the
-		// property `query-table::`, or without the property if it is empty.
-		inBlock := func(text string, queryTable string) *content.Query {
+		// inBlock returns a simple query in a block with the properties,
+		// given as pairs of names and values.
+		inBlock := func(text string, properties ...string) *content.Query {
 			q := content.NewQuery(text)
 			block := content.NewBlock(content.NewParagraph(q))
-			if queryTable != "" {
-				block.Properties().Set("query-table", content.NewText(queryTable))
+			for i := 0; i < len(properties); i += 2 {
+				block.Properties().Set(properties[i], content.NewText(properties[i+1]))
 			}
 			return q
+		}
+
+		parse := func(node content.Node) *query.AdvancedQuery {
+			advanced, err := query.ParseNode(node)
+			Expect(err).ToNot(HaveOccurred())
+			return advanced
 		}
 
 		It("reads `table` at the end of a simple query", func() {
@@ -41,19 +47,69 @@ var _ = Describe("Queries in nodes", func() {
 		})
 
 		It("reads the property query-table of the block", func() {
-			advanced, err := query.ParseNode(inBlock("(task TODO)", "true"))
-			Expect(err).ToNot(HaveOccurred())
+			advanced := parse(inBlock("(task TODO)", "query-table", "true"))
 			Expect(advanced.TableView).To(BeTrue())
 			Expect(advanced.GroupByPage).To(BeFalse())
 
-			advanced, err = query.ParseNode(inBlock("(task TODO)", "false"))
-			Expect(err).ToNot(HaveOccurred())
+			advanced = parse(inBlock("(task TODO)", "query-table", "false"))
 			Expect(advanced.TableView).To(BeFalse())
 			Expect(advanced.GroupByPage).To(BeTrue())
 
-			advanced, err = query.ParseNode(inBlock("(task TODO)", ""))
-			Expect(err).ToNot(HaveOccurred())
+			advanced = parse(inBlock("(task TODO)", "query-table", ""))
 			Expect(advanced.TableView).To(BeFalse())
+		})
+
+		It("reads the columns from query-properties", func() {
+			Expect(parse(inBlock("(task TODO)", "query-properties", "[:block :page :rating]")).TableProperties).
+				To(Equal([]string{"block", "page", "rating"}))
+			Expect(parse(inBlock("(task TODO)", "query-properties", "[:block")).TableProperties).To(BeNil())
+			Expect(parse(inBlock("(task TODO)")).TableProperties).To(BeNil())
+		})
+
+		It("sorts by updated-at in descending order by default", func() {
+			advanced := parse(inBlock("(task TODO)"))
+			Expect(advanced.TableSortBy).To(Equal("updated-at"))
+			Expect(advanced.TableSortDesc).To(BeTrue())
+
+			// The index can not sort by updated-at, so the query is not changed.
+			Expect(parse(inBlock("(task TODO) table")).Query.String()).To(Equal("(task TODO)"))
+		})
+
+		It("keeps the order of a query with a sort of its own", func() {
+			advanced := parse(inBlock("(and (task TODO) (sort-by priority asc))"))
+			Expect(advanced.TableSortBy).To(BeEmpty())
+		})
+
+		It("adds the sort of the table to the start of the sort of the query", func() {
+			advanced := parse(inBlock("(and (task TODO) (sort-by priority asc))",
+				"query-table", "true", "query-sort-by", "rating", "query-sort-desc", "false"))
+			Expect(advanced.TableSortBy).To(Equal("rating"))
+			Expect(advanced.TableSortDesc).To(BeFalse())
+			Expect(advanced.Query.String()).To(Equal("(and (task TODO) (sort-by rating asc) (sort-by priority asc))"))
+
+			advanced = parse(inBlock("(task TODO)", "query-table", "true", "query-sort-by", "page"))
+			Expect(advanced.Query.String()).To(Equal("(and (task TODO) (sort-by title desc))"))
+		})
+
+		It("sorts pages as a table without query-table", func() {
+			advanced := parse(inBlock("(page-property type)", "query-sort-by", "type"))
+			Expect(advanced.Query.String()).To(Equal("(and (page-property type) (sort-by type desc))"))
+		})
+
+		It("does not sort blocks that are not in a table", func() {
+			advanced := parse(inBlock("(task TODO)", "query-sort-by", "rating"))
+			Expect(advanced.Query.String()).To(Equal("(task TODO)"))
+		})
+
+		It("does not sort by columns the index can not sort by", func() {
+			advanced := parse(inBlock("(task TODO)", "query-table", "true", "query-sort-by", "block"))
+			Expect(advanced.Query.String()).To(Equal("(task TODO)"))
+		})
+
+		It("does not sort a query with a limit, as Logseq sorts the table after the limit", func() {
+			advanced := parse(inBlock("(and (task TODO) (limit 3))", "query-table", "true", "query-sort-by", "rating"))
+			Expect(advanced.TableSortBy).To(Equal("rating"))
+			Expect(advanced.Query.String()).To(Equal("(and (task TODO) (limit 3))"))
 		})
 
 		It("reads the property for an advanced query", func() {
