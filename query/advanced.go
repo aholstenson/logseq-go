@@ -21,7 +21,9 @@ type AdvancedQuery struct {
 	// `[:b ...]`. Empty if the query has no title.
 	Title string
 
-	// Query is the query that the advanced query was translated into.
+	// Query is the query that the advanced query was translated into. It
+	// has only what the query itself says, so it can be written back as text.
+	// Use ResultsQuery to run the query with the sort of the table.
 	Query *Query
 
 	// Collapsed is true if Logseq shows the results of the query collapsed.
@@ -34,6 +36,10 @@ type AdvancedQuery struct {
 	//
 	// GroupByPage is always false when TableView is true, as Logseq does not
 	// group the results in a table.
+	//
+	// Logseq only finds `(by-page false)` when :query is a string, and still
+	// groups the results when it is in a :query written as a list. Here it is
+	// read from both, as the query asks for results that are not grouped.
 	GroupByPage bool
 
 	// RemoveBlockChildren is true if Logseq leaves a block out of the results
@@ -67,6 +73,17 @@ type AdvancedQuery struct {
 	// TableSortDesc is true if the table is sorted in descending order. It is
 	// false if the block with the query has `query-sort-desc:: false`.
 	TableSortDesc bool
+
+	// TableSort is the sort that Logseq applies to the results in a table,
+	// from TableSortBy and TableSortDesc. Nil if Logseq does not show a
+	// table, if the table keeps the order of the query, or if the index can
+	// not sort by the column, which is the case for `block`, `created-at` and
+	// `updated-at`. Also nil if the query has a limit, as Logseq sorts the
+	// table after the results are limited, and a sort before the limit
+	// changes which results are kept. Logseq shows a table when TableView is true, and always
+	// when the query finds pages. Only ParseNode sets it, as it reads the
+	// properties of the block.
+	TableSort *Sort
 
 	// BreadcrumbShow is true if Logseq shows the parent blocks above each
 	// block that the query finds. It is the value of `:breadcrumb-show?`, and
@@ -250,13 +267,10 @@ var inputOptionNames = map[string]string{
 // `query-sort-desc::` of the block with the query are read into the fields
 // for the table. Run the query with Graph.Query in the logseq package.
 //
-// Logseq shows the results in a table when TableView is true, and always
-// when the query finds pages. In a table, Logseq sorts the results by
-// TableSortBy. ParseNode then adds this sort to the start of Query.Sort, so
-// that Graph.Query returns the results in the same order. This is only done
-// for a property or `page`, as the index can not sort by the other columns,
-// and only for a query without a limit, as Logseq sorts the table after the
-// results are limited.
+// Run AdvancedQuery.ResultsQuery to get the results in the order that Logseq
+// shows them, also when it shows them in a table. The sort of the table is
+// left out for a query with a limit, as Logseq sorts the table after the
+// results are limited, see AdvancedQuery.TableSort.
 func ParseNode(node content.Node, opts ...ParseOption) (*AdvancedQuery, error) {
 	var result *AdvancedQuery
 	switch n := node.(type) {
@@ -320,11 +334,25 @@ func ParseNode(node content.Node, opts ...ParseOption) (*AdvancedQuery, error) {
 
 	if (result.TableView || !result.Query.FindsBlocks()) && result.Query.Limit == 0 {
 		if sort, ok := tableSort(result.TableSortBy, result.TableSortDesc); ok {
-			result.Query.Sort = append([]Sort{sort}, result.Query.Sort...)
+			result.TableSort = &sort
 		}
 	}
 
 	return result, nil
+}
+
+// ResultsQuery returns the query to run to get the results in the order that
+// Logseq shows them. It is Query with TableSort first in its sort, as Logseq
+// sorts the table after the query has sorted the results. If TableSort is nil
+// it is Query itself.
+func (a *AdvancedQuery) ResultsQuery() *Query {
+	if a.TableSort == nil {
+		return a.Query
+	}
+
+	q := *a.Query
+	q.Sort = append([]Sort{*a.TableSort}, a.Query.Sort...)
+	return &q
 }
 
 // defaultTableSortBy returns the column that Logseq sorts a table by when the

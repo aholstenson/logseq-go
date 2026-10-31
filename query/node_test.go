@@ -71,8 +71,8 @@ var _ = Describe("Queries in nodes", func() {
 			Expect(advanced.TableSortBy).To(Equal("updated-at"))
 			Expect(advanced.TableSortDesc).To(BeTrue())
 
-			// The index can not sort by updated-at, so the query is not changed.
-			Expect(parse(inBlock("(task TODO) table")).Query.String()).To(Equal("(task TODO)"))
+			// The index can not sort by updated-at, so there is no sort to add.
+			Expect(parse(inBlock("(task TODO) table")).TableSort).To(BeNil())
 		})
 
 		It("keeps the order of a query with a sort of its own", func() {
@@ -85,31 +85,44 @@ var _ = Describe("Queries in nodes", func() {
 				"query-table", "true", "query-sort-by", "rating", "query-sort-desc", "false"))
 			Expect(advanced.TableSortBy).To(Equal("rating"))
 			Expect(advanced.TableSortDesc).To(BeFalse())
-			Expect(advanced.Query.String()).To(Equal("(and (task TODO) (sort-by rating asc) (sort-by priority asc))"))
+			Expect(advanced.TableSort).To(Equal(&query.Sort{Field: query.SortProperty, Property: "rating", Order: query.Asc}))
+			Expect(advanced.ResultsQuery().String()).To(Equal("(and (task TODO) (sort-by rating asc) (sort-by priority asc))"))
 
 			advanced = parse(inBlock("(task TODO)", "query-table", "true", "query-sort-by", "page"))
-			Expect(advanced.Query.String()).To(Equal("(and (task TODO) (sort-by title desc))"))
+			Expect(advanced.ResultsQuery().String()).To(Equal("(and (task TODO) (sort-by title desc))"))
+		})
+
+		It("keeps the query as it is written", func() {
+			advanced := parse(inBlock("(and (task TODO) (sort-by priority asc))",
+				"query-table", "true", "query-sort-by", "rating"))
+			Expect(advanced.Query.String()).To(Equal("(and (task TODO) (sort-by priority asc))"))
+
+			// Results are sorted by the table, but the query is not changed.
+			Expect(advanced.ResultsQuery().String()).To(Equal("(and (task TODO) (sort-by rating desc) (sort-by priority asc))"))
+			Expect(advanced.Query.String()).To(Equal("(and (task TODO) (sort-by priority asc))"))
 		})
 
 		It("sorts pages as a table without query-table", func() {
 			advanced := parse(inBlock("(page-property type)", "query-sort-by", "type"))
-			Expect(advanced.Query.String()).To(Equal("(and (page-property type) (sort-by type desc))"))
+			Expect(advanced.ResultsQuery().String()).To(Equal("(and (page-property type) (sort-by type desc))"))
 		})
 
 		It("does not sort blocks that are not in a table", func() {
 			advanced := parse(inBlock("(task TODO)", "query-sort-by", "rating"))
-			Expect(advanced.Query.String()).To(Equal("(task TODO)"))
+			Expect(advanced.TableSort).To(BeNil())
+			Expect(advanced.ResultsQuery()).To(BeIdenticalTo(advanced.Query))
 		})
 
 		It("does not sort by columns the index can not sort by", func() {
 			advanced := parse(inBlock("(task TODO)", "query-table", "true", "query-sort-by", "block"))
-			Expect(advanced.Query.String()).To(Equal("(task TODO)"))
+			Expect(advanced.TableSort).To(BeNil())
 		})
 
 		It("does not sort a query with a limit, as Logseq sorts the table after the limit", func() {
 			advanced := parse(inBlock("(and (task TODO) (limit 3))", "query-table", "true", "query-sort-by", "rating"))
 			Expect(advanced.TableSortBy).To(Equal("rating"))
-			Expect(advanced.Query.String()).To(Equal("(and (task TODO) (limit 3))"))
+			Expect(advanced.TableSort).To(BeNil())
+			Expect(advanced.ResultsQuery().String()).To(Equal("(and (task TODO) (limit 3))"))
 		})
 
 		It("reads the property for an advanced query", func() {

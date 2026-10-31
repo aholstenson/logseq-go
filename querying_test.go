@@ -764,7 +764,7 @@ var _ = Describe("Query", func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(advanced.TableProperties).To(BeNil())
 
-			results, err := graph.Query(ctx, advanced.Query)
+			results, err := graph.Query(ctx, advanced.ResultsQuery())
 			Expect(err).ToNot(HaveOccurred())
 
 			previews := make([]string, 0, len(results.Blocks))
