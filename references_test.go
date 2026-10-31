@@ -89,6 +89,20 @@ var _ = Describe("Linked references", func() {
 		Expect(linkedReferences("target").Size()).To(Equal(1))
 	})
 
+	It("does not find the links in queries, the same as Logseq", func() {
+		graph = openGraphWithPages(dir, map[string]string{
+			"target.md": "- content of target\n",
+			"referrer.md": "- simple {{query [[target]]}}\n" +
+				"- tag {{query #target}}\n" +
+				"- #+BEGIN_QUERY\n" +
+				"  {:title \"[[target]]\" :query [:find (pull ?b [*]) :where [?b :block/refs [:block/name \"target\"]]]}\n" +
+				"  #+END_QUERY\n" +
+				"- see [[target]]\n",
+		})
+
+		Expect(previews(linkedReferences("target"))).To(ConsistOf("see target"))
+	})
+
 	It("finds blocks that reference the page in a property", func() {
 		graph = openGraphWithPages(dir, map[string]string{
 			"target.md":   "- content of target\n",
