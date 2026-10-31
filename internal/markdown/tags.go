@@ -3,6 +3,7 @@ package markdown
 import (
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
@@ -23,9 +24,13 @@ func (*tag) Kind() ast.NodeKind {
 func (n *tag) Dump(src []byte, level int) {
 }
 
-// tagDelimiters are the characters that Logseq removes from the end of a tag
-// name, so "#tag," has the tag "tag" followed by the text ",".
+// tagDelimiters are the characters that can end a tag name. See tagNameLength
+// for the rule.
 const tagDelimiters = ",;.!?'\":#"
+
+// tagInnerDelimiters are the tag delimiters that can also be in the middle
+// of a tag name, so "#a.b" has the tag "a.b".
+const tagInnerDelimiters = ".;"
 
 // tagPrefixes are the characters that can come directly before the # of a
 // tag, in addition to Unicode spaces. Logseq accepts the tag delimiters, so
@@ -53,7 +58,7 @@ func (t *tagParser) Parse(parent ast.Node, block text.Reader, pc parser.Context)
 	}
 
 	prev := block.PrecendingCharacter()
-	if !unicode.IsSpace(prev) && !strings.ContainsRune(tagPrefixes, prev) {
+	if !unicode.IsSpace(prev) && !strings.ContainsRune(tagPrefixes, prev) && !followsTag(parent) {
 		return nil
 	}
 
@@ -93,19 +98,7 @@ func (t *tagParser) Parse(parent ast.Node, block text.Reader, pc parser.Context)
 		value = line[2:end]
 		end += 2
 	} else {
-		// Scan until a Unicode space character is found, or use the rest of the
-		// line if there is none.
-		end = len(line)
-		for i, r := range string(line) {
-			if unicode.IsSpace(r) {
-				end = i
-				break
-			}
-		}
-
-		// Delimiters at the end are not part of the tag name, they stay as
-		// text after the tag.
-		end = len(strings.TrimRight(string(line[:end]), tagDelimiters))
+		end = tagNameLength(line)
 		value = line[:end]
 	}
 
@@ -121,6 +114,51 @@ func (t *tagParser) Parse(parent ast.Node, block text.Reader, pc parser.Context)
 	}
 	block.Advance(seg.Len())
 	return &n
+}
+
+// tagNameLength returns the length in bytes of the tag name at the start of
+// line. It uses the same rule as Logseq:
+//
+//   - A Unicode space ends the name.
+//   - A run of tag delimiters before a space or the end of line ends the
+//     name, so "#tag,.?" has the tag "tag" followed by the text ",.?".
+//   - Other tag delimiters end the name, except "." and ";" which stay in
+//     it. Thus "#a:b" has the tag "a", and "#a.b" has the tag "a.b".
+func tagNameLength(line []byte) int {
+	for i := 0; i < len(line); {
+		r, size := utf8.DecodeRune(line[i:])
+		if unicode.IsSpace(r) {
+			return i
+		}
+
+		if strings.ContainsRune(tagDelimiters, r) {
+			j := i
+			for j < len(line) && strings.IndexByte(tagDelimiters, line[j]) >= 0 {
+				j++
+			}
+
+			if j == len(line) {
+				return i
+			}
+
+			next, _ := utf8.DecodeRune(line[j:])
+			if unicode.IsSpace(next) || !strings.ContainsRune(tagInnerDelimiters, r) {
+				return i
+			}
+		}
+
+		i += size
+	}
+
+	return len(line)
+}
+
+// followsTag returns true if the last inline node of parent is a tag. A tag
+// can end at a "#" that starts the next tag, so "#a#b" has the tags "a" and
+// "b".
+func followsTag(parent ast.Node) bool {
+	_, ok := parent.LastChild().(*tag)
+	return ok
 }
 
 // insideLinkLabel returns true if the inline content of parent has a "[" or

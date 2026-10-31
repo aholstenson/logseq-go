@@ -718,6 +718,95 @@ var _ = Describe("Parsing", func() {
 			)))
 		})
 
+		It("ends a tag at punctuation in the middle of the name", func() {
+			block, err := markdown.ParseString("#a,b #c:d #e\"f #g!h #i?j #k'l")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewHashtag("a"),
+					content.NewText(",b "),
+					content.NewHashtag("c"),
+					content.NewText(":d "),
+					content.NewHashtag("e"),
+					content.NewText("\"f "),
+					content.NewHashtag("g"),
+					content.NewText("!h "),
+					content.NewHashtag("i"),
+					content.NewText("?j "),
+					content.NewHashtag("k"),
+					content.NewText("'l"),
+				),
+			)))
+		})
+
+		It("keeps a dot or semicolon in the middle of a tag", func() {
+			block, err := markdown.ParseString("#a;b #c..d #.e #f.,g")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewHashtag("a;b"),
+					content.NewText(" "),
+					content.NewHashtag("c..d"),
+					content.NewText(" "),
+					content.NewHashtag(".e"),
+					content.NewText(" "),
+					content.NewHashtag("f."),
+					content.NewText(",g"),
+				),
+			)))
+		})
+
+		It("keeps brackets in a tag", func() {
+			block, err := markdown.ParseString("#a[b]c and #d(e)")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewHashtag("a[b]c"),
+					content.NewText(" and "),
+					content.NewHashtag("d(e)"),
+				),
+			)))
+		})
+
+		It("does not treat a hash with only punctuation as a tag", func() {
+			block, err := markdown.ParseString("x #. y #,a")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("x #. y #,a"),
+				),
+			)))
+		})
+
+		It("starts a new tag at a hash directly after a tag", func() {
+			block, err := markdown.ParseString("#a#b")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewHashtag("a"),
+					content.NewHashtag("b"),
+				),
+			)))
+		})
+
+		It("ends a tag before a colon in a URL", func() {
+			block, err := markdown.ParseString("x #\\](https://a.com/) y")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("x "),
+					content.NewHashtag("\\](https"),
+					content.NewText("://a.com/) y"),
+				),
+			)))
+		})
+
 		It("starts a tag at the second hash of a double hash", func() {
 			block, err := markdown.ParseString("x ##tag")
 			Expect(err).ToNot(HaveOccurred())
