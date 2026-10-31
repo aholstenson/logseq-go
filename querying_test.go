@@ -716,6 +716,69 @@ var _ = Describe("Query", func() {
 			Expect(titles).To(Equal([]string{"", "Linked tasks"}))
 			Expect(previews).To(Equal([]string{"Write the docs for project", "Write the docs for project"}))
 		})
+
+		Describe("with the block of the query", func() {
+			BeforeEach(func() {
+				Expect(os.WriteFile(filepath.Join(graph.Directory(), "pages", "notes.md"), []byte(
+					"- TODO Call the bank\n"+
+						"- Section\n"+
+						"  - First\n"+
+						"  - TODO Review {{query (and (task TODO) (page [[notes]]))}}\n"+
+						"- TODO With id {{query (and (task TODO) (page [[notes]]))}}\n"+
+						"  id:: 6523a0f8-0000-4c3b-9b1e-000000000003\n",
+				), 0o644)).To(Succeed())
+				graph.Close()
+
+				var err error
+				graph, err = logseq.Open(ctx, graph.Directory(), logseq.WithInMemoryIndex())
+				Expect(err).ToNot(HaveOccurred())
+			})
+
+			// runIn runs the query in the block that pick returns, and returns the
+			// previews of the results.
+			runIn := func(pick func(logseq.Page) *content.Block) []string {
+				page, err := graph.OpenPage("notes")
+				Expect(err).ToNot(HaveOccurred())
+
+				block := pick(page)
+				nodes := block.Children().FilterDeep(content.IsQuery())
+				Expect(nodes).To(HaveLen(1))
+				node := nodes[0]
+
+				advanced, err := query.ParseNode(node)
+				Expect(err).ToNot(HaveOccurred())
+
+				results, err := graph.Query(ctx, advanced.Query, logseq.QueryInBlock(page, block))
+				Expect(err).ToNot(HaveOccurred())
+
+				previews := make([]string, 0, len(results.Blocks))
+				for _, result := range results.Blocks {
+					previews = append(previews, result.Preview())
+				}
+				return previews
+			}
+
+			It("leaves out the block of the query", func() {
+				Expect(runIn(func(page logseq.Page) *content.Block {
+					return page.Blocks()[1].Blocks()[1]
+				})).To(ConsistOf("Call the bank", HavePrefix("With id")))
+			})
+
+			It("leaves out the block of the query by its id", func() {
+				Expect(runIn(func(page logseq.Page) *content.Block {
+					return page.Blocks()[2]
+				})).To(ConsistOf("Call the bank", HavePrefix("Review")))
+			})
+
+			It("finds the block of the query without the option", func() {
+				q, err := query.Parse("(and (task TODO) (page [[notes]]))")
+				Expect(err).ToNot(HaveOccurred())
+
+				results, err := graph.Query(ctx, q)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(results.Blocks).To(HaveLen(3))
+			})
+		})
 	})
 
 	Describe("Queries for the blocks around the query", func() {

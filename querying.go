@@ -5,9 +5,12 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"path/filepath"
+	"slices"
 	"sort"
 	"time"
 
+	"github.com/aholstenson/logseq-go/content"
 	"github.com/aholstenson/logseq-go/internal/indexing"
 	"github.com/aholstenson/logseq-go/internal/utils"
 	"github.com/aholstenson/logseq-go/query"
@@ -42,6 +45,10 @@ type QueryOption func(*queryOptions)
 
 type queryOptions struct {
 	now time.Time
+
+	// page and block are where the query is written, nil if not known.
+	page  Page
+	block *content.Block
 }
 
 // QueryAt runs a query as if it is the given time, which decides the dates
@@ -50,6 +57,22 @@ type queryOptions struct {
 func QueryAt(now time.Time) QueryOption {
 	return func(o *queryOptions) {
 		o.now = now
+	}
+}
+
+// QueryInBlock tells that the query is written in the block on the page, such
+// as a block found with content.BlockOf. The same as in Logseq, the block with
+// the query is not in the results, even when it matches the query. A query
+// such as `{{query [[project]]}}` references the page `project`, so without
+// this option it finds its own block.
+//
+// The block is found by its `id::` property, or else by its position on the
+// page. The position is compared with the page as it was indexed, so change
+// the page only after the query is run.
+func QueryInBlock(page Page, block *content.Block) QueryOption {
+	return func(o *queryOptions) {
+		o.page = page
+		o.block = block
 	}
 }
 
@@ -107,10 +130,14 @@ func (g *Graph) runQuery(ctx context.Context, q *query.Query, opts []QueryOption
 			return nil, err
 		}
 
+		isQueryBlock := g.queryBlockMatcher(options.page, options.block)
 		err = eachResult(func(opts indexing.SearchOptions) (indexing.SearchResults[*indexing.Block], error) {
 			opts.SortBy = sortBy
 			return g.index.SearchBlocks(ctx, indexQuery, opts)
 		}, func(block *indexing.Block) {
+			if isQueryBlock(block) {
+				return
+			}
 			results.Blocks = append(results.Blocks, g.newBlockResult(block, source))
 		})
 		if err != nil {
@@ -140,6 +167,27 @@ func (g *Graph) runQuery(ctx context.Context, q *query.Query, opts []QueryOption
 	}
 
 	return results, nil
+}
+
+// queryBlockMatcher returns a function that tells if an indexed block is the
+// block on the page that the query is written in. The function always returns
+// false if the block is not known.
+func (g *Graph) queryBlockMatcher(page Page, block *content.Block) func(*indexing.Block) bool {
+	impl, ok := page.(*pageImpl)
+	if !ok || block == nil {
+		return func(*indexing.Block) bool { return false }
+	}
+
+	id := block.ID()
+	subPath, _ := filepath.Rel(g.directory, impl.path)
+	location, onPage := utils.LocationOf(block)
+	return func(indexed *indexing.Block) bool {
+		if id != "" && indexed.ID == id {
+			return true
+		}
+
+		return onPage && indexed.PageSubPath == subPath && slices.Equal(indexed.Location, location)
+	}
 }
 
 // querySortFields returns the fields of the index to sort by. findsBlocks tells
