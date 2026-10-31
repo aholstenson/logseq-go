@@ -1,6 +1,7 @@
 package markdown
 
 import (
+	"strings"
 	"unicode"
 
 	"github.com/yuin/goldmark/ast"
@@ -22,7 +23,21 @@ func (*tag) Kind() ast.NodeKind {
 func (n *tag) Dump(src []byte, level int) {
 }
 
+// tagDelimiters are the characters that Logseq removes from the end of a tag
+// name, so "#tag," has the tag "tag" followed by the text ",".
+const tagDelimiters = ",;.!?'\":#"
+
+// tagPrefixes are the characters that can come directly before the # of a
+// tag, in addition to Unicode spaces. Logseq accepts the tag delimiters, so
+// "a,#tag" has the tag "tag". Logseq also makes a tag after "[", so
+// "[#[[a tag]]]" has the tag "a tag".
+const tagPrefixes = tagDelimiters + "["
+
 // tagParser parses Logseq style tags in Goldmark.
+//
+// A # starts a tag only at the start of the text, after a Unicode space or
+// after one of tagPrefixes. Thus "C#Sharp" and "https://a.com/#top" do not
+// contain tags.
 type tagParser struct {
 }
 
@@ -36,7 +51,18 @@ func (t *tagParser) Parse(parent ast.Node, block text.Reader, pc parser.Context)
 	if len(line) == 0 || line[0] != '#' {
 		return nil
 	}
+
+	prev := block.PrecendingCharacter()
+	if !unicode.IsSpace(prev) && !strings.ContainsRune(tagPrefixes, prev) {
+		return nil
+	}
+
 	line = line[1:]
+
+	// Two # in sequence is not a tag, but the second # can start a tag.
+	if len(line) > 0 && line[0] == '#' {
+		return nil
+	}
 
 	end := 0
 	var value []byte
@@ -71,6 +97,9 @@ func (t *tagParser) Parse(parent ast.Node, block text.Reader, pc parser.Context)
 			}
 		}
 
+		// Delimiters at the end are not part of the tag name, they stay as
+		// text after the tag.
+		end = len(strings.TrimRight(string(line[:end]), tagDelimiters))
 		value = line[:end]
 	}
 

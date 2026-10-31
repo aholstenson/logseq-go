@@ -597,6 +597,92 @@ var _ = Describe("Parsing", func() {
 			)))
 		})
 
+		It("does not treat a hash after a word and before punctuation as a tag", func() {
+			block, err := markdown.ParseString("Like C#, C and Go")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("Like C#, C and Go"),
+				),
+			)))
+		})
+
+		It("does not treat a hash inside a word as a tag", func() {
+			block, err := markdown.ParseString("C#Sharp and https://a.com/#top")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("C#Sharp and "),
+					content.NewAutoLink("https://a.com/#top"),
+				),
+			)))
+		})
+
+		It("does not treat a hash after a closing bracket as a tag", func() {
+			block, err := markdown.ParseString("(#tag)")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("(#tag)"),
+				),
+			)))
+		})
+
+		It("can parse tag after punctuation", func() {
+			block, err := markdown.ParseString("a,#first and \"#second\"")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("a,"),
+					content.NewHashtag("first"),
+					content.NewText(" and \""),
+					content.NewHashtag("second"),
+					content.NewText("\""),
+				),
+			)))
+		})
+
+		It("can parse tag after a non-breaking space", func() {
+			block, err := markdown.ParseString("a #tag")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("a "),
+					content.NewHashtag("tag"),
+				),
+			)))
+		})
+
+		It("does not include trailing punctuation in the tag", func() {
+			block, err := markdown.ParseString("#tag,.? and #a.b.c")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewHashtag("tag"),
+					content.NewText(",.? and "),
+					content.NewHashtag("a.b.c"),
+				),
+			)))
+		})
+
+		It("starts a tag at the second hash of a double hash", func() {
+			block, err := markdown.ParseString("x ##tag")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("x #"),
+					content.NewHashtag("tag"),
+				),
+			)))
+		})
+
 		It("does not end a tag inside a multi-byte character", func() {
 			// A non-breaking space ends the tag, but only as a whole character
 			// and not on the byte of it that looks like one.
