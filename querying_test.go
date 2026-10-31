@@ -717,6 +717,30 @@ var _ = Describe("Query", func() {
 			Expect(previews).To(Equal([]string{"Write the docs for project", "Write the docs for project"}))
 		})
 
+		It("reads the table view from the property of the block", func() {
+			Expect(os.WriteFile(filepath.Join(graph.Directory(), "pages", "table.md"), []byte(
+				"- {{query (task TODO)}}\n"+
+					"  query-table:: true\n"+
+					"  query-properties:: [:block :page]\n",
+			), 0o644)).To(Succeed())
+			graph.Close()
+
+			var err error
+			graph, err = logseq.Open(ctx, graph.Directory(), logseq.WithInMemoryIndex())
+			Expect(err).ToNot(HaveOccurred())
+
+			page, err := graph.OpenPage("table")
+			Expect(err).ToNot(HaveOccurred())
+
+			nodes := page.Blocks()[0].Children().FilterDeep(content.IsQuery())
+			Expect(nodes).To(HaveLen(1))
+
+			advanced, err := query.ParseNode(nodes[0])
+			Expect(err).ToNot(HaveOccurred())
+			Expect(advanced.TableView).To(BeTrue())
+			Expect(advanced.GroupByPage).To(BeFalse())
+		})
+
 		Describe("with the block of the query", func() {
 			BeforeEach(func() {
 				Expect(os.WriteFile(filepath.Join(graph.Directory(), "pages", "notes.md"), []byte(

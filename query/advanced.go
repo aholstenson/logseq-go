@@ -31,9 +31,8 @@ type AdvancedQuery struct {
 	// used if the query has it. If not, it is false when the query has a
 	// `:result-transform` or `(by-page false)`, and true for other queries.
 	//
-	// Logseq does not group the results in its table view, which a block
-	// turns on with the property `query-table:: true`. This value does not
-	// include that.
+	// GroupByPage is always false when TableView is true, as Logseq does not
+	// group the results in a table.
 	GroupByPage bool
 
 	// RemoveBlockChildren is true if Logseq leaves a block out of the results
@@ -41,6 +40,14 @@ type AdvancedQuery struct {
 	// value of `:remove-block-children?`, and true if the query does not have
 	// it. Give it to logseq.RemoveBlockChildren when the query is run.
 	RemoveBlockChildren bool
+
+	// TableView is true if Logseq shows the results in a table. This is the
+	// case if the query has `:table-view? true`, if the query is text that
+	// ends with `table`, such as `{{query (task TODO) table}}`, or if the
+	// block with the query has the property `query-table:: true`. Only
+	// ParseNode can read the property, as ParseAdvanced does not get the
+	// block.
+	TableView bool
 
 	// BreadcrumbShow is true if Logseq shows the parent blocks above each
 	// block that the query finds. It is the value of `:breadcrumb-show?`, and
@@ -198,20 +205,25 @@ var inputOptionNames = map[string]string{
 // by its location on the page given with WithQueryPage, see ParentFilter, so
 // give that option for queries in blocks without the property.
 //
-// Run the query with Graph.Query in the logseq package.
+// The property `query-table::` of the block with the query is read into
+// AdvancedQuery.TableView. Run the query with Graph.Query in the logseq
+// package.
 func ParseNode(node content.Node, opts ...ParseOption) (*AdvancedQuery, error) {
+	var result *AdvancedQuery
 	switch n := node.(type) {
 	case *content.Query:
-		q, err := Parse(n.Query)
+		text, table := cutTable(n.Query)
+		q, err := Parse(text)
 		if err != nil {
 			return nil, err
 		}
-		return &AdvancedQuery{
+		result = &AdvancedQuery{
 			Query:               q,
 			GroupByPage:         q.ByPage == nil || *q.ByPage,
 			RemoveBlockChildren: true,
+			TableView:           table,
 			BreadcrumbShow:      true,
-		}, nil
+		}
 	case *content.QueryCommand:
 		options := newParseOptions(opts)
 
@@ -228,10 +240,63 @@ func ParseNode(node content.Node, opts ...ParseOption) (*AdvancedQuery, error) {
 			}
 		}
 
-		return parseAdvanced(n.Query, options)
+		var err error
+		result, err = parseAdvanced(n.Query, options)
+		if err != nil {
+			return nil, err
+		}
+	default:
+		return nil, fmt.Errorf("query: %T is not a query", node)
 	}
 
-	return nil, fmt.Errorf("query: %T is not a query", node)
+	if block := content.BlockOf(node); block != nil && isTruthyProperty(block, "query-table") {
+		result.TableView = true
+	}
+	if result.TableView {
+		result.GroupByPage = false
+	}
+
+	return result, nil
+}
+
+// cutTable returns the text of a simple query without the word `table` at the
+// end, and if the text ends with `table`. Logseq shows the results of a query
+// in a table if its text ends with `table`, and it reads only the first form
+// of the text, so `(task TODO) table` is the query `(task TODO)`. The same as
+// in Logseq, a text such as `portable` also ends with `table`.
+func cutTable(text string) (string, bool) {
+	trimmed := strings.TrimSpace(text)
+	rest, ok := strings.CutSuffix(trimmed, "table")
+	if !ok {
+		return text, false
+	}
+
+	// Only a separate word after the query is removed, so that a search such
+	// as `portable` stays the same.
+	if rest != strings.TrimRight(rest, " \t\n") && strings.TrimSpace(rest) != "" {
+		return strings.TrimSpace(rest), true
+	}
+
+	return text, true
+}
+
+// isTruthyProperty returns true if Logseq treats the value of the property of
+// the block as true: the property has a value, and the value is not `false`.
+func isTruthyProperty(block *content.Block, name string) bool {
+	properties := block.FindProperties()
+	if properties == nil {
+		return false
+	}
+
+	var value strings.Builder
+	for _, node := range properties.Get(name) {
+		if text, ok := node.(*content.Text); ok {
+			value.WriteString(text.Value)
+		}
+	}
+
+	v := strings.TrimSpace(value.String())
+	return v != "" && v != "false"
 }
 
 func newParseOptions(opts []ParseOption) *parseOptions {
@@ -361,9 +426,10 @@ var queryFence = regexp.MustCompile(`(?im)^\s*#\+(BEGIN|END)_QUERY\s*$`)
 // and the same rule with :block/namespace, which finds the pages in a
 // namespace at any depth, see UnderNamespace.
 //
-// Keys that only change how Logseq shows the results, such as :view and
-// :table-view?, are ignored. Errors in the EDN itself are returned as
-// *ParseError.
+// The keys :group-by-page?, :table-view?, :remove-block-children? and
+// :breadcrumb-show? are read into the fields of AdvancedQuery. Other keys that
+// only change how Logseq shows the results, such as :view, are ignored. Errors
+// in the EDN itself are returned as *ParseError.
 func ParseAdvanced(text string, opts ...ParseOption) (*AdvancedQuery, error) {
 	return parseAdvanced(text, newParseOptions(opts))
 }
@@ -408,6 +474,7 @@ func parseAdvanced(text string, options *parseOptions) (*AdvancedQuery, error) {
 	}
 
 	result := &AdvancedQuery{RemoveBlockChildren: true, BreadcrumbShow: true}
+	var tableViewNode *ednNode
 	var queryNode, inputsNode, transformNode, rulesNode, groupByPageNode *ednNode
 	for i := 0; i < len(root.items); i += 2 {
 		key, value := root.items[i], root.items[i+1]
@@ -422,6 +489,8 @@ func parseAdvanced(text string, options *parseOptions) (*AdvancedQuery, error) {
 			result.Collapsed = value.isSymbol("true")
 		case "group-by-page?":
 			groupByPageNode = value
+		case "table-view?":
+			tableViewNode = value
 		case "remove-block-children?":
 			result.RemoveBlockChildren = isTruthy(value)
 		case "breadcrumb-show?":
@@ -451,7 +520,9 @@ func parseAdvanced(text string, options *parseOptions) (*AdvancedQuery, error) {
 	var q *Query
 	switch queryNode.kind {
 	case ednString:
-		q, err = Parse(queryNode.text)
+		var queryText string
+		queryText, result.TableView = cutTable(queryNode.text)
+		q, err = Parse(queryText)
 	case ednList:
 		q, err = Parse(text[queryNode.pos:queryNode.end])
 		if err != nil {
@@ -491,7 +562,13 @@ func parseAdvanced(text string, options *parseOptions) (*AdvancedQuery, error) {
 		}
 	}
 
+	if tableViewNode != nil && isTruthy(tableViewNode) {
+		result.TableView = true
+	}
+
 	switch {
+	case result.TableView:
+		result.GroupByPage = false
 	case groupByPageNode != nil:
 		result.GroupByPage = isTruthy(groupByPageNode)
 	case transformNode != nil:

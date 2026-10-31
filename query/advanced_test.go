@@ -206,6 +206,31 @@ var _ = Describe("Advanced queries", func() {
 			Expect(removeChildren(`{:query (task TODO) :remove-block-children? nil}`)).To(BeFalse())
 		})
 
+		It("reads the table view and does not group it by page", func() {
+			advanced, err := query.ParseAdvanced(`{:query (task TODO) :table-view? true :group-by-page? true}`)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(advanced.TableView).To(BeTrue())
+			Expect(advanced.GroupByPage).To(BeFalse())
+
+			advanced, err = query.ParseAdvanced(overdueQuery)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(advanced.TableView).To(BeFalse())
+		})
+
+		It("reads `table` at the end of a query string", func() {
+			advanced, err := query.ParseAdvanced(`{:query "(task TODO) table"}`)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(advanced.TableView).To(BeTrue())
+			Expect(advanced.Query.String()).To(Equal("(task TODO)"))
+		})
+
+		It("shows a search for a word that ends with table in a table, the same as Logseq", func() {
+			advanced, err := query.ParseAdvanced(`{:query "portable"}`)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(advanced.TableView).To(BeTrue())
+			Expect(advanced.Query.String()).To(Equal(`"portable"`))
+		})
+
 		It("shows breadcrumbs unless :breadcrumb-show? is false", func() {
 			Expect(breadcrumbShow(`{:query (task TODO)}`)).To(BeTrue())
 			Expect(breadcrumbShow(`{:query (task TODO) :breadcrumb-show? true}`)).To(BeTrue())

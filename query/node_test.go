@@ -20,6 +20,54 @@ var _ = Describe("Queries in nodes", func() {
 		Expect(advanced.BreadcrumbShow).To(BeTrue())
 	})
 
+	Describe("Table view", func() {
+		// inBlock returns a simple query in a block with the value of the
+		// property `query-table::`, or without the property if it is empty.
+		inBlock := func(text string, queryTable string) *content.Query {
+			q := content.NewQuery(text)
+			block := content.NewBlock(content.NewParagraph(q))
+			if queryTable != "" {
+				block.Properties().Set("query-table", content.NewText(queryTable))
+			}
+			return q
+		}
+
+		It("reads `table` at the end of a simple query", func() {
+			advanced, err := query.ParseNode(content.NewQuery("(task TODO) table"))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(advanced.Query.String()).To(Equal("(task TODO)"))
+			Expect(advanced.TableView).To(BeTrue())
+			Expect(advanced.GroupByPage).To(BeFalse())
+		})
+
+		It("reads the property query-table of the block", func() {
+			advanced, err := query.ParseNode(inBlock("(task TODO)", "true"))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(advanced.TableView).To(BeTrue())
+			Expect(advanced.GroupByPage).To(BeFalse())
+
+			advanced, err = query.ParseNode(inBlock("(task TODO)", "false"))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(advanced.TableView).To(BeFalse())
+			Expect(advanced.GroupByPage).To(BeTrue())
+
+			advanced, err = query.ParseNode(inBlock("(task TODO)", ""))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(advanced.TableView).To(BeFalse())
+		})
+
+		It("reads the property for an advanced query", func() {
+			command := content.NewQueryCommand(`{:query (task TODO) :group-by-page? true}`)
+			block := content.NewBlock(command)
+			block.Properties().Set("query-table", content.NewText("true"))
+
+			advanced, err := query.ParseNode(command)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(advanced.TableView).To(BeTrue())
+			Expect(advanced.GroupByPage).To(BeFalse())
+		})
+	})
+
 	It("reads (by-page false) in a simple query", func() {
 		advanced, err := query.ParseNode(content.NewQuery("(and (task TODO) (by-page false))"))
 		Expect(err).ToNot(HaveOccurred())
