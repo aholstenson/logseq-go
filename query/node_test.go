@@ -16,6 +16,7 @@ var _ = Describe("Queries in nodes", func() {
 		Expect(advanced.Title).To(BeEmpty())
 		Expect(advanced.Query.String()).To(Equal("(and (task TODO) [[project]])"))
 		Expect(advanced.GroupByPage).To(BeTrue())
+		Expect(advanced.RemoveBlockChildren).To(BeTrue())
 		Expect(advanced.BreadcrumbShow).To(BeTrue())
 	})
 

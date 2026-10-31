@@ -194,6 +194,18 @@ var _ = Describe("Advanced queries", func() {
 				:group-by-page? true}`)).To(BeTrue())
 		})
 
+		It("removes the children of blocks unless :remove-block-children? is false", func() {
+			removeChildren := func(text string) bool {
+				advanced, err := query.ParseAdvanced(text)
+				Expect(err).ToNot(HaveOccurred())
+				return advanced.RemoveBlockChildren
+			}
+
+			Expect(removeChildren(`{:query (task TODO)}`)).To(BeTrue())
+			Expect(removeChildren(`{:query (task TODO) :remove-block-children? false}`)).To(BeFalse())
+			Expect(removeChildren(`{:query (task TODO) :remove-block-children? nil}`)).To(BeFalse())
+		})
+
 		It("shows breadcrumbs unless :breadcrumb-show? is false", func() {
 			Expect(breadcrumbShow(`{:query (task TODO)}`)).To(BeTrue())
 			Expect(breadcrumbShow(`{:query (task TODO) :breadcrumb-show? true}`)).To(BeTrue())

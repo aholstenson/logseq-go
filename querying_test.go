@@ -899,6 +899,46 @@ var _ = Describe("Query", func() {
 		})
 	})
 
+	Describe("Children of blocks in the results", func() {
+		BeforeEach(func() {
+			Expect(os.WriteFile(filepath.Join(graph.Directory(), "pages", "tree.md"), []byte(
+				"- TODO Top\n"+
+					"  - TODO Child\n"+
+					"    - TODO Grandchild\n"+
+					"  - Note\n"+
+					"    - TODO Below a note\n",
+			), 0o644)).To(Succeed())
+			graph.Close()
+
+			var err error
+			graph, err = logseq.Open(ctx, graph.Directory(), logseq.WithInMemoryIndex())
+			Expect(err).ToNot(HaveOccurred())
+		})
+
+		run := func(opts ...logseq.QueryOption) []string {
+			q, err := query.Parse("(and (task TODO) (page [[tree]]))")
+			Expect(err).ToNot(HaveOccurred())
+
+			results, err := graph.Query(ctx, q, opts...)
+			Expect(err).ToNot(HaveOccurred())
+
+			previews := make([]string, 0, len(results.Blocks))
+			for _, result := range results.Blocks {
+				previews = append(previews, result.Preview())
+			}
+			return previews
+		}
+
+		It("leaves out the blocks whose parent is in the results", func() {
+			Expect(run(logseq.RemoveBlockChildren(true))).To(ConsistOf("Top", "Below a note"))
+		})
+
+		It("keeps all of the blocks by default", func() {
+			Expect(run()).To(ConsistOf("Top", "Child", "Grandchild", "Below a note"))
+			Expect(run(logseq.RemoveBlockChildren(false))).To(HaveLen(4))
+		})
+	})
+
 	Describe("Results", func() {
 		It("picks a sample of the results", func() {
 			results := blocks("(and (task TODO) (sort-by priority asc) (sample 2))")

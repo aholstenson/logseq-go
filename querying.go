@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/aholstenson/logseq-go/content"
@@ -49,6 +51,8 @@ type queryOptions struct {
 	// page and block are where the query is written, nil if not known.
 	page  Page
 	block *content.Block
+
+	removeBlockChildren bool
 }
 
 // QueryAt runs a query as if it is the given time, which decides the dates
@@ -73,6 +77,21 @@ func QueryInBlock(page Page, block *content.Block) QueryOption {
 	return func(o *queryOptions) {
 		o.page = page
 		o.block = block
+	}
+}
+
+// RemoveBlockChildren tells if a block is left out of the results when the
+// block directly above it is also in the results. Logseq shows a block in the
+// results with the blocks below it, so it does this unless an advanced query
+// has `:remove-block-children? false`. Give the value of
+// query.AdvancedQuery.RemoveBlockChildren to get the same results as Logseq.
+//
+// Only the direct parent is compared. A block stays in the results if its
+// parent is not in them, also when a block higher up is. The default is false,
+// which keeps all of the blocks.
+func RemoveBlockChildren(remove bool) QueryOption {
+	return func(o *queryOptions) {
+		o.removeBlockChildren = remove
 	}
 }
 
@@ -131,6 +150,7 @@ func (g *Graph) runQuery(ctx context.Context, q *query.Query, opts []QueryOption
 		}
 
 		isQueryBlock := g.queryBlockMatcher(options.page, options.block)
+		var blocks []*indexing.Block
 		err = eachResult(func(opts indexing.SearchOptions) (indexing.SearchResults[*indexing.Block], error) {
 			opts.SortBy = sortBy
 			return g.index.SearchBlocks(ctx, indexQuery, opts)
@@ -138,13 +158,22 @@ func (g *Graph) runQuery(ctx context.Context, q *query.Query, opts []QueryOption
 			if isQueryBlock(block) {
 				return
 			}
-			results.Blocks = append(results.Blocks, g.newBlockResult(block, source))
+			blocks = append(blocks, block)
 		})
 		if err != nil {
 			return nil, err
 		}
 
-		results.Blocks = limit(sample(results.Blocks, q.Sample), q.Limit)
+		// The same as in Logseq, the sample and limit are picked before the
+		// children are removed.
+		blocks = limit(sample(blocks, q.Sample), q.Limit)
+		if options.removeBlockChildren {
+			blocks = removeBlockChildren(blocks)
+		}
+
+		for _, block := range blocks {
+			results.Blocks = append(results.Blocks, g.newBlockResult(block, source))
+		}
 	} else {
 		results.Type = QueryResultPages
 
@@ -188,6 +217,34 @@ func (g *Graph) queryBlockMatcher(page Page, block *content.Block) func(*indexin
 
 		return onPage && indexed.PageSubPath == subPath && slices.Equal(indexed.Location, location)
 	}
+}
+
+// removeBlockChildren returns the blocks without the blocks whose direct
+// parent is also in the blocks. The order of the blocks stays the same.
+func removeBlockChildren(blocks []*indexing.Block) []*indexing.Block {
+	key := func(subPath string, location []int) string {
+		var b strings.Builder
+		b.WriteString(subPath)
+		for _, idx := range location {
+			b.WriteRune(':')
+			b.WriteString(strconv.Itoa(idx))
+		}
+		return b.String()
+	}
+
+	found := make(map[string]bool, len(blocks))
+	for _, block := range blocks {
+		found[key(block.PageSubPath, block.Location)] = true
+	}
+
+	result := make([]*indexing.Block, 0, len(blocks))
+	for _, block := range blocks {
+		if len(block.Location) > 1 && found[key(block.PageSubPath, block.Location[:len(block.Location)-1])] {
+			continue
+		}
+		result = append(result, block)
+	}
+	return result
 }
 
 // querySortFields returns the fields of the index to sort by. findsBlocks tells

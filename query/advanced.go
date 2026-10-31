@@ -36,6 +36,12 @@ type AdvancedQuery struct {
 	// include that.
 	GroupByPage bool
 
+	// RemoveBlockChildren is true if Logseq leaves a block out of the results
+	// when the block directly above it is also in the results. It is the
+	// value of `:remove-block-children?`, and true if the query does not have
+	// it. Give it to logseq.RemoveBlockChildren when the query is run.
+	RemoveBlockChildren bool
+
 	// BreadcrumbShow is true if Logseq shows the parent blocks above each
 	// block that the query finds. It is the value of `:breadcrumb-show?`, and
 	// true if the query does not have it.
@@ -201,9 +207,10 @@ func ParseNode(node content.Node, opts ...ParseOption) (*AdvancedQuery, error) {
 			return nil, err
 		}
 		return &AdvancedQuery{
-			Query:          q,
-			GroupByPage:    q.ByPage == nil || *q.ByPage,
-			BreadcrumbShow: true,
+			Query:               q,
+			GroupByPage:         q.ByPage == nil || *q.ByPage,
+			RemoveBlockChildren: true,
+			BreadcrumbShow:      true,
 		}, nil
 	case *content.QueryCommand:
 		options := newParseOptions(opts)
@@ -400,7 +407,7 @@ func parseAdvanced(text string, options *parseOptions) (*AdvancedQuery, error) {
 		inlineRules: make(map[string][]*ruleDef),
 	}
 
-	result := &AdvancedQuery{BreadcrumbShow: true}
+	result := &AdvancedQuery{RemoveBlockChildren: true, BreadcrumbShow: true}
 	var queryNode, inputsNode, transformNode, rulesNode, groupByPageNode *ednNode
 	for i := 0; i < len(root.items); i += 2 {
 		key, value := root.items[i], root.items[i+1]
@@ -415,6 +422,8 @@ func parseAdvanced(text string, options *parseOptions) (*AdvancedQuery, error) {
 			result.Collapsed = value.isSymbol("true")
 		case "group-by-page?":
 			groupByPageNode = value
+		case "remove-block-children?":
+			result.RemoveBlockChildren = isTruthy(value)
 		case "breadcrumb-show?":
 			// Logseq shows the breadcrumbs unless the value is false.
 			result.BreadcrumbShow = !value.isSymbol("false")
@@ -484,8 +493,7 @@ func parseAdvanced(text string, options *parseOptions) (*AdvancedQuery, error) {
 
 	switch {
 	case groupByPageNode != nil:
-		// Logseq treats all values as true, except false and nil.
-		result.GroupByPage = !groupByPageNode.isSymbol("false") && !groupByPageNode.isSymbol("nil")
+		result.GroupByPage = isTruthy(groupByPageNode)
 	case transformNode != nil:
 		result.GroupByPage = false
 	default:
@@ -494,6 +502,12 @@ func parseAdvanced(text string, options *parseOptions) (*AdvancedQuery, error) {
 
 	result.Query = q
 	return result, nil
+}
+
+// isTruthy returns true if Logseq treats the value as true, which is all
+// values except false and nil.
+func isTruthy(node *ednNode) bool {
+	return !node.isSymbol("false") && !node.isSymbol("nil")
 }
 
 // hiccupText returns the text in a title, which is either a string or Hiccup
