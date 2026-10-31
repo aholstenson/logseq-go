@@ -80,8 +80,8 @@ func Parse(text string) (*Query, error) {
 		return q, nil
 	}
 
-	// The sort order, sample and limit are read from the top-level `and`,
-	// which is where Logseq reads the sort order and sample.
+	// The sort order, sample, limit and by-page are read from the top-level
+	// `and`, which is where Logseq reads the sort order, sample and by-page.
 	filters := make([]Filter, 0, len(e.items)-1)
 	hasOptions := false
 	for _, item := range e.items[1:] {
@@ -112,7 +112,7 @@ func Parse(text string) (*Query, error) {
 // isOption returns true for the parts of a query that are not filters, such
 // as `(sort-by priority)`.
 func isOption(e *expr) bool {
-	return e.isList("sort-by") || e.isList("sample") || e.isList("limit")
+	return e.isList("sort-by") || e.isList("sample") || e.isList("limit") || e.isList("by-page")
 }
 
 func (q *Query) readOption(e *expr) error {
@@ -178,6 +178,23 @@ func (q *Query) readOption(e *expr) error {
 		}
 
 		q.Limit = n
+		return nil
+	case "by-page":
+		if len(args) != 1 || args[0].kind != exprSymbol {
+			return errorAt(e.pos, "by-page takes `true` or `false`")
+		}
+
+		var byPage bool
+		switch args[0].text {
+		case "true":
+			byPage = true
+		case "false":
+			byPage = false
+		default:
+			return errorAt(args[0].pos, "by-page takes `true` or `false`")
+		}
+
+		q.ByPage = &byPage
 		return nil
 	}
 
@@ -475,7 +492,7 @@ func parseFilter(e *expr) (Filter, error) {
 			return nil, err
 		}
 		return HasBlock(filter), nil
-	case "sort-by", "sample", "limit":
+	case "sort-by", "sample", "limit", "by-page":
 		return nil, errorAt(e.pos, "%s can only be used at the top of a query or in its top-level `and`", op)
 	}
 

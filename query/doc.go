@@ -29,6 +29,8 @@
 //	(between -7d today)      blocks on journals from the first to the last date
 //	(sort-by key asc)        sort by a property, `desc` if no order is given
 //	(sample 10)              a random sample of the results
+//	(by-page false)          show the results without grouping them by
+//	                         page, see AdvancedQuery.GroupByPage
 //
 // Additions:
 //

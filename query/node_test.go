@@ -15,6 +15,14 @@ var _ = Describe("Queries in nodes", func() {
 		Expect(err).ToNot(HaveOccurred())
 		Expect(advanced.Title).To(BeEmpty())
 		Expect(advanced.Query.String()).To(Equal("(and (task TODO) [[project]])"))
+		Expect(advanced.GroupByPage).To(BeTrue())
+		Expect(advanced.BreadcrumbShow).To(BeTrue())
+	})
+
+	It("reads (by-page false) in a simple query", func() {
+		advanced, err := query.ParseNode(content.NewQuery("(and (task TODO) (by-page false))"))
+		Expect(err).ToNot(HaveOccurred())
+		Expect(advanced.GroupByPage).To(BeFalse())
 	})
 
 	It("reads an advanced query", func() {

@@ -21,6 +21,11 @@ type Query struct {
 	// Limit is the most results to return, or zero for all of them. The
 	// results are limited after they are sorted and sampled.
 	Limit int
+
+	// ByPage is the value of `(by-page false)` or `(by-page true)`, nil if the
+	// query does not have it. It does not change the results, only how Logseq
+	// shows them, see AdvancedQuery.GroupByPage.
+	ByPage *bool
 }
 
 // New creates a query with the given filter.

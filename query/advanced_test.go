@@ -159,6 +159,48 @@ var _ = Describe("Advanced queries", func() {
 		})
 	})
 
+	Describe("Display options", func() {
+		groupByPage := func(text string) bool {
+			advanced, err := query.ParseAdvanced(text)
+			Expect(err).ToNot(HaveOccurred())
+			return advanced.GroupByPage
+		}
+
+		breadcrumbShow := func(text string) bool {
+			advanced, err := query.ParseAdvanced(text)
+			Expect(err).ToNot(HaveOccurred())
+			return advanced.BreadcrumbShow
+		}
+
+		It("groups by page by default", func() {
+			Expect(groupByPage(`{:query (task TODO)}`)).To(BeTrue())
+		})
+
+		It("does not group by page with a result transform", func() {
+			Expect(groupByPage(overdueQuery)).To(BeFalse())
+		})
+
+		It("does not group by page with (by-page false)", func() {
+			Expect(groupByPage(`{:query "(and (task TODO) (by-page false))"}`)).To(BeFalse())
+			Expect(groupByPage(`{:query (and (task TODO) (by-page false))}`)).To(BeFalse())
+		})
+
+		It("uses :group-by-page? before the rest of the query", func() {
+			Expect(groupByPage(`{:query (and (task TODO) (by-page false)) :group-by-page? true}`)).To(BeTrue())
+			Expect(groupByPage(`{:query (task TODO) :group-by-page? false}`)).To(BeFalse())
+			Expect(groupByPage(`{:query (task TODO) :group-by-page? nil}`)).To(BeFalse())
+			Expect(groupByPage(`{:query [:find (pull ?b [*]) :where [?b :block/marker "TODO"]]
+				:result-transform (fn [r] (sort-by (fn [b] (get b :block/priority "Z")) r))
+				:group-by-page? true}`)).To(BeTrue())
+		})
+
+		It("shows breadcrumbs unless :breadcrumb-show? is false", func() {
+			Expect(breadcrumbShow(`{:query (task TODO)}`)).To(BeTrue())
+			Expect(breadcrumbShow(`{:query (task TODO) :breadcrumb-show? true}`)).To(BeTrue())
+			Expect(breadcrumbShow(overdueQuery)).To(BeFalse())
+		})
+	})
+
 	Describe("Block attributes", func() {
 		Translates("marker value", where(`[?b :block/marker "TODO"]`), "(task TODO)")
 		Translates("any marker", where(`[?b :block/marker _]`),

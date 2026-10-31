@@ -25,6 +25,21 @@ type AdvancedQuery struct {
 
 	// Collapsed is true if Logseq shows the results of the query collapsed.
 	Collapsed bool
+
+	// GroupByPage is true if Logseq shows the blocks that the query finds
+	// grouped below the page they are on. The value of `:group-by-page?` is
+	// used if the query has it. If not, it is false when the query has a
+	// `:result-transform` or `(by-page false)`, and true for other queries.
+	//
+	// Logseq does not group the results in its table view, which a block
+	// turns on with the property `query-table:: true`. This value does not
+	// include that.
+	GroupByPage bool
+
+	// BreadcrumbShow is true if Logseq shows the parent blocks above each
+	// block that the query finds. It is the value of `:breadcrumb-show?`, and
+	// true if the query does not have it.
+	BreadcrumbShow bool
 }
 
 // ParseOption is an option for ParseAdvanced and ParseNode.
@@ -185,7 +200,11 @@ func ParseNode(node content.Node, opts ...ParseOption) (*AdvancedQuery, error) {
 		if err != nil {
 			return nil, err
 		}
-		return &AdvancedQuery{Query: q}, nil
+		return &AdvancedQuery{
+			Query:          q,
+			GroupByPage:    q.ByPage == nil || *q.ByPage,
+			BreadcrumbShow: true,
+		}, nil
 	case *content.QueryCommand:
 		options := newParseOptions(opts)
 
@@ -381,8 +400,8 @@ func parseAdvanced(text string, options *parseOptions) (*AdvancedQuery, error) {
 		inlineRules: make(map[string][]*ruleDef),
 	}
 
-	result := &AdvancedQuery{}
-	var queryNode, inputsNode, transformNode, rulesNode *ednNode
+	result := &AdvancedQuery{BreadcrumbShow: true}
+	var queryNode, inputsNode, transformNode, rulesNode, groupByPageNode *ednNode
 	for i := 0; i < len(root.items); i += 2 {
 		key, value := root.items[i], root.items[i+1]
 		if key.kind != ednKeyword {
@@ -394,6 +413,11 @@ func parseAdvanced(text string, options *parseOptions) (*AdvancedQuery, error) {
 			result.Title = strings.TrimSpace(hiccupText(value))
 		case "collapsed?":
 			result.Collapsed = value.isSymbol("true")
+		case "group-by-page?":
+			groupByPageNode = value
+		case "breadcrumb-show?":
+			// Logseq shows the breadcrumbs unless the value is false.
+			result.BreadcrumbShow = !value.isSymbol("false")
 		case "query":
 			queryNode = value
 		case "inputs":
@@ -456,6 +480,16 @@ func parseAdvanced(text string, options *parseOptions) (*AdvancedQuery, error) {
 		if transform.limit > 0 && (q.Limit == 0 || transform.limit < q.Limit) {
 			q.Limit = transform.limit
 		}
+	}
+
+	switch {
+	case groupByPageNode != nil:
+		// Logseq treats all values as true, except false and nil.
+		result.GroupByPage = !groupByPageNode.isSymbol("false") && !groupByPageNode.isSymbol("nil")
+	case transformNode != nil:
+		result.GroupByPage = false
+	default:
+		result.GroupByPage = q.ByPage == nil || *q.ByPage
 	}
 
 	result.Query = q
