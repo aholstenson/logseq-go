@@ -201,14 +201,15 @@ type DefaultQuery struct {
 }
 
 func (q *DefaultQuery) UnmarshalEDN(data []byte) error {
-	// The type without this method reads the keys of the map.
-	type defaultQuery DefaultQuery
-	var parsed defaultQuery
-	if err := edn.Unmarshal(data, &parsed); err != nil {
+	// The type has no methods, so that Unmarshal reads the fields and does
+	// not call this method again.
+	type fields DefaultQuery
+	var f fields
+	if err := edn.Unmarshal(data, &f); err != nil {
 		return err
 	}
 
-	*q = DefaultQuery(parsed)
+	*q = DefaultQuery(f)
 	q.Raw = make(edn.RawMessage, len(data))
 	copy(q.Raw, data)
 	return nil

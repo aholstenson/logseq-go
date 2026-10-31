@@ -478,5 +478,27 @@ var _ = Describe("Config", func() {
 			_, err := graph.DefaultJournalQueries()[0].Parse()
 			Expect(err).To(MatchError(query.ErrUnsupported))
 		})
+
+		It("parses a query with all of its keys", func() {
+			graph := openWithConfig(`{:default-queries
+			  {:journals
+			   [{:title [:h3 "Tasks"]
+			     :query [:find (pull ?b [*]) :where [?b :block/marker "TODO"]]
+			     :breadcrumb-show? false
+			     :remove-block-children? false
+			     :table-view? true}]}}`)
+
+			queries := graph.DefaultJournalQueries()
+			Expect(queries).To(HaveLen(1))
+
+			advanced, err := queries[0].Parse()
+			Expect(err).ToNot(HaveOccurred())
+			Expect(advanced.Title).To(Equal("Tasks"))
+			Expect(advanced.Query.String()).To(Equal("(task TODO)"))
+			Expect(advanced.BreadcrumbShow).To(BeFalse())
+			Expect(advanced.RemoveBlockChildren).To(BeFalse())
+			Expect(advanced.TableView).To(BeTrue())
+			Expect(advanced.GroupByPage).To(BeFalse())
+		})
 	})
 })

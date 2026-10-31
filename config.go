@@ -156,6 +156,12 @@ type DefaultQuery struct {
 // query.ParseAdvanced. The title of the result is the text of the title
 // without Hiccup markup, also when the title is written as Hiccup.
 //
+// The result has the same fields as a query written in a block, such as
+// GroupByPage and BreadcrumbShow. A default query is not in a block, so the
+// block properties for the table, such as `query-table::`, do not apply.
+// Logseq shows the journal queries on the journal page for today, so give its
+// title with query.WithCurrentPage if the query uses `:current-page`.
+//
 // Run the result with Graph.Query. Relative dates such as `:today` are
 // relative to the time the query runs at, see QueryAt:
 //

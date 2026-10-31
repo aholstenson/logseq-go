@@ -263,6 +263,14 @@ var _ = Describe("Config", func() {
 			Expect(c.DefaultQueries.Journals[0].Title.Text).To(Equal(""))
 			Expect(string(c.DefaultQueries.Journals[0].Title.Raw)).To(Equal(`[:b "NOW"]`))
 		})
+
+		It("keeps the whole map of the query", func() {
+			c, err := utils.ParseConfig([]byte(`{:default-queries {:journals [{:title "NOW" :breadcrumb-show? false}]}}`))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(string(c.DefaultQueries.Journals[0].Raw)).To(Equal(`{:title "NOW" :breadcrumb-show? false}`))
+			Expect(c.DefaultQueries.Journals[0].Title.Text).To(Equal("NOW"))
+		})
 	})
 
 	Describe("Logbook settings", func() {
