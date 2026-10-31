@@ -149,6 +149,9 @@ type DefaultQuery struct {
 
 	// Collapsed is whether the query starts out collapsed.
 	Collapsed bool
+
+	// resultTransforms are the transforms of the config, for Parse.
+	resultTransforms map[string]string
 }
 
 // Parse translates the query with query.ParseAdvanced, the same as an
@@ -160,7 +163,8 @@ type DefaultQuery struct {
 // GroupByPage and BreadcrumbShow. A default query is not in a block, so the
 // block properties for the table, such as `query-table::`, do not apply.
 // Logseq shows the journal queries on the journal page for today, so give its
-// title with query.WithCurrentPage if the query uses `:current-page`.
+// title with query.WithCurrentPage if the query uses `:current-page`. The
+// transforms of the config are given with query.WithResultTransforms.
 //
 // Run the result with Graph.Query. Relative dates such as `:today` are
 // relative to the time the query runs at, see QueryAt:
@@ -169,13 +173,28 @@ type DefaultQuery struct {
 //	...
 //	results, err := graph.Query(ctx, advanced.Query)
 func (q DefaultQuery) Parse(opts ...query.ParseOption) (*query.AdvancedQuery, error) {
+	opts = append([]query.ParseOption{query.WithResultTransforms(q.resultTransforms)}, opts...)
 	return query.ParseAdvanced(q.EDN, opts...)
+}
+
+// QueryResultTransforms returns the functions that a :result-transform of a
+// query can name with a keyword, as set via `:query/result-transforms`. The
+// keys are the names of the keywords without the colon, and the values are
+// the functions as EDN text. Give them to query.WithResultTransforms.
+func (g *Graph) QueryResultTransforms() map[string]string {
+	transforms := make(map[string]string, len(g.config.QueryResultTransforms))
+	for name, fn := range g.config.QueryResultTransforms {
+		transforms[string(name)] = string(fn)
+	}
+
+	return transforms
 }
 
 // DefaultJournalQueries returns the queries that Logseq shows at the bottom of
 // the journal page for today, as set via `:default-queries`. Logseq does not
 // show a query from this list when it has no results.
 func (g *Graph) DefaultJournalQueries() []DefaultQuery {
+	transforms := g.QueryResultTransforms()
 	queries := make([]DefaultQuery, 0, len(g.config.DefaultQueries.Journals))
 	for _, q := range g.config.DefaultQueries.Journals {
 		queries = append(queries, DefaultQuery{
@@ -187,6 +206,8 @@ func (g *Graph) DefaultJournalQueries() []DefaultQuery {
 			ResultTransform: string(q.ResultTransform),
 			GroupByPage:     q.GroupByPage,
 			Collapsed:       q.Collapsed,
+
+			resultTransforms: transforms,
 		})
 	}
 

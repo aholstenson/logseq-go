@@ -60,6 +60,11 @@ type GraphConfig struct {
 	// journal pages.
 	DefaultQueries DefaultQueries `edn:"default-queries"`
 
+	// QueryResultTransforms are the functions that a :result-transform of a
+	// query can name with a keyword, keyed by the keyword. The functions are
+	// kept as the EDN they were written as.
+	QueryResultTransforms map[edn.Keyword]edn.RawMessage `edn:"query/result-transforms"`
+
 	// Logbook is how logbooks are recorded and displayed in the graph.
 	Logbook LogbookConfig `edn:"logbook/settings"`
 

@@ -82,6 +82,9 @@ type parseOptions struct {
 	queryPage    string
 	currentBlock blockRef
 	parentBlock  blockRef
+
+	// resultTransforms is nil if WithResultTransforms is not given.
+	resultTransforms map[string]string
 }
 
 // blockRef names a block by its UUID, or by its place on a page when it has
@@ -197,6 +200,25 @@ func WithCurrentBlockAt(page string, location ...int) ParseOption {
 func WithParentBlockAt(page string, location ...int) ParseOption {
 	return func(o *parseOptions) {
 		o.parentBlock = blockRef{page: page, location: location}
+	}
+}
+
+// WithResultTransforms gives the functions that a :result-transform written
+// as a keyword, such as `:result-transform :sort-by-priority`, stands for.
+// The keys are the names of the keywords without the colon, and the values
+// are the functions as EDN text, such as
+// `(fn [result] (sort-by (fn [b] (get b :block/priority "Z")) result))`.
+// In Logseq they are set via `:query/result-transforms` in the config of the
+// graph, see Graph.QueryResultTransforms in the logseq package.
+//
+// The same as in Logseq, a keyword that is not in the transforms leaves the
+// results as they are.
+func WithResultTransforms(transforms map[string]string) ParseOption {
+	return func(o *parseOptions) {
+		o.resultTransforms = transforms
+		if o.resultTransforms == nil {
+			o.resultTransforms = map[string]string{}
+		}
 	}
 }
 
@@ -510,7 +532,8 @@ var queryFence = regexp.MustCompile(`(?im)^\s*#\+(BEGIN|END)_QUERY\s*$`)
 //     as the last step, also with ->>, see Query.Limit; the function of filter or
 //     remove can use and, or, not, not=, nil?, some? and the conditions of
 //     :where on values such as `(:block/marker b)` or
-//     `(get-in b [:block/properties :type])`
+//     `(get-in b [:block/properties :type])`. It can also be a keyword for
+//     such a function in the config, given with WithResultTransforms
 //
 // The inputs `:current-page` and `:query-page` depend on where the query is,
 // and are supported when the page is given with WithCurrentPage and
@@ -652,7 +675,12 @@ func parseAdvanced(text string, options *parseOptions) (*AdvancedQuery, error) {
 	}
 
 	if transformNode != nil {
-		transform, err := t.resultTransform(transformNode, q.FindsBlocks())
+		var transform *transform
+		if transformNode.kind == ednKeyword {
+			transform, err = t.namedResultTransform(transformNode, options.resultTransforms, q.FindsBlocks())
+		} else {
+			transform, err = t.resultTransform(transformNode, q.FindsBlocks())
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -3905,6 +3933,39 @@ func (t *translator) resultTransform(node *ednNode, findsBlocks bool) (*transfor
 		return nil, err
 	}
 	return transform, nil
+}
+
+// namedResultTransform reads a :result-transform written as a keyword, which
+// stands for a function in transforms. findsBlocks tells if the results are
+// blocks or pages.
+func (t *translator) namedResultTransform(node *ednNode, transforms map[string]string, findsBlocks bool) (*transform, error) {
+	if transforms == nil {
+		return nil, t.unsupported(node, "the :result-transform needs the transforms of the config, given with WithResultTransforms")
+	}
+
+	text, ok := transforms[node.text]
+	if !ok {
+		// Logseq shows the results as they are when the keyword names no
+		// function.
+		return &transform{t: t, findsBlocks: findsBlocks}, nil
+	}
+
+	r := &ednReader{input: text}
+	fn, err := r.read()
+	if err != nil {
+		return nil, t.unsupported(node, "the :result-transform in the config can not be read: %v", err)
+	}
+
+	// Errors in the function are reported at the keyword, as the function is
+	// not in the text of the query.
+	config := t.sub()
+	config.src = text
+	result, err := config.resultTransform(fn, findsBlocks)
+	var unsupported *UnsupportedError
+	if errors.As(err, &unsupported) {
+		return nil, t.unsupported(node, "%s, in the function from the config: %s", unsupported.Message, unsupported.Form)
+	}
+	return result, err
 }
 
 // transform holds what a :result-transform does to the results.

@@ -159,6 +159,65 @@ var _ = Describe("Advanced queries", func() {
 		})
 	})
 
+	Describe("Result transforms from the config", func() {
+		transforms := map[string]string{
+			"prio":    `(fn [result] (sort-by (fn [b] (get b :block/priority "Z")) result))`,
+			"my/rank": `(fn [r] (reverse (sort-by (fn [b] (get-in b [:block/properties :rank])) r)))`,
+			"shuffle": `(fn [result] (shuffle result))`,
+			"top-a":   `(fn [r] (->> r (filter (fn [b] (= "A" (:block/priority b)))) (take 5)))`,
+		}
+
+		It("translates the function that the keyword stands for", func() {
+			advanced, err := query.ParseAdvanced(`{:query (task TODO) :result-transform :prio}`,
+				query.WithResultTransforms(transforms))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(advanced.Query.String()).To(Equal("(and (task TODO) (sort-by priority asc))"))
+			Expect(advanced.GroupByPage).To(BeFalse())
+
+			advanced, err = query.ParseAdvanced(`{:query (task TODO) :result-transform :my/rank}`,
+				query.WithResultTransforms(transforms))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(advanced.Query.String()).To(Equal("(and (task TODO) (sort-by rank desc))"))
+		})
+
+		It("translates a function from the config that keeps and takes results", func() {
+			advanced, err := query.ParseAdvanced(`{:query (task TODO) :result-transform :top-a}`,
+				query.WithResultTransforms(transforms))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(advanced.Query.String()).To(Equal("(and (task TODO) (priority A) (limit 5))"))
+		})
+
+		It("leaves the results as they are for a keyword that is not in the config", func() {
+			advanced, err := query.ParseAdvanced(`{:query (task TODO) :result-transform :missing}`,
+				query.WithResultTransforms(transforms))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(advanced.Query.String()).To(Equal("(task TODO)"))
+			Expect(advanced.GroupByPage).To(BeFalse())
+
+			advanced, err = query.ParseAdvanced(`{:query (task TODO) :result-transform :missing}`,
+				query.WithResultTransforms(nil))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(advanced.Query.String()).To(Equal("(task TODO)"))
+		})
+
+		It("names the option when the transforms are not given", func() {
+			text := `{:query (task TODO) :result-transform :prio}`
+			_, err := query.ParseAdvanced(text)
+			Expect(errors.Is(err, query.ErrUnsupported)).To(BeTrue())
+			Expect(err).To(MatchError(ContainSubstring("given with WithResultTransforms")))
+		})
+
+		It("reports a function that can not be translated at the keyword", func() {
+			text := `{:query (task TODO) :result-transform :shuffle}`
+			_, err := query.ParseAdvanced(text, query.WithResultTransforms(transforms))
+
+			var unsupported *query.UnsupportedError
+			Expect(errors.As(err, &unsupported)).To(BeTrue())
+			Expect(unsupported.Offset).To(Equal(strings.Index(text, ":shuffle")))
+			Expect(unsupported.Message).To(ContainSubstring("in the function from the config: (shuffle result)"))
+		})
+	})
+
 	Describe("Display options", func() {
 		groupByPage := func(text string) bool {
 			advanced, err := query.ParseAdvanced(text)

@@ -500,5 +500,22 @@ var _ = Describe("Config", func() {
 			Expect(advanced.TableView).To(BeTrue())
 			Expect(advanced.GroupByPage).To(BeFalse())
 		})
+
+		It("parses a query with a result transform from the config", func() {
+			graph := openWithConfig(`{:query/result-transforms
+			  {:sort-by-priority (fn [result] (sort-by (fn [b] (get b :block/priority "Z")) result))}
+			  :default-queries
+			  {:journals
+			   [{:title "Tasks"
+			     :query [:find (pull ?b [*]) :where [?b :block/marker "TODO"]]
+			     :result-transform :sort-by-priority}]}}`)
+
+			Expect(graph.QueryResultTransforms()).To(HaveKeyWithValue("sort-by-priority",
+				`(fn [result] (sort-by (fn [b] (get b :block/priority "Z")) result))`))
+
+			advanced, err := graph.DefaultJournalQueries()[0].Parse()
+			Expect(err).ToNot(HaveOccurred())
+			Expect(advanced.Query.String()).To(Equal("(and (task TODO) (sort-by priority asc))"))
+		})
 	})
 })
