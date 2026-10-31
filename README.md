@@ -1,10 +1,12 @@
 # logseq-go
 
-logseq-go is a Go library to work with a [Logseq](https://logseq.com) graph,
-with support for reading and modifying journals and pages.
+logseq-go is a Go library to work with a [Logseq](https://logseq.com) file
+graph, with support for reading and modifying journals and pages written in
+Markdown.
 
-⚠️ **Note:** This library is still in early development, it may destroy your data
-when pages are modified. Please open issues if you find any bugs.
+⚠️ **Note:** This library is still in development and while there's tests and
+I've run it on my own notes, it may destroy your data when pages are
+modified. Please open issues if you find any bugs.
 
 ## Features
 
