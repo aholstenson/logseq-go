@@ -1114,7 +1114,13 @@ func plainText0(nodes content.NodeList, builder *strings.Builder) {
 			builder.WriteString("#")
 			builder.WriteString(n.To)
 		case *content.PageLink:
-			builder.WriteString(n.To)
+			// A link with a label shows the label in place of the title of
+			// the page.
+			if n.HasLabel() {
+				plainText0(n.Children(), builder)
+			} else {
+				builder.WriteString(n.To)
+			}
 		case *content.PageRefText:
 			builder.WriteString(n.To)
 		case *content.CodeSpan:

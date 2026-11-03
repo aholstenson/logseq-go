@@ -903,6 +903,94 @@ var _ = Describe("Parsing", func() {
 				),
 			)))
 		})
+
+		It("can parse page link with a label", func() {
+			block, err := markdown.ParseString("See [Goals]([[Workshop/Goals]]) here")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("See "),
+					content.NewPageLink("Workshop/Goals", content.NewText("Goals")),
+					content.NewText(" here"),
+				),
+			)))
+		})
+
+		It("can parse page link with a label to a page with spaces in the name", func() {
+			block, err := markdown.ParseString("See [the goals]([[Workshop Goals]]) here")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("See "),
+					content.NewPageLink("Workshop Goals", content.NewText("the goals")),
+					content.NewText(" here"),
+				),
+			)))
+		})
+
+		It("can parse page link with a label that has formatting", func() {
+			block, err := markdown.ParseString("[**Goals** of it]([[Workshop Goals]])")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewPageLink("Workshop Goals",
+						content.NewStrong(content.NewText("Goals")),
+						content.NewText(" of it"),
+					),
+				),
+			)))
+		})
+
+		It("can parse page link with a label and an escaped ]] in the name", func() {
+			block, err := markdown.ParseString("[Goals]([[Work \\]] shop]])")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewPageLink("Work ]] shop", content.NewText("Goals")),
+				),
+			)))
+		})
+
+		It("can parse block reference with a label", func() {
+			block, err := markdown.ParseString("See [the block](((0b48a6c6-93ca-4d35-b945-6c59007f7962))) here")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("See "),
+					content.NewBlockRef("0b48a6c6-93ca-4d35-b945-6c59007f7962", content.NewText("the block")),
+					content.NewText(" here"),
+				),
+			)))
+		})
+
+		It("keeps a link to more than a page link as a link", func() {
+			block, err := markdown.ParseString("[Goals]([[Workshop]]/more)")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewLink("[[Workshop]]/more", content.NewText("Goals")),
+				),
+			)))
+		})
+
+		It("keeps text in brackets before a page link as text", func() {
+			block, err := markdown.ParseString("[Goals] ([[Workshop Goals]])")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewText("[Goals] ("),
+					content.NewPageLink("Workshop Goals"),
+					content.NewText(")"),
+				),
+			)))
+		})
 	})
 
 	Describe("Images", func() {

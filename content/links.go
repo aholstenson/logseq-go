@@ -115,17 +115,27 @@ type PageRef interface {
 	SetTo(target string)
 }
 
+// PageLink is a link to a page, written as `[[To]]`. A link with a label is
+// written as `[label]([[To]])`, where the children of the link are the label.
+// Logseq shows the label in place of the title of the page, and the link is
+// still a reference to the page.
 type PageLink struct {
-	baseNode
+	baseNodeWithChildren
 
 	// To is the target of the link.
 	To string
 }
 
-func NewPageLink(target string) *PageLink {
-	return &PageLink{
+// NewPageLink creates a link to the page with the given title. The label is
+// optional, without a label the link shows the title of the page.
+func NewPageLink(target string, label ...Node) *PageLink {
+	link := &PageLink{
 		To: target,
 	}
+	link.self = link
+	link.childValidator = allowOnlyInlineNodes
+	link.AddChildren(label...)
+	return link
 }
 
 func (l *PageLink) GetTo() string {
@@ -141,11 +151,20 @@ func (l *PageLink) WithTo(target string) *PageLink {
 	return l
 }
 
+// HasLabel checks if the link has a label to show in place of the title of
+// the page.
+func (l *PageLink) HasLabel() bool {
+	return l.FirstChild() != nil
+}
+
 func (l *PageLink) isInline() {}
 
 func (l *PageLink) debug(p *debugPrinter) {
 	p.StartType("PageLink")
 	p.Field("to", l.To)
+	if l.HasLabel() {
+		p.Children(l)
+	}
 	p.EndType()
 }
 
@@ -236,17 +255,26 @@ func (l *Hashtag) isPageRef() {}
 var _ InlineNode = (*Hashtag)(nil)
 var _ PageRef = (*Hashtag)(nil)
 
+// BlockRef is a reference to a block, written as `((ID))`. A reference with a
+// label is written as `[label](((ID)))`, where the children of the reference
+// are the label. Logseq shows the label in place of the content of the block.
 type BlockRef struct {
-	baseNode
+	baseNodeWithChildren
 
 	// ID is the id of the block to reference.
 	ID string
 }
 
-func NewBlockRef(id string) *BlockRef {
-	return &BlockRef{
+// NewBlockRef creates a reference to the block with the given id. The label is
+// optional, without a label the reference shows the content of the block.
+func NewBlockRef(id string, label ...Node) *BlockRef {
+	ref := &BlockRef{
 		ID: id,
 	}
+	ref.self = ref
+	ref.childValidator = allowOnlyInlineNodes
+	ref.AddChildren(label...)
+	return ref
 }
 
 func (l *BlockRef) WithID(id string) *BlockRef {
@@ -254,9 +282,18 @@ func (l *BlockRef) WithID(id string) *BlockRef {
 	return l
 }
 
+// HasLabel checks if the reference has a label to show in place of the
+// content of the block.
+func (l *BlockRef) HasLabel() bool {
+	return l.FirstChild() != nil
+}
+
 func (b *BlockRef) debug(p *debugPrinter) {
 	p.StartType("BlockRef")
 	p.Field("id", b.ID)
+	if b.HasLabel() {
+		p.Children(b)
+	}
 	p.EndType()
 }
 

@@ -48,7 +48,7 @@ func init() {
 			util.Prioritized(&blockRefParser{}, 198),
 			util.Prioritized(&pageLinkParser{}, 199),
 			util.Prioritized(&tagParser{}, 999),
-			util.Prioritized(parser.NewLinkParser(), 200),
+			util.Prioritized(newLabelledRefLinkParser(), 200),
 			util.Prioritized(parser.NewAutoLinkParser(), 300),
 			util.Prioritized(parser.NewRawHTMLParser(), 400),
 			util.Prioritized(&emphasisParser{}, 500),
@@ -555,8 +555,25 @@ func convertHeading(src []byte, node *ast.Heading) (*content.Heading, error) {
 	return heading, nil
 }
 
-func convertLink(src []byte, node *ast.Link) (*content.Link, error) {
-	link := content.NewLink(unescapeString(node.Destination))
+// convertLink converts a link. Logseq reads `[label]([[Page]])` as a link to
+// the page and `[label](((uuid)))` as a reference to the block, both with the
+// text of the link as the label. A link with a title is kept as a link, as
+// there is no place for the title in a page link or block reference.
+func convertLink(src []byte, node *ast.Link) (content.Node, error) {
+	destination := node.Destination
+	if len(node.Title) == 0 {
+		if length := pageRefLength(destination); length > 0 && length == len(destination) {
+			link := content.NewPageLink(unescapeString(destination[2 : length-2]))
+			return link, convertChildren(src, node, link)
+		}
+
+		if length := blockRefLength(destination); length > 0 && length == len(destination) {
+			ref := content.NewBlockRef(string(destination[2 : length-2]))
+			return ref, convertChildren(src, node, ref)
+		}
+	}
+
+	link := content.NewLink(unescapeString(destination))
 	err := convertChildren(src, node, link)
 	if err != nil {
 		return nil, err

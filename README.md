@@ -22,10 +22,10 @@ modified. Please open issues if you find any bugs.
   - Tables in the GitHub Flavored Markdown syntax
   - LaTeX via `$formula$` and math blocks
   - Footnotes via `[^1]` and `[^1]: The footnote`
-  - Page links via `[[Example]]`
+  - Page links via `[[Example]]` and `[label]([[Example]])`
   - Tags via `#Example` and `#[[Example with space]]`
   - Macros via `{{macro param1 param2}}`
-  - Block references via `((block-id))`
+  - Block references via `((block-id))` and `[label](((block-id)))`
 
 ## Usage
 

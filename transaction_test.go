@@ -72,6 +72,19 @@ var _ = Describe("Transaction", func() {
 			Expect(readPage("unrelated.md")).To(Equal("- see [[other]] for more\n"))
 		})
 
+		It("points page links with a label at the new title", func() {
+			graph = openGraphWithPages(dir, map[string]string{
+				"old.md":      "- content of old\n",
+				"referrer.md": "- see [the old page]([[old]]) for more\n",
+			})
+
+			tx := graph.NewTransaction()
+			Expect(tx.RenamePage(ctx, "old", "new title")).To(Succeed())
+			Expect(tx.Save()).To(Succeed())
+
+			Expect(readPage("referrer.md")).To(Equal("- see [the old page]([[new title]]) for more\n"))
+		})
+
 		It("points hashtags at the new title", func() {
 			graph = openGraphWithPages(dir, map[string]string{
 				"old.md":      "- content of old\n",

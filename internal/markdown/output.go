@@ -695,7 +695,16 @@ func (w *Output) writeAutoLink(node *content.AutoLink) error {
 	return nil
 }
 
+// writePageLink writes *content.PageLink as `[[to]]`, or as `[label]([[to]])`
+// if the link has a label.
 func (w *Output) writePageLink(node *content.PageLink) error {
+	if node.HasLabel() {
+		err := w.writeLabelStart(node)
+		if err != nil {
+			return err
+		}
+	}
+
 	err := w.writeRaw("[[")
 	if err != nil {
 		return err
@@ -711,7 +720,27 @@ func (w *Output) writePageLink(node *content.PageLink) error {
 		return err
 	}
 
+	if node.HasLabel() {
+		return w.writeRaw(")")
+	}
+
 	return nil
+}
+
+// writeLabelStart writes the label of a page link or block reference as
+// `[label](`. The target and the closing `)` are written after it.
+func (w *Output) writeLabelStart(node content.HasChildren) error {
+	err := w.writeRaw("[")
+	if err != nil {
+		return err
+	}
+
+	err = w.writeChildren(node)
+	if err != nil {
+		return err
+	}
+
+	return w.writeRaw("](")
 }
 
 // writeHashtag writes *content.PageLink as `#to` or `#[[to]]`. The extended
@@ -752,7 +781,16 @@ func (w *Output) writeHashtag(node *content.Hashtag) error {
 	return nil
 }
 
+// writeBlockRef writes *content.BlockRef as `((id))`, or as `[label](((id)))`
+// if the reference has a label.
 func (w *Output) writeBlockRef(node *content.BlockRef) error {
+	if node.HasLabel() {
+		err := w.writeLabelStart(node)
+		if err != nil {
+			return err
+		}
+	}
+
 	err := w.writeRaw("((")
 	if err != nil {
 		return err
@@ -766,6 +804,10 @@ func (w *Output) writeBlockRef(node *content.BlockRef) error {
 	err = w.writeRaw("))")
 	if err != nil {
 		return err
+	}
+
+	if node.HasLabel() {
+		return w.writeRaw(")")
 	}
 
 	return nil

@@ -80,6 +80,15 @@ var _ = Describe("Linked references", func() {
 		Expect(previews(linkedReferences("target"))).To(ConsistOf("tagged #target here"))
 	})
 
+	It("finds blocks that link to the page with a label", func() {
+		graph = openGraphWithPages(dir, map[string]string{
+			"target page.md": "- content of target\n",
+			"referrer.md":    "- see [the target]([[target page]]) for more\n",
+		})
+
+		Expect(previews(linkedReferences("target page"))).To(ConsistOf("see the target for more"))
+	})
+
 	It("finds blocks that embed the page", func() {
 		graph = openGraphWithPages(dir, map[string]string{
 			"target.md":   "- content of target\n",
