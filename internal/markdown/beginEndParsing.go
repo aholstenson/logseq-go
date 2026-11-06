@@ -2,6 +2,7 @@ package markdown
 
 import (
 	"bytes"
+	"strings"
 
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
@@ -70,7 +71,8 @@ func hasPrefixFold(text []byte, prefix []byte) bool {
 // Open looks for the start of the org-mode block, which is a line starting
 // with `#+BEGIN_` and the type of the block, such as `#+BEGIN_SRC`. The text
 // after the type, such as the language of a source block, is kept as the
-// parameters of the block.
+// parameters of the block. The line is only read as the start of the block if
+// an END line of the same type closes it.
 func (b *beginEndParser) Open(parent ast.Node, reader text.Reader, pc parser.Context) (ast.Node, parser.State) {
 	line, _ := reader.PeekLine()
 	pos := pc.BlockOffset()
@@ -95,6 +97,17 @@ func (b *beginEndParser) Open(parent ast.Node, reader text.Reader, pc parser.Con
 
 	blockType := string(line[start:i])
 	if blockType == "" {
+		return nil, parser.NoChildren
+	}
+
+	// Logseq reads a BEGIN line that no END line in the same block closes
+	// as text, see hasClosingLine.
+	searchFor := []byte(string(endPrefix) + blockType)
+	kind := "end:" + strings.ToLower(blockType)
+	closed := hasClosingLine(reader, pc, kind, func(line []byte) bool {
+		return hasPrefixFold(line, searchFor) && util.IsBlank(line[len(searchFor):])
+	})
+	if !closed {
 		return nil, parser.NoChildren
 	}
 

@@ -1,6 +1,8 @@
 package markdown
 
 import (
+	"fmt"
+
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/text"
@@ -8,15 +10,17 @@ import (
 )
 
 // fencedCodeBlockParser is the fenced code block parser of Goldmark, changed
-// so that a fence can be indented four columns or more further than the text
-// of its block, such as the fence in "- a\n      ```js\n      x()\n      ```".
+// to read fences as Logseq does:
 //
-// In CommonMark such a line is an indented code block, or more text of the
-// paragraph before it. Logseq reads a fence at any indentation as the start of
-// a code block, and ends the code block at the next fence line, at any
-// indentation.
-//
-// Fences that are indented less than four columns are read as in CommonMark.
+//   - A fence can be indented four columns or more further than the text of
+//     its block, such as the fence in "- a\n      ```js\n      x()\n      ```".
+//     In CommonMark such a line is an indented code block, or more text of the
+//     paragraph before it.
+//   - The code block ends at the next fence line, at any indentation. In
+//     CommonMark a closing fence must be indented less than four columns.
+//   - A fence that no later fence line in the same block closes is text, see
+//     hasClosingLine. In CommonMark the code block ends at the end of the
+//     block.
 type fencedCodeBlockParser struct {
 	parser.BlockParser
 }
@@ -27,23 +31,20 @@ func newFencedCodeBlockParser() *fencedCodeBlockParser {
 	}
 }
 
-// deepFence is a code block whose opening fence is indented four columns or
-// more.
-type deepFence struct {
+// openFence is the opening fence of the code block that is being parsed.
+type openFence struct {
 	node   ast.Node
 	char   byte
 	length int
 }
 
-var deepFenceKey = parser.NewContextKey()
+var openFenceKey = parser.NewContextKey()
 
 func (p *fencedCodeBlockParser) Open(parent ast.Node, reader text.Reader, pc parser.Context) (ast.Node, parser.State) {
 	line, _ := reader.PeekLine()
-	pos, indent := pc.BlockOffset(), pc.BlockIndent()
-
-	node, state := p.BlockParser.Open(parent, reader, pc)
-	if node == nil || indent < 4 {
-		return node, state
+	pos := pc.BlockOffset()
+	if pos < 0 || pos >= len(line) || (line[pos] != '`' && line[pos] != '~') {
+		return nil, parser.NoChildren
 	}
 
 	length := 0
@@ -51,18 +52,32 @@ func (p *fencedCodeBlockParser) Open(parent ast.Node, reader text.Reader, pc par
 		length++
 	}
 
-	pc.Set(deepFenceKey, &deepFence{
-		node:   node,
+	fence := &openFence{
 		char:   line[pos],
 		length: length,
+	}
+	kind := fmt.Sprintf("fence:%c:%d", fence.char, fence.length)
+	closed := hasClosingLine(reader, pc, kind, func(line []byte) bool {
+		return closesFence(line, fence)
 	})
+	if !closed {
+		return nil, parser.NoChildren
+	}
+
+	node, state := p.BlockParser.Open(parent, reader, pc)
+	if node == nil {
+		return node, state
+	}
+
+	fence.node = node
+	pc.Set(openFenceKey, fence)
 	return node, state
 }
 
 func (p *fencedCodeBlockParser) Continue(node ast.Node, reader text.Reader, pc parser.Context) parser.State {
-	if fence, ok := pc.Get(deepFenceKey).(*deepFence); ok && fence.node == node {
+	if fence, ok := pc.Get(openFenceKey).(*openFence); ok && fence.node == node {
 		line, segment := reader.PeekLine()
-		if closesDeepFence(line, fence) {
+		if closesFence(line, fence) {
 			newline := 0
 			if len(line) > 0 && line[len(line)-1] == '\n' {
 				newline = 1
@@ -76,8 +91,8 @@ func (p *fencedCodeBlockParser) Continue(node ast.Node, reader text.Reader, pc p
 }
 
 func (p *fencedCodeBlockParser) Close(node ast.Node, reader text.Reader, pc parser.Context) {
-	if fence, ok := pc.Get(deepFenceKey).(*deepFence); ok && fence.node == node {
-		pc.Set(deepFenceKey, nil)
+	if fence, ok := pc.Get(openFenceKey).(*openFence); ok && fence.node == node {
+		pc.Set(openFenceKey, nil)
 	}
 
 	p.BlockParser.Close(node, reader, pc)
@@ -87,9 +102,9 @@ func (p *fencedCodeBlockParser) CanAcceptIndentedLine() bool {
 	return true
 }
 
-// closesDeepFence checks if a line is a fence that closes the code block, at
-// any indentation.
-func closesDeepFence(line []byte, fence *deepFence) bool {
+// closesFence checks if a line is a fence that closes the code block, at any
+// indentation.
+func closesFence(line []byte, fence *openFence) bool {
 	pos := util.FirstNonSpacePosition(line)
 	if pos < 0 {
 		return false
