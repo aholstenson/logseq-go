@@ -1395,12 +1395,14 @@ var _ = Describe("Parsing", func() {
 			)))
 		})
 
-		It("can parse indented code block", func() {
-			block, err := markdown.ParseString("    This is an indented code block\n")
+		It("reads indented text as a paragraph and not as a code block", func() {
+			block, err := markdown.ParseString("    This is indented text\n")
 			Expect(err).ToNot(HaveOccurred())
 
 			Expect(block).To(tests.EqualNode(content.NewBlock(
-				content.NewCodeBlock("This is an indented code block\n"),
+				content.NewParagraph(
+					content.NewText("This is indented text"),
+				).WithIndentation("    "),
 			)))
 		})
 
@@ -2426,15 +2428,17 @@ var _ = Describe("Parsing", func() {
 				)))
 			})
 
-			It("indented text that is not a bullet is still a code block", func() {
-				block, err := markdown.ParseString("Paragraph\n\n\tcode\n")
+			It("indented text that is not a bullet is a paragraph that keeps its indentation", func() {
+				block, err := markdown.ParseString("Paragraph\n\n\ttext\n")
 				Expect(err).ToNot(HaveOccurred())
 
 				Expect(block).To(tests.EqualNode(content.NewBlock(
 					content.NewParagraph(
 						content.NewText("Paragraph"),
 					),
-					content.NewCodeBlock("code\n"),
+					content.NewParagraph(
+						content.NewText("text"),
+					).WithIndentation("\t"),
 				)))
 			})
 		})

@@ -28,7 +28,7 @@ func init() {
 			util.Prioritized(newBlockListParser(), 300),
 			util.Prioritized(newBlockListItemParser(), 400),
 			util.Prioritized(&indentedBlocksParser{}, 450),
-			util.Prioritized(parser.NewCodeBlockParser(), 500),
+			util.Prioritized(&indentedParagraphParser{}, 500),
 			util.Prioritized(parser.NewATXHeadingParser(), 600),
 			util.Prioritized(newFencedCodeBlockParser(), 700),
 			util.Prioritized(parser.NewBlockquoteParser(), 800),
@@ -253,8 +253,6 @@ func convert(src []byte, in ast.Node) (content.Node, error) {
 		return convertMacro(src, node)
 	case *ast.FencedCodeBlock:
 		return convertFencedCodeBlock(src, node)
-	case *ast.CodeBlock:
-		return convertCodeBlock(src, node)
 	case *ast.Blockquote:
 		return convertBlockquote(src, node)
 	case *ast.List:
@@ -620,6 +618,7 @@ func taskStatusFor(marker string) content.TaskStatus {
 
 func convertParagraph(src []byte, node *ast.Paragraph) (*content.Paragraph, error) {
 	paragraph := content.NewParagraph()
+	paragraph.Indentation = paragraphIndentation(node)
 	err := convertChildren(src, node, paragraph)
 	if err != nil {
 		return nil, err
@@ -825,21 +824,6 @@ func convertFencedCodeBlock(src []byte, node *ast.FencedCodeBlock) (*content.Cod
 
 	updatePreviousLine(node, code)
 
-	return code, nil
-}
-
-func convertCodeBlock(src []byte, node *ast.CodeBlock) (*content.CodeBlock, error) {
-	// CodeBlock contains raw data so we need to combine all the lines
-	// into a single string.
-	codeBuf := bytes.Buffer{}
-	for i := 0; i < node.Lines().Len(); i++ {
-		line := node.Lines().At(i)
-		_, _ = codeBuf.Write(line.Value(src))
-	}
-
-	code := content.NewCodeBlock(codeBuf.String())
-
-	updatePreviousLine(node, code)
 	return code, nil
 }
 

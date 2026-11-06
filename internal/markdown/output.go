@@ -57,18 +57,20 @@ const lineEdgeRune = rune(-2)
 // escapeText is EscapePotentialMarkdown for a text with known characters
 // directly before and after it. Either can be unknownRune or lineEdgeRune.
 func escapeText(str string, before rune, after rune) string {
-	return escapeTextIn(str, before, after, false)
+	return escapeTextIn(str, before, after, false, true)
 }
 
 // escapeTextIn is escapeText for a text that can be inside formatting, such
 // as emphasis. The text of formatting has no tags when it is read back, so a
-// `#` in it is not escaped.
-func escapeTextIn(str string, before rune, after rune, inFormatting bool) string {
+// `#` in it is not escaped. If headings is false, the text is on lines that
+// cannot start a heading when read back, so a `#` at the start of a line is
+// not escaped for that.
+func escapeTextIn(str string, before rune, after rune, inFormatting bool, headings bool) string {
 	escapes := map[int]bool{}
 	mathEscapes(str, escapes)
 	bracketEscapes(str, escapes)
 	delimiterEscapes(str, before, after, escapes)
-	markupEscapes(str, before, !inFormatting, escapes)
+	markupEscapes(str, before, !inFormatting, headings, escapes)
 	backslashEscapes(str, after, escapes)
 
 	out := strings.Builder{}
@@ -124,8 +126,8 @@ func backslashEscapes(str string, after rune, escapes map[int]bool) {
 
 // markupEscapes finds the characters in the text that would start a tag, a
 // heading, a block reference, a macro, code or HTML when read back. Tags are
-// only looked for if tags is true.
-func markupEscapes(str string, before rune, tags bool, escapes map[int]bool) {
+// only looked for if tags is true, and headings only if headings is true.
+func markupEscapes(str string, before rune, tags bool, headings bool, escapes map[int]bool) {
 	if !strings.ContainsAny(str, "#({`<") {
 		return
 	}
@@ -138,7 +140,7 @@ func markupEscapes(str string, before rune, tags bool, escapes map[int]bool) {
 				previous, _ = utf8.DecodeLastRuneInString(str[:i])
 			}
 
-			if (tags && startsTag(str, i, previous)) || startsHeading(str, i, previous) {
+			if (tags && startsTag(str, i, previous)) || (headings && startsHeading(str, i, previous)) {
 				escapes[i] = true
 			}
 		case '(':
@@ -841,7 +843,7 @@ func (w *Output) writeText(node *content.Text) error {
 		before, after = w.textSurroundings(node, node.SoftLineBreak || node.HardLineBreak)
 	}
 
-	value := escapeTextIn(node.Value, before, after, isInFormatting(node))
+	value := escapeTextIn(node.Value, before, after, isInFormatting(node), !isInIndentedParagraph(node))
 	if strings.HasSuffix(value, "]") && !strings.HasSuffix(value, `\]`) && (after == '(' || after == '[') {
 		// The next node starts with `(` or `[`, which together with the
 		// closing bracket would be read back as a link.
@@ -880,6 +882,20 @@ func (w *Output) writeText(node *content.Text) error {
 	}
 
 	return nil
+}
+
+// isInIndentedParagraph returns true if the node is in a paragraph that is
+// indented four or more columns. The lines of such a paragraph are read back
+// as text, so they cannot start a heading.
+func isInIndentedParagraph(node content.Node) bool {
+	for p := node.Parent(); p != nil; p = p.Parent() {
+		if paragraph, ok := p.(*content.Paragraph); ok {
+			width, _ := util.IndentWidth([]byte(paragraph.Indentation), 0)
+			return width >= 4
+		}
+	}
+
+	return false
 }
 
 // isInFormatting returns true if the node is inside emphasis, strong text,
@@ -1569,7 +1585,8 @@ func (w *Output) writeParagraph(node *content.Paragraph) error {
 		doubleNewLine = false
 	}
 
-	err := w.startBlockWithAutomaticBehavior(node, "", doubleNewLine)
+	// The indentation is written before each line of the paragraph.
+	err := w.startBlockWithAutomaticBehavior(node, node.Indentation, doubleNewLine)
 	if err != nil {
 		return err
 	}

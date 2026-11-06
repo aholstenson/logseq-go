@@ -163,6 +163,13 @@ var _ InlineNode = (*Strong)(nil)
 type Paragraph struct {
 	baseNodeWithChildren
 	previousLineAwareImpl
+
+	// Indentation is the whitespace before each line of the paragraph, after
+	// the indentation of the block or other node that holds it. It is empty
+	// for most paragraphs. Logseq has no indented code blocks, so a paragraph
+	// that starts on a line indented four or more columns keeps this
+	// indentation as part of its text, and it is written back on save.
+	Indentation string
 }
 
 type Strikethrough struct {
@@ -221,12 +228,21 @@ func NewParagraph(children ...Node) *Paragraph {
 func (p *Paragraph) debug(pr *debugPrinter) {
 	pr.StartType("Paragraph")
 	debugPreviousLineAware(pr, p)
+	if p.Indentation != "" {
+		pr.Field("indentation", strconv.Quote(p.Indentation))
+	}
 	pr.Children(p)
 	pr.EndType()
 }
 
 func (p *Paragraph) WithPreviousLineType(t PreviousLineType) *Paragraph {
 	p.previousLineType = t
+	return p
+}
+
+// WithIndentation sets the indentation of the paragraph, see Indentation.
+func (p *Paragraph) WithIndentation(indentation string) *Paragraph {
+	p.Indentation = indentation
 	return p
 }
 
