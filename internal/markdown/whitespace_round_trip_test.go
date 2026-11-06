@@ -30,5 +30,13 @@ var _ = Describe("Parsing then outputting whitespace in blocks", func() {
 
 	// Given property lines with special whitespace, When written, Then the
 	// lines are the same.
+	FullyEqual("Property with an empty value and no space after the name in a block", "- a\n  b::")
+	FullyEqual("Property with an empty value and spaces after the name", "- a\n  b::   \n  c:: d")
+	FullyEqual("Property with an empty value and a tab after the name", "- a\n  b::\t")
+	FullyEqual("Property with trailing spaces after its value", "- a\n  b:: c  ")
+	FullyEqual("Property with trailing spaces before the next property", "- a\n  b:: c \n  d:: e\t")
+	FullyEqual("Property with trailing spaces before text", "- a\n  b:: c \n  text")
+	FullyEqual("Directive with trailing spaces", "#+title: x \n\n- a")
+	FullyEqual("Directive with an empty value and a space", "#+title: \n\n- a")
 	FullyEqual("Line that looks like a property and ends with two spaces", "- a\n  #x::  \n  b")
 })

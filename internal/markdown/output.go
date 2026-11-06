@@ -2351,6 +2351,11 @@ func (w *Output) writeProperties(node *content.Properties) error {
 			return err
 		}
 
+		err = w.writeRaw(property.TrailingSpace)
+		if err != nil {
+			return err
+		}
+
 		if child.NextSibling() != nil {
 			err = w.writeRaw("\n")
 			if err != nil {
@@ -2364,7 +2369,9 @@ func (w *Output) writeProperties(node *content.Properties) error {
 }
 
 // writePropertyName writes the name of a property and the separator before
-// its value, as `name:: ` or, for a directive, as `#+name: `.
+// its value, as `name:: ` or, for a directive, as `#+name: `. A property with
+// an empty value can be written as `name::`, see
+// content.Property.NoSpaceAfterSeparator.
 //
 // If the property has a value, the spaces and tabs that were written before
 // the value are written again, see content.Property.SpaceBeforeValue.
@@ -2375,6 +2382,10 @@ func (w *Output) writePropertyName(property *content.Property) error {
 	}
 
 	if !property.Directive {
+		if property.FirstChild() == nil && property.NoSpaceAfterSeparator {
+			return w.writeRaw(property.Name + "::")
+		}
+
 		return w.writeRaw(property.Name + ":: " + space)
 	}
 

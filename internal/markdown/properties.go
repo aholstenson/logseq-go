@@ -116,6 +116,11 @@ type property struct {
 	// SpaceBeforeValue is the spaces and tabs between the separator and the
 	// value that are not part of the value. See skipSpaceBeforeValue.
 	SpaceBeforeValue string
+
+	// TrailingSpace and NoSpaceAfterSeparator keep the spaces at the end of
+	// the line of the property. See propertyLineSpace.
+	TrailingSpace         string
+	NoSpaceAfterSeparator bool
 }
 
 func (*property) Kind() ast.NodeKind {
@@ -472,6 +477,8 @@ func (t *propertiesASTTransformer) transformTextBlockOrParagraph(node ast.Node, 
 				currentProperty.Name = name
 				currentProperty.Directive = directive
 				currentProperty.SpaceBeforeValue = spaceBeforeValue
+				currentProperty.TrailingSpace, currentProperty.NoSpaceAfterSeparator =
+					propertyLineSpace(reader.Source(), textNode.Segment.Start, directive)
 
 				currentProperties.AppendChild(currentProperties, currentProperty)
 
@@ -548,6 +555,45 @@ func findPropertyAt(source []byte, start int) (name string, valueStart int, ok b
 		// The space after the :: is missing
 		return "", 0, false
 	}
+}
+
+// propertyLineSpace gets the spaces and tabs at the end of the line of a
+// property, which starts at the given offset into the source. If the value of
+// the property is empty, they are the spaces and tabs after the separator,
+// without the one space that is written after `::` by default. Then noSpace
+// is true if no space follows the `::`. See content.Property.TrailingSpace.
+func propertyLineSpace(source []byte, start int, directive bool) (trailing string, noSpace bool) {
+	line := source[start:]
+	if i := bytes.IndexByte(line, '\n'); i >= 0 {
+		line = line[:i]
+	}
+	line = bytes.TrimSuffix(line, []byte("\r"))
+
+	separator := []byte("::")
+	if directive {
+		separator = []byte(":")
+	}
+
+	i := bytes.Index(line, separator)
+	if i < 0 {
+		return "", false
+	}
+
+	rest := line[i+len(separator):]
+	value := bytes.TrimRight(rest, " \t")
+	if len(value) > 0 {
+		return string(rest[len(value):]), false
+	}
+
+	if directive {
+		return string(rest), false
+	}
+
+	if len(rest) > 0 && rest[0] == ' ' {
+		return string(rest[1:]), false
+	}
+
+	return string(rest), true
 }
 
 // skipSpaceBeforeValue skips the spaces and tabs at the start of the value of

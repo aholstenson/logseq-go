@@ -139,6 +139,21 @@ type Property struct {
 	// are kept so that the text of the property does not change when it is
 	// written.
 	SpaceBeforeValue string
+
+	// TrailingSpace is the spaces and tabs at the end of the line of the
+	// property. For a property with a value, they come after the value. For a
+	// property with an empty value, they come after the separator and the
+	// space that is written after it, see NoSpaceAfterSeparator. Logseq does
+	// not read them as part of the value. They are kept so that the text of
+	// the property does not change when it is written.
+	TrailingSpace string
+
+	// NoSpaceAfterSeparator is whether a property with an empty value is
+	// written as `name::`, with no space after the separator. By default it
+	// is written as `name:: `. Logseq reads both in the same way. It is not
+	// used for a property with a value, or for a directive, which is written
+	// as `#+name:` when its value is empty.
+	NoSpaceAfterSeparator bool
 }
 
 // NewProperty creates a new Property node with the given name and values.
@@ -184,6 +199,20 @@ func (p *Property) WithSpaceBeforeValue(space string) *Property {
 	return p
 }
 
+// WithTrailingSpace sets the spaces and tabs at the end of the line of the
+// property.
+func (p *Property) WithTrailingSpace(space string) *Property {
+	p.TrailingSpace = space
+	return p
+}
+
+// WithNoSpaceAfterSeparator sets whether a property with an empty value is
+// written as `name::` instead of `name:: `.
+func (p *Property) WithNoSpaceAfterSeparator(noSpace bool) *Property {
+	p.NoSpaceAfterSeparator = noSpace
+	return p
+}
+
 func (p *Property) debug(p2 *debugPrinter) {
 	p2.StartType("Property")
 	p2.Field("Name", p.Name)
@@ -198,6 +227,12 @@ func (p *Property) debug(p2 *debugPrinter) {
 	}
 	if p.SpaceBeforeValue != "" {
 		p2.Field("SpaceBeforeValue", p.SpaceBeforeValue)
+	}
+	if p.TrailingSpace != "" {
+		p2.Field("TrailingSpace", p.TrailingSpace)
+	}
+	if p.NoSpaceAfterSeparator {
+		p2.Field("NoSpaceAfterSeparator", "true")
 	}
 	p2.Children(p)
 	p2.EndType()

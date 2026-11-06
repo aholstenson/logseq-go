@@ -2830,7 +2830,7 @@ var _ = Describe("Parsing", func() {
 				Expect(block).To(tests.EqualNode(content.NewBlock(
 					content.NewProperties(
 						content.NewProperty("key", content.NewText("value")),
-						content.NewProperty("tags"),
+						content.NewProperty("tags").WithNoSpaceAfterSeparator(true),
 					),
 				)))
 			})

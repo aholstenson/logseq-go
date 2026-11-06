@@ -1124,7 +1124,9 @@ func convertProperties(src []byte, node *properties) (*content.Properties, error
 			WithPageRefsIgnored(p.PageRefsIgnored).
 			WithQuoted(p.Quoted).
 			WithDirective(p.Directive).
-			WithSpaceBeforeValue(p.SpaceBeforeValue)
+			WithSpaceBeforeValue(p.SpaceBeforeValue).
+			WithTrailingSpace(p.TrailingSpace).
+			WithNoSpaceAfterSeparator(p.NoSpaceAfterSeparator)
 		err := convertChildren(src, p, prop)
 		if err != nil {
 			return nil, err
