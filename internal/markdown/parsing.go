@@ -33,6 +33,7 @@ func init() {
 			util.Prioritized(newFencedCodeBlockParser(), 700),
 			util.Prioritized(parser.NewBlockquoteParser(), 800),
 			util.Prioritized(&mathBlockParser{}, 896),
+			util.Prioritized(&latexEnvironmentParser{}, 896),
 			util.Prioritized(&taskDateParser{}, 897),
 			util.Prioritized(&logbookParser{}, 898),
 			util.Prioritized(&beginEndParser{}, 899),
@@ -218,7 +219,7 @@ func convert(src []byte, in ast.Node) (content.Node, error) {
 	case *footnoteDefinition:
 		return convertFootnoteDefinition(src, node)
 	case *math:
-		return content.NewMath(node.Value).WithDisplayed(node.Displayed), nil
+		return content.NewMath(node.Value).WithDisplayed(node.Displayed).WithBackslashes(node.Backslashes), nil
 	case *mathBlock:
 		return convertMathBlock(src, node)
 	case *ast.CodeSpan:
@@ -815,7 +816,7 @@ func convertMathBlock(src []byte, node *mathBlock) (*content.MathBlock, error) {
 		_, _ = valueBuf.Write(line.Value(src))
 	}
 
-	value := content.NewMathBlock(valueBuf.String())
+	value := content.NewMathBlock(valueBuf.String()).WithEnvironment(node.environment)
 
 	updatePreviousLine(node, value)
 

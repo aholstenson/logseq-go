@@ -1079,12 +1079,17 @@ func (w *Output) writeFootnoteDefinition(node *content.FootnoteDefinition) error
 }
 
 func (w *Output) writeMath(node *content.Math) error {
-	marker := "$"
-	if node.Displayed {
-		marker = "$$"
+	opening, closing := "$", "$"
+	switch {
+	case node.Backslashes && node.Displayed:
+		opening, closing = `\[`, `\]`
+	case node.Backslashes:
+		opening, closing = `\(`, `\)`
+	case node.Displayed:
+		opening, closing = "$$", "$$"
 	}
 
-	err := w.writeRaw(marker)
+	err := w.writeRaw(opening)
 	if err != nil {
 		return err
 	}
@@ -1094,7 +1099,7 @@ func (w *Output) writeMath(node *content.Math) error {
 		return err
 	}
 
-	return w.writeRaw(marker)
+	return w.writeRaw(closing)
 }
 
 func (w *Output) writeMathBlock(node *content.MathBlock) error {
@@ -1103,7 +1108,13 @@ func (w *Output) writeMathBlock(node *content.MathBlock) error {
 		return err
 	}
 
-	err = w.writeRaw("$$\n")
+	opening, closing := "$$", "$$"
+	if node.Environment != "" {
+		opening = `\begin{` + node.Environment + `}`
+		closing = `\end{` + node.Environment + `}`
+	}
+
+	err = w.writeRaw(opening + "\n")
 	if err != nil {
 		return err
 	}
@@ -1121,7 +1132,7 @@ func (w *Output) writeMathBlock(node *content.MathBlock) error {
 		}
 	}
 
-	err = w.writeRaw("$$")
+	err = w.writeRaw(closing)
 	if err != nil {
 		return err
 	}

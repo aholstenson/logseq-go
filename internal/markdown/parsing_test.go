@@ -3820,6 +3820,39 @@ var _ = Describe("Parsing", func() {
 		})
 	})
 
+	Describe("LaTeX math with backslash delimiters", func() {
+		It("reads backslash parentheses as inline math", func() {
+			// Given `\(z\)`
+			block, err := markdown.ParseString("- \\(z\\)")
+			Expect(err).ToNot(HaveOccurred())
+
+			// When it is parsed
+			// Then it is inline math with the formula z, the same as Logseq
+			math, ok := block.Children().FindDeep(content.IsOfType[*content.Math]()).(*content.Math)
+			Expect(ok).To(BeTrue(), "expected inline math")
+			Expect(math.Value).To(Equal("z"))
+		})
+
+		It("makes no page references from links inside backslash parentheses", func() {
+			// Given `\([[m2]]\)`, When it is parsed, Then the link is part of
+			// the formula and refers to no page, the same as Logseq
+			block, err := markdown.ParseString("- \\([[m2]]\\)")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block.Children().PageReferences()).To(BeEmpty())
+		})
+
+		It("makes no page references from the body of a LaTeX environment", func() {
+			// Given a `\begin{equation}` block with a page link in its body
+			block, err := markdown.ParseString("- latex env\n  \\begin{equation}\n  x = [[y]]\n  \\end{equation}")
+			Expect(err).ToNot(HaveOccurred())
+
+			// When it is parsed
+			// Then the body is part of the formula and refers to no page
+			Expect(block.Children().PageReferences()).To(BeEmpty())
+		})
+	})
+
 	Describe("Begin and end blocks with parameters or in lower case", func() {
 		// pageRefTitles returns the title of every page the parsed text refers to.
 		pageRefTitles := func(input string) []string {

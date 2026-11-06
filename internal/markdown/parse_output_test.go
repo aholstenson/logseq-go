@@ -389,6 +389,13 @@ var _ = Describe("Parsing then outputting", func() {
 		})
 	})
 
+	Describe("LaTeX math with backslash delimiters", func() {
+		// Given LaTeX with backslash delimiters, When it is written, Then it is unchanged
+		FullyEqual("Inline math in backslash parentheses", "- \\(z\\)")
+		FullyEqual("Dollar math, backslash parentheses and backslash brackets in one line", "- $x$ and \\(z\\) and \\[w\\]")
+		FullyEqual("LaTeX environment", "- latex env\n  \\begin{equation}\n  x = [y]\n  \\end{equation}")
+	})
+
 	Describe("Begin and end blocks with parameters or in lower case", func() {
 		// Given a source block with a language, When it is written, Then it is unchanged
 		FullyEqual("Source block with a language", "- s\n  #+BEGIN_SRC python\n  x [[p]]\n  #+END_SRC")
