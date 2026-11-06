@@ -13,6 +13,13 @@ type Text struct {
 	HardLineBreak bool
 
 	SoftLineBreak bool
+
+	// TrailingSpace is the whitespace between the text and its line break,
+	// as it is in the file. It is written back so that saving does not
+	// change the line. For a hard line break it holds the spaces that make
+	// the break. If it is empty, a hard line break is written as a
+	// backslash. It is not used if the text has no line break.
+	TrailingSpace string
 }
 
 func NewText(text string) *Text {

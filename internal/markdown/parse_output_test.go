@@ -47,7 +47,7 @@ var _ = Describe("Parsing then outputting", func() {
 		FullyEqual("Paragraph", "Basic content")
 		FullyEqual("Paragraph with soft newline", "Basic\ncontent")
 		FullyEqual("Paragraph with hard newline via backslash", "Basic\\\ncontent")
-		Varies("Paragraph with hard newline via two spaces", "Basic  \ncontent", "Basic\\\ncontent")
+		FullyEqual("Paragraph with hard newline via two spaces", "Basic  \ncontent")
 
 		FullyEqual("Multiple paragraphs", "Basic content\n\nMore content")
 	})
@@ -70,17 +70,17 @@ var _ = Describe("Parsing then outputting", func() {
 		FullyEqual("Italic text with space before closing marker", "*Basic *")
 		FullyEqual("Strikethrough text with space before closing marker", "~~Basic ~~")
 		FullyEqual("Highlighted text with space before closing marker", "^^Basic ^^")
-		Varies("Bold text with hard newline via two spaces", "**Basic  \ncontent**", "**Basic\\\ncontent**")
+		FullyEqual("Bold text with hard newline via two spaces", "**Basic  \ncontent**")
 
 		FullyEqual("Italic text", "*Basic* content")
 		FullyEqual("Italic text with newline", "*Basic\ncontent*")
 		FullyEqual("Italic text with hard newline", "*Basic\\\ncontent*")
-		Varies("Italic text with hard newline via two spaces", "*Basic  \ncontent*", "*Basic\\\ncontent*")
+		FullyEqual("Italic text with hard newline via two spaces", "*Basic  \ncontent*")
 
 		FullyEqual("Strikethrough text", "~~Basic~~ content")
 		FullyEqual("Strikethrough text with newline", "~~Basic\ncontent~~")
 		FullyEqual("Strikethrough text with hard newline", "~~Basic\\\ncontent~~")
-		Varies("Strikethrough text with hard newline via two spaces", "~~Basic  \ncontent~~", "~~Basic\\\ncontent~~")
+		FullyEqual("Strikethrough text with hard newline via two spaces", "~~Basic  \ncontent~~")
 		FullyEqual("Strikethrough text containing escaped ~~", "~~Bas~\\~ic~~ content")
 
 		FullyEqual("Highlighted text", "^^Basic^^ content")

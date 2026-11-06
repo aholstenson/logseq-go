@@ -847,12 +847,26 @@ func (w *Output) writeText(node *content.Text) error {
 	}
 
 	if node.SoftLineBreak {
-		err = w.writeRaw("\n")
+		lineEnd := "\n"
+		if !strings.HasSuffix(node.TrailingSpace, "  ") {
+			// Two spaces at the end of the line would be read back as a
+			// hard line break, so only fewer spaces are kept.
+			lineEnd = node.TrailingSpace + lineEnd
+		}
+
+		err = w.writeRaw(lineEnd)
 		if err != nil {
 			return err
 		}
 	} else if node.HardLineBreak {
-		err = w.writeRaw("\\\n")
+		// Logseq shows a backslash at the end of a line as text, so a break
+		// that was written with spaces is written with the same spaces.
+		lineEnd := "\\\n"
+		if node.TrailingSpace != "" {
+			lineEnd = node.TrailingSpace + "\n"
+		}
+
+		err = w.writeRaw(lineEnd)
 		if err != nil {
 			return err
 		}

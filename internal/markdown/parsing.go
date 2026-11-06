@@ -311,6 +311,7 @@ func convertChildren(src []byte, node ast.Node, target content.HasChildren) erro
 
 				previousNode.HardLineBreak = text.HardLineBreak()
 				previousNode.SoftLineBreak = text.SoftLineBreak()
+				previousNode.TrailingSpace = trailingSpaceOf(src, text)
 				continue
 			}
 
@@ -536,6 +537,10 @@ func convertTaskMarker(node content.HasChildren, src []byte, source ast.Node) {
 
 	if textNode.Value == "" && !keepEmptyText {
 		textNode.RemoveSelf()
+	} else if potentialMarkerIdx < 0 && textNode.TrailingSpace != "" {
+		// The marker is written with a space after it, which is the first
+		// space at the end of the line.
+		textNode.TrailingSpace = textNode.TrailingSpace[1:]
 	}
 
 	node.PrependChild(content.NewTaskMarker(taskStatus))
@@ -605,7 +610,25 @@ func convertText(src []byte, node *ast.Text) (*content.Text, error) {
 	} else if node.HardLineBreak() {
 		text.HardLineBreak = true
 	}
+	text.TrailingSpace = trailingSpaceOf(src, node)
 	return text, nil
+}
+
+// trailingSpaceOf returns the spaces and tabs between a text and its line
+// break. The segment of the text does not hold them, so the source after the
+// segment is read. A backslash hard line break has no trailing space, as the
+// spaces before the backslash are part of the segment.
+func trailingSpaceOf(src []byte, node *ast.Text) string {
+	if !node.SoftLineBreak() && !node.HardLineBreak() {
+		return ""
+	}
+
+	end := node.Segment.Stop
+	for end < len(src) && (src[end] == ' ' || src[end] == '\t') {
+		end++
+	}
+
+	return string(src[node.Segment.Stop:end])
 }
 
 func convertHeading(src []byte, node *ast.Heading) (*content.Heading, error) {
