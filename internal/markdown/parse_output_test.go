@@ -146,7 +146,7 @@ var _ = Describe("Parsing then outputting", func() {
 		FullyEqual("Footnote definition over several lines", "[^1]: The\n    footnote")
 
 		FullyEqual("Link with a caret stays a link", "[^1](https://example.com)")
-		FullyEqual("Brackets with a space stay text", "Text \\[^not a label\\] more")
+		FullyEqual("Brackets with a space stay text", "Text [^not a label] more")
 	})
 
 	Describe("Math", func() {
@@ -204,7 +204,7 @@ var _ = Describe("Parsing then outputting", func() {
 		FullyEqual("Property with values that mix page links and text", "tags:: [[First]], Second, #Third")
 		FullyEqual("Property with values separated by a full width comma", "tags:: First，Second")
 		FullyEqual("Property with extra space around its values", "tags::  First ,  Second")
-		FullyEqual("Property with values that are escaped", "tags:: First, Second \\[escaped\\]")
+		FullyEqual("Property with values in brackets", "tags:: First, Second [bracketed]")
 		FullyEqualWhenReadWith("Property with values of a configured list property",
 			"key:: First, Second Name",
 			markdown.WithPropertiesSeparatedByCommas("key"),

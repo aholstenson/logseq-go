@@ -1,6 +1,7 @@
 package markdown_test
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -48,11 +49,11 @@ var _ = Describe("Output", func() {
 			Expect(buf.String()).To(Equal("abc\\*"))
 		})
 
-		It("can write text with brackets that should be escaped", func() {
+		It("keeps brackets that are not a link unescaped", func() {
 			err := writer.Write(content.NewText("abc [def] ghi"))
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(buf.String()).To(Equal("abc \\[def\\] ghi"))
+			Expect(buf.String()).To(Equal("abc [def] ghi"))
 		})
 
 		It("keeps brackets of a priority unescaped", func() {
@@ -62,19 +63,57 @@ var _ = Describe("Output", func() {
 			Expect(buf.String()).To(Equal("abc [#A] def"))
 		})
 
-		It("escapes brackets that would be read back as a footnote reference", func() {
+		It("escapes the caret of text that would be read back as a footnote reference", func() {
 			err := writer.Write(content.NewText("abc [^1] def"))
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(buf.String()).To(Equal("abc \\[^1\\] def"))
+			Expect(buf.String()).To(Equal("abc [\\^1] def"))
 		})
 
-		It("escapes brackets that would be read back as a link", func() {
+		It("escapes the closing bracket of text that would be read back as a link", func() {
 			err := writer.Write(content.NewText("abc [#A](def) ghi"))
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(buf.String()).To(Equal("abc \\[#A\\](def) ghi"))
+			Expect(buf.String()).To(Equal("abc [#A\\](def) ghi"))
 		})
+
+		// Text with brackets that looks like other syntax must be read back as
+		// the same text, and must not contain `\[`, which Logseq reads as the
+		// start of a math formula.
+		DescribeTable("reads back text with brackets as the same text",
+			func(nodes []content.Node) {
+				// Given a paragraph with the nodes
+				paragraph := content.NewParagraph(nodes...)
+
+				// When it is written and read back
+				written, err := markdown.AsString(paragraph)
+				Expect(err).ToNot(HaveOccurred())
+				block, err := markdown.ParseString(written)
+				Expect(err).ToNot(HaveOccurred())
+
+				// Then it is the same paragraph, without `\[` in the file
+				Expect(written).ToNot(ContainSubstring(`\[`))
+				Expect(block.Children()).To(HaveLen(1))
+				Expect(inlineSummary(block.Children()[0])).To(Equal(inlineSummary(paragraph)), "written text: %q", written)
+			},
+			Entry("a link", []content.Node{content.NewText("see [a](https://example.com) here")}),
+			Entry("a link to a page", []content.Node{content.NewText("[a]([[Page Name]])")}),
+			Entry("a reference link", []content.Node{content.NewText("[a][b]")}),
+			Entry("a page link", []content.Node{content.NewText("see [[Page]] here")}),
+			Entry("two page links", []content.Node{content.NewText("[[a]] and [[b]]")}),
+			Entry("a page link with three brackets", []content.Node{content.NewText("[[[a]]]")}),
+			Entry("a page link in a link", []content.Node{content.NewText("[[a](b)]]")}),
+			Entry("a footnote reference", []content.Node{content.NewText("a[^1]")}),
+			Entry("a link reference definition", []content.Node{content.NewText("[1]: https://example.com")}),
+			Entry("a closing bracket before a page link", []content.Node{
+				content.NewText("[a]"),
+				content.NewPageLink("b"),
+			}),
+			Entry("a closing bracket before text in parentheses", []content.Node{
+				content.NewText("[a]"),
+				content.NewText("(https://example.com)"),
+			}),
+		)
 
 		It("escapes around brackets that are kept unescaped", func() {
 			err := writer.Write(content.NewText("*a* [#A] *b*"))
@@ -1738,3 +1777,30 @@ var _ = Describe("Output", func() {
 		})
 	})
 })
+
+// inlineSummary describes the inline nodes of a node as a list of their types
+// and text, with text nodes that follow each other joined into one.
+func inlineSummary(node content.Node) []string {
+	summary := []string{}
+	parent, ok := node.(content.HasChildren)
+	if !ok {
+		return summary
+	}
+
+	for child := parent.FirstChild(); child != nil; child = child.NextSibling() {
+		switch n := child.(type) {
+		case *content.Text:
+			if len(summary) > 0 && strings.HasPrefix(summary[len(summary)-1], "text:") {
+				summary[len(summary)-1] += n.Value
+			} else {
+				summary = append(summary, "text:"+n.Value)
+			}
+		case *content.PageLink:
+			summary = append(summary, "page link:"+n.To)
+		default:
+			summary = append(summary, fmt.Sprintf("%T", n))
+		}
+	}
+
+	return summary
+}

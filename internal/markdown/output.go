@@ -10,6 +10,9 @@ import (
 	"unicode/utf8"
 
 	"github.com/aholstenson/logseq-go/content"
+	"github.com/yuin/goldmark/ast"
+	"github.com/yuin/goldmark/parser"
+	"github.com/yuin/goldmark/text"
 )
 
 var urlRegexp = regexp.MustCompile(`^(?:http|https|ftp)://[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-z]+(?::\d+)?(?:[/#?][-a-zA-Z0-9@:%_+.~#$!?&/=\(\);,'">\^{}\[\]` + "`" + `]*)?`)
@@ -21,33 +24,134 @@ func EscapeNone(str string) string {
 	return str
 }
 
-// literalBracketsRegexp matches bracketed syntax that Logseq only recognizes
-// when the brackets are left alone, which is the priority of a task such as
-// `[#A]`. Escaping those would turn them into plain text.
-var literalBracketsRegexp = regexp.MustCompile(`\[#[^\[\]\s]+\]`)
-
 // EscapePotentialMarkdown escapes characters in text that would otherwise be
 // read back as formatting.
+//
+// Square brackets are only escaped where they would be read back as a link, a
+// page link, a footnote or a link reference definition. Logseq reads `\[` up
+// to a later `\]` as a display math formula, so `[` is never escaped. Where a
+// bracket must be escaped, the escape goes on the `]` or on the `^` of a
+// footnote instead.
 func EscapePotentialMarkdown(str string) string {
-	out := strings.Builder{}
-
 	str = escapeMath(str)
+	brackets := bracketEscapes(str)
 
-	end := 0
-	for _, match := range literalBracketsRegexp.FindAllStringIndex(str, -1) {
-		if match[1] < len(str) && (str[match[1]] == '(' || str[match[1]] == '[') {
-			// Followed by a link destination or a link label, so the brackets
-			// have to stay escaped to not be read back as a link.
-			continue
+	out := strings.Builder{}
+	p := rune(0)
+	for i, r := range str {
+		if brackets[i] || escapePotentialMarkdownRune(p, r) {
+			out.WriteRune('\\')
 		}
 
-		out.WriteString(escapeRunes(str[end:match[0]], escapePotentialMarkdownRune))
-		out.WriteString(str[match[0]:match[1]])
-		end = match[1]
+		out.WriteRune(r)
+		p = r
 	}
 
-	out.WriteString(escapeRunes(str[end:], escapePotentialMarkdownRune))
 	return out.String()
+}
+
+// bracketEscapes finds the byte positions in the text that need a backslash
+// so that the square brackets in it are read back as text.
+func bracketEscapes(str string) map[int]bool {
+	if !strings.ContainsAny(str, "[]") {
+		return nil
+	}
+
+	escapes := map[int]bool{}
+	for i := 0; i < len(str); i++ {
+		switch str[i] {
+		case '[':
+			if i+1 >= len(str) {
+				continue
+			}
+
+			if str[i+1] == '[' && (i == 0 || str[i-1] != '!') {
+				// A page link. After `![` the reader starts an image, so
+				// `![[Page]]` is text and is not changed.
+				if end := pageLinkEnd(str, i+2, escapes); end >= 0 {
+					escapes[end+1] = true
+				}
+			} else if str[i+1] == '^' && footnoteLabelEnd([]byte(str[i:])) >= 0 {
+				// A footnote reference or the start of a footnote definition.
+				escapes[i+1] = true
+			}
+		case ']':
+			if escapes[i] || i+1 >= len(str) {
+				continue
+			}
+
+			switch str[i+1] {
+			case '[':
+				// The label of a reference link.
+				escapes[i] = true
+			case '(':
+				if closesLink(str[i+1:]) {
+					escapes[i] = true
+				}
+			case ':':
+				if isLinkDefinitionLabel(str[:i]) {
+					escapes[i] = true
+				}
+			}
+		}
+	}
+
+	return escapes
+}
+
+// pageLinkEnd finds the `]]` that ends a page link that starts before the
+// given position, in the same way as the page link parser. Returns the
+// position of the first `]`, or -1 if the page link does not end on the same
+// line.
+func pageLinkEnd(str string, from int, escapes map[int]bool) int {
+	for j := from; j+1 < len(str) && str[j] != '\n'; j++ {
+		if str[j] == ']' && str[j+1] == ']' && !escapes[j] && !escapes[j+1] {
+			return j
+		}
+	}
+
+	return -1
+}
+
+// closesLink returns true if a `]` that is directly followed by rest would end
+// the text of a link. The reader decides this, so that a `]` before something
+// that is not a valid destination, such as `(Page name)`, is not escaped.
+func closesLink(rest string) bool {
+	src := []byte("[x]" + rest)
+
+	options := defaultParseOptions()
+	context := parser.NewContext()
+	context.Set(parseOptionsKey, &options)
+	doc := markdownParser.Parse(text.NewReader(src), parser.WithContext(context))
+
+	found := false
+	_ = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+
+		if link, ok := n.(*ast.Link); ok {
+			label, isText := link.FirstChild().(*ast.Text)
+			found = isText && label.Segment.Start == 1
+			return ast.WalkStop, nil
+		}
+
+		return ast.WalkContinue, nil
+	})
+
+	return found
+}
+
+// isLinkDefinitionLabel returns true if the text before a `]:` is the start
+// of a link reference definition, such as `[1]: https://example.com`.
+func isLinkDefinitionLabel(before string) bool {
+	trimmed := strings.TrimLeft(before, " ")
+	if len(before)-len(trimmed) > 3 || !strings.HasPrefix(trimmed, "[") {
+		return false
+	}
+
+	label := trimmed[1:]
+	return !strings.ContainsAny(label, "[]") && strings.TrimSpace(label) != ""
 }
 
 // escapeMath escapes the dollar signs of the parts of a text that would be
@@ -83,7 +187,7 @@ func escapeMath(str string) string {
 }
 
 func escapePotentialMarkdownRune(prev rune, r rune) bool {
-	if r == '*' || r == '_' || r == '[' || r == ']' {
+	if r == '*' || r == '_' {
 		return true
 	}
 
@@ -114,6 +218,23 @@ func EscapeWikiLink(str string) string {
 	return escapeRunes(str, func(prev rune, r rune) bool {
 		return r == ']'
 	})
+}
+
+// EscapePageLinkTitle escapes the title of a page link that is written as
+// `[[title]]`. The reader ends a page link at the first `]]`, so only a `]`
+// that is followed by another `]`, or that is the last character, is escaped.
+// Other brackets are kept, so that `[[file:./a.md][A]]` is written as it is.
+func EscapePageLinkTitle(str string) string {
+	out := strings.Builder{}
+	for i := 0; i < len(str); i++ {
+		if str[i] == ']' && (i+1 == len(str) || str[i+1] == ']') {
+			out.WriteByte('\\')
+		}
+
+		out.WriteByte(str[i])
+	}
+
+	return out.String()
 }
 
 // EscapeFootnoteLabel escapes the label of a footnote, which is read up to the
@@ -370,7 +491,15 @@ func (w *Output) writeChildren(node content.HasChildren) error {
 }
 
 func (w *Output) writeText(node *content.Text) error {
-	err := w.write(node.Value, EscapePotentialMarkdown)
+	value := EscapePotentialMarkdown(node.Value)
+	if strings.HasSuffix(value, "]") && !strings.HasSuffix(value, `\]`) &&
+		!node.SoftLineBreak && !node.HardLineBreak && w.startsLinkContinuation(node.NextSibling()) {
+		// The next node starts with `(` or `[`, which together with the
+		// closing bracket would be read back as a link.
+		value = value[:len(value)-1] + `\]`
+	}
+
+	err := w.writeRaw(value)
 	if err != nil {
 		return err
 	}
@@ -388,6 +517,24 @@ func (w *Output) writeText(node *content.Text) error {
 	}
 
 	return nil
+}
+
+// startsLinkContinuation returns true if the node is written with `(` or `[`
+// first, so that a `]` directly before it can end the text of a link.
+func (w *Output) startsLinkContinuation(node content.Node) bool {
+	if node == nil {
+		return false
+	}
+
+	out := strings.Builder{}
+	sibling := &Output{out: newWriter(&out), opts: w.opts}
+	if err := sibling.Write(node); err != nil {
+		// Escaping is the safe choice when the node cannot be written here.
+		return true
+	}
+
+	written := out.String()
+	return strings.HasPrefix(written, "(") || strings.HasPrefix(written, "[")
 }
 
 func (w *Output) writeEmphasis(node *content.Emphasis) error {
@@ -710,7 +857,7 @@ func (w *Output) writePageLink(node *content.PageLink) error {
 		return err
 	}
 
-	err = w.write(node.To, EscapeWikiLink)
+	err = w.write(node.To, EscapePageLinkTitle)
 	if err != nil {
 		return err
 	}
