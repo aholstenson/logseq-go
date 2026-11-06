@@ -1453,7 +1453,20 @@ func (w *Output) writeRawHTMLBlock(node *content.RawHTMLBlock) error {
 }
 
 func (w *Output) writeHeading(node *content.Heading) error {
-	err := w.startBlock(node, strings.Repeat("#", node.Level)+" ")
+	err := w.startBlock(node, "")
+	if err != nil {
+		return err
+	}
+
+	// The marks are written as text and not as indentation, as indentation
+	// is only written after a line break. A heading block starts on the line
+	// of its bullet, as in `- ## Section`.
+	marks := strings.Repeat("#", node.Level)
+	if node.FirstChild() != nil {
+		marks += " "
+	}
+
+	err = w.writeRaw(marks)
 	if err != nil {
 		return err
 	}
