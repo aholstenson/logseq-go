@@ -2050,19 +2050,9 @@ func (w *Output) writeTaskMarker(node *content.TaskMarker) error {
 		return fmt.Errorf("unsupported task status: %d", node.Status)
 	}
 
-	err := w.writeRaw(marker)
-	if err != nil {
-		return err
-	}
-
-	if node.NextSibling() != nil {
-		err = w.writeRaw(" ")
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
+	// A space always follows the marker, as Logseq reads a marker that is
+	// followed by a line break as text.
+	return w.writeRaw(marker + " ")
 }
 
 func (w *Output) writeTaskPriority(node *content.TaskPriority) error {

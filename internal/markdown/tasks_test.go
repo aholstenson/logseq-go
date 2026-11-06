@@ -125,3 +125,86 @@ var _ = Describe("Editing tasks", func() {
 		})
 	})
 })
+
+var _ = Describe("A task marker alone on its line", func() {
+	parse := func(input string) *content.Block {
+		root, err := markdown.ParseString(input)
+		Expect(err).ToNot(HaveOccurred())
+		return root
+	}
+
+	write := func(root *content.Block) string {
+		v, err := markdown.AsString(root)
+		Expect(err).ToNot(HaveOccurred())
+		return v
+	}
+
+	It("does not join the marker with the next line on save", func() {
+		// Given a block with TODO alone on the first line
+		input := "- TODO\n  x"
+		root := parse(input)
+
+		// Then the text does not change on save
+		Expect(write(root)).To(Equal(input))
+
+		// And Logseq reads no task, since no space follows the marker
+		Expect(root.Blocks()[0].TaskStatus()).To(Equal(content.TaskStatusNone))
+	})
+
+	It("does not join a marker and a link on the next line on save", func() {
+		input := "- DONE\n  [[x]]"
+		Expect(write(parse(input))).To(Equal(input))
+	})
+
+	It("keeps the space after a marker that is followed by a logbook", func() {
+		// Given a DOING task with no title and a logbook
+		input := "- DOING \n  :LOGBOOK:\n  CLOCK: [2024-01-01 Mon 10:00:00]\n  :END:"
+		root := parse(input)
+
+		// Then it is a DOING task
+		Expect(root.Blocks()[0].TaskStatus()).To(Equal(content.TaskStatusDoing))
+
+		// And the space after the marker is kept on save
+		Expect(write(root)).To(Equal(input))
+	})
+
+	It("keeps the line break after a marker and a space", func() {
+		input := "- TODO \n  x"
+		Expect(write(parse(input))).To(Equal(input))
+	})
+
+	It("keeps the space after a marker before the next block", func() {
+		input := "- TODO \n- b"
+		Expect(write(parse(input))).To(Equal(input))
+	})
+
+	It("does not read a marker that is followed by the next block", func() {
+		// Given TODO alone on the line, then another block
+		// Then Logseq reads no task
+		Expect(parse("- TODO\n- b").Blocks()[0].TaskStatus()).To(Equal(content.TaskStatusNone))
+	})
+
+	It("reads a marker at the end of the file as a task", func() {
+		Expect(parse("- TODO").Blocks()[0].TaskStatus()).To(Equal(content.TaskStatusTodo))
+	})
+
+	It("writes a task with no title so that it is read back as a task", func() {
+		// Given a task with no title made with the API
+		root := content.NewBlock(content.NewBlock(content.NewParagraph(content.NewTaskMarker(content.TaskStatusTodo))))
+
+		// When it is written, and a line break follows it in the file
+		written := write(root) + "\n"
+
+		// Then it is read back as a task
+		Expect(parse(written).Blocks()[0].TaskStatus()).To(Equal(content.TaskStatusTodo), "written text: %q", written)
+	})
+
+	It("does not read a marker that is followed by a link without a space", func() {
+		Expect(parse("- TODO[[x]]").Blocks()[0].TaskStatus()).To(Equal(content.TaskStatusNone))
+	})
+
+	It("does not read a marker that is followed by a property line", func() {
+		root := parse("- TODO\n  id:: 65e5a8b0-0000-4000-8000-000000000000")
+		Expect(root.Blocks()[0].TaskStatus()).To(Equal(content.TaskStatusNone))
+	})
+})

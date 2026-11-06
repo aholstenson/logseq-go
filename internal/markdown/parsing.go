@@ -396,7 +396,7 @@ func convertToBlock(src []byte, node ast.Node) (*content.Block, error) {
 
 			// When converting a block the first paragraph might contain a task marker
 			if p, ok := node.(*content.Paragraph); ok && block.FirstChild() == nil {
-				convertTaskMarker(p)
+				convertTaskMarker(p, src, child)
 			}
 
 			if target != block && !hasParsedBlock {
@@ -455,10 +455,40 @@ func addBeforeBlocks(block *content.Block, node content.Node) {
 	}
 }
 
-func convertTaskMarker(node *content.Paragraph) {
+// convertTaskMarker turns the task marker at the start of the paragraph, such
+// as `TODO`, into a *content.TaskMarker. The source is the paragraph before it
+// was converted.
+//
+// Logseq reads a marker only if a space follows it, or if it is the end of the
+// file. Thus `TODO` followed by a line break is text. When a space and a line
+// break follow a marker with no title, as in "- TODO \n  text", an empty text
+// with the line break is kept after the marker, so that the line break is
+// written back.
+func convertTaskMarker(node *content.Paragraph, src []byte, source ast.Node) {
 	textNode, ok := node.FirstChild().(*content.Text)
 	if !ok {
 		return
+	}
+
+	keepEmptyText := false
+	if !strings.Contains(textNode.Value, " ") {
+		first, ok := source.FirstChild().(*ast.Text)
+		if !ok {
+			return
+		}
+
+		// The segment of the text does not hold the spaces at the end of
+		// its line, so the source after it is checked.
+		end := first.Segment.Stop
+		switch {
+		case end >= len(src):
+			// The marker ends the file.
+		case src[end] == ' ' || src[end] == '\t':
+			// A line break after the space must be written back.
+			keepEmptyText = textNode.SoftLineBreak || textNode.HardLineBreak
+		default:
+			return
+		}
 	}
 
 	potentialMarkerIdx := strings.Index(textNode.Value, " ")
@@ -481,7 +511,7 @@ func convertTaskMarker(node *content.Paragraph) {
 		textNode.Value = textNode.Value[potentialMarkerIdx+1:]
 	}
 
-	if textNode.Value == "" {
+	if textNode.Value == "" && !keepEmptyText {
 		textNode.RemoveSelf()
 	}
 

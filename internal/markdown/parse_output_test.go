@@ -294,15 +294,18 @@ var _ = Describe("Parsing then outputting", func() {
 		})
 
 		Describe("Markers without text", func() {
-			FullyEqual("TODO on its own", "TODO")
-			FullyEqual("DONE on its own", "DONE")
-			FullyEqual("TODO with sub block", "- TODO\n\t- child")
-			Varies("TODO with trailing space", "TODO ", "TODO")
+			// A marker is written with a space after it, as Logseq reads a
+			// marker that is followed by a line break as text.
+			Varies("TODO on its own", "TODO", "TODO ")
+			Varies("DONE on its own", "DONE", "DONE ")
+			FullyEqual("TODO with trailing space", "TODO ")
+			FullyEqual("TODO with trailing space and text on the next line", "TODO \nmore")
 
-			// The marker takes up the whole first line, so what follows it moves
-			// up to sit after the marker.
-			Varies("TODO with text on the next line", "TODO\nmore", "TODO more")
-			Varies("TODO followed by formatting", "TODO**bold**", "TODO **bold**")
+			// Without a space after it, the word is text in Logseq, and is
+			// written as it is.
+			FullyEqual("TODO with sub block", "- TODO\n\t- child")
+			FullyEqual("TODO with text on the next line", "TODO\nmore")
+			FullyEqual("TODO followed by formatting", "TODO**bold**")
 		})
 
 		Describe("Priorities", func() {
