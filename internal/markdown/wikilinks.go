@@ -64,6 +64,6 @@ func (t *pageLinkParser) Parse(parent ast.Node, block text.Reader, pc parser.Con
 	block.Advance(end + 2)
 
 	return &pageLink{
-		Page: unescapeString(value),
+		Page: unescapePunctuation(value),
 	}
 }

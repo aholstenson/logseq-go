@@ -135,6 +135,25 @@ var _ = Describe("Output", func() {
 				content.NewText("a *b"),
 				content.NewText("c* d"),
 			}),
+			Entry("a tag", []content.Node{content.NewText("#tag and #[[a tag]]")}),
+			Entry("a heading marker", []content.Node{content.NewText("# Title")}),
+			Entry("a block ref", []content.Node{content.NewText("((6571b1a6-1111-4111-8111-111111111111))")}),
+			Entry("a macro", []content.Node{content.NewText("{{query x}}")}),
+			Entry("code", []content.Node{content.NewText("`x` and ``a`b``")}),
+			Entry("code and then a tag", []content.Node{content.NewText("`x` and #tag")}),
+			Entry("HTML", []content.Node{content.NewText("a <b>c</b>")}),
+			Entry("an autolink", []content.Node{content.NewText("<https://example.com>")}),
+			Entry("a backslash before punctuation", []content.Node{content.NewText(`a\*b\\c`)}),
+			Entry("a backslash before a space", []content.Node{content.NewText(`a \ b`)}),
+			Entry("a backslash at the end", []content.Node{content.NewText(`C:\dir\`)}),
+			Entry("a backslash before a line break", []content.Node{
+				content.NewText(`C:\`).WithSoftLineBreak(),
+				content.NewText("next"),
+			}),
+			Entry("a backslash before emphasis", []content.Node{
+				content.NewText(`a\`),
+				content.NewEmphasis(content.NewText("b")),
+			}),
 		)
 
 		It("escapes around brackets that are kept unescaped", func() {

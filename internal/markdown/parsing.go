@@ -216,7 +216,7 @@ func convert(src []byte, in ast.Node) (content.Node, error) {
 	case *pageLink:
 		return content.NewPageLink(node.Page), nil
 	case *pageRefText:
-		return content.NewPageRefText(unescapeString(node.Segment.Value(src))), nil
+		return content.NewPageRefText(unescapePunctuation(node.Segment.Value(src))), nil
 	case *blockRef:
 		return content.NewBlockRef(node.ID), nil
 	case *priority:
@@ -254,13 +254,26 @@ func convert(src []byte, in ast.Node) (content.Node, error) {
 	return nil, fmt.Errorf("Could not convert node: %T", in)
 }
 
+// unescapeString removes every backslash. It is used for the quoted arguments
+// of macros, which have their own rules for backslashes.
 func unescapeString(src []byte) string {
 	return string(bytes.ReplaceAll(src, []byte(`\`), []byte(``)))
+}
+
+// unescapePunctuation removes the backslashes that escape ASCII punctuation,
+// in the same way as CommonMark, so `\*` is read as `*` and `\\` as `\`. Other
+// backslashes are text and are kept, so `C:\Users` stays as it is.
+func unescapePunctuation(src []byte) string {
+	return string(util.UnescapePunctuations(src))
 }
 
 // convertChildren converts all children of a node and adds them to the target.
 func convertChildren(src []byte, node ast.Node, target content.HasChildren) error {
 	var previousChild ast.Node
+	// mergedStart is where the source of the last text node starts, so that
+	// text nodes that are merged are unescaped as one. A backslash at the end
+	// of one of them can escape the first character of the next.
+	mergedStart := 0
 	for child := node.FirstChild(); child != nil; child = child.NextSibling() {
 		node, err := convert(src, child)
 		if err != nil {
@@ -273,7 +286,7 @@ func convertChildren(src []byte, node ast.Node, target content.HasChildren) erro
 		if pText, pOk := previousChild.(*ast.Text); pOk {
 			if text, ok := child.(*ast.Text); ok && canMergeTextNodes(pText, text) {
 				previousNode := target.LastChild().(*content.Text)
-				previousNode.Value += unescapeString(text.Segment.Value(src))
+				previousNode.Value = unescapePunctuation(src[mergedStart:text.Segment.Stop])
 				previousChild = child
 
 				previousNode.HardLineBreak = text.HardLineBreak()
@@ -281,6 +294,10 @@ func convertChildren(src []byte, node ast.Node, target content.HasChildren) erro
 				continue
 			}
 
+		}
+
+		if text, ok := child.(*ast.Text); ok {
+			mergedStart = text.Segment.Start
 		}
 
 		target.AddChild(node)
@@ -536,7 +553,7 @@ func convertTextBlock(src []byte, node ast.Node) (*content.Paragraph, error) {
 }
 
 func convertText(src []byte, node *ast.Text) (*content.Text, error) {
-	value := unescapeString(node.Segment.Value(src))
+	value := unescapePunctuation(node.Segment.Value(src))
 	text := content.NewText(value)
 	if node.SoftLineBreak() {
 		text.SoftLineBreak = true
@@ -563,7 +580,7 @@ func convertLink(src []byte, node *ast.Link) (content.Node, error) {
 	destination := node.Destination
 	if len(node.Title) == 0 {
 		if length := pageRefLength(destination); length > 0 && length == len(destination) {
-			link := content.NewPageLink(unescapeString(destination[2 : length-2]))
+			link := content.NewPageLink(unescapePunctuation(destination[2 : length-2]))
 			return link, convertChildren(src, node, link)
 		}
 
@@ -573,12 +590,12 @@ func convertLink(src []byte, node *ast.Link) (content.Node, error) {
 		}
 	}
 
-	link := content.NewLink(unescapeString(destination))
+	link := content.NewLink(unescapePunctuation(destination))
 	err := convertChildren(src, node, link)
 	if err != nil {
 		return nil, err
 	}
-	link.Title = unescapeString(node.Title)
+	link.Title = unescapePunctuation(node.Title)
 	return link, nil
 }
 
@@ -700,7 +717,7 @@ func convertCodeBlock(src []byte, node *ast.CodeBlock) (*content.CodeBlock, erro
 }
 
 func convertFootnoteDefinition(src []byte, node *footnoteDefinition) (*content.FootnoteDefinition, error) {
-	definition := content.NewFootnoteDefinition(unescapeString([]byte(node.Label)))
+	definition := content.NewFootnoteDefinition(unescapePunctuation([]byte(node.Label)))
 	err := convertChildren(src, node, definition)
 	if err != nil {
 		return nil, err
@@ -839,7 +856,7 @@ func convertHTMLBlock(src []byte, node *ast.HTMLBlock) (*content.RawHTMLBlock, e
 
 func convertImage(src []byte, node *ast.Image) (*content.Image, error) {
 	image := content.NewImage(string(node.Destination))
-	image.Title = unescapeString(node.Title)
+	image.Title = unescapePunctuation(node.Title)
 
 	err := convertChildren(src, node, image)
 	if err != nil {

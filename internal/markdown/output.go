@@ -13,6 +13,7 @@ import (
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/text"
+	"github.com/yuin/goldmark/util"
 )
 
 var urlRegexp = regexp.MustCompile(`^(?:http|https|ftp)://[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-z]+(?::\d+)?(?:[/#?][-a-zA-Z0-9@:%_+.~#$!?&/=\(\);,'">\^{}\[\]` + "`" + `]*)?`)
@@ -36,6 +37,11 @@ func EscapeNone(str string) string {
 // The markers of emphasis, strikethrough and highlights are only escaped
 // where they could open or close formatting, so that text such as
 // `snake_case` or `2 * 3` is written as it is.
+//
+// The `#` of a tag, the `((` of a block reference, the `{{` of a macro, the
+// backticks of code and the `<` of HTML are escaped where they would be read
+// back as that syntax. A backslash is written as `\\` where it would otherwise
+// escape the character after it, so `C:\Users` is written as it is.
 func EscapePotentialMarkdown(str string) string {
 	return escapeText(str, unknownRune, unknownRune)
 }
@@ -43,16 +49,23 @@ func EscapePotentialMarkdown(str string) string {
 // unknownRune stands for a character next to a text that is not known.
 const unknownRune = rune(-1)
 
+// lineEdgeRune stands for the start or the end of the line or of the block
+// that a text is in, such as the end of a paragraph.
+const lineEdgeRune = rune(-2)
+
 // escapeText is EscapePotentialMarkdown for a text with known characters
-// directly before and after it. Either can be unknownRune.
+// directly before and after it. Either can be unknownRune or lineEdgeRune.
 func escapeText(str string, before rune, after rune) string {
-	str = escapeMath(str)
-	brackets := bracketEscapes(str)
-	delimiters := delimiterEscapes(str, before, after)
+	escapes := map[int]bool{}
+	mathEscapes(str, escapes)
+	bracketEscapes(str, escapes)
+	delimiterEscapes(str, before, after, escapes)
+	markupEscapes(str, before, escapes)
+	backslashEscapes(str, after, escapes)
 
 	out := strings.Builder{}
 	for i, r := range str {
-		if brackets[i] || delimiters[i] {
+		if escapes[i] {
 			out.WriteRune('\\')
 		}
 
@@ -62,16 +75,204 @@ func escapeText(str string, before rune, after rune) string {
 	return out.String()
 }
 
-// delimiterEscapes finds the byte positions in the text that need a backslash
-// so that the runs of `*`, `_`, `~` and `^` in it are read back as text. Every
-// `*` and `_` of a run is escaped. For `~~` and `^^` the first marker is kept,
-// as a single `~` or `^` is not a marker.
-func delimiterEscapes(str string, before rune, after rune) map[int]bool {
-	if !strings.ContainsAny(str, "*_~^") {
-		return nil
+// asCharacter gets the character that a rune next to a text acts as for the
+// rules of the reader. The edge of a line acts as a line break.
+func asCharacter(r rune) rune {
+	if r == lineEdgeRune {
+		return '\n'
 	}
 
-	escapes := map[int]bool{}
+	return r
+}
+
+// isASCIIPunctuation returns true for the characters that a backslash
+// escapes, which are the ASCII punctuation characters.
+func isASCIIPunctuation(r rune) bool {
+	return r < utf8.RuneSelf && util.IsPunct(byte(r))
+}
+
+// backslashEscapes finds the backslashes in the text that are written as
+// `\\`. A backslash before ASCII punctuation must be, as it would otherwise
+// escape that character. A backslash before a space is also written as `\\`.
+// `\ ` and `\\ ` read the same, and this keeps the text `a \\ b` as it is. A
+// backslash at the end of the text is written as `\\` when a line break,
+// ASCII punctuation or something not known comes after it, as a backslash
+// before a line break is a hard line break.
+func backslashEscapes(str string, after rune, escapes map[int]bool) {
+	for i := 0; i < len(str); i++ {
+		if str[i] != '\\' {
+			continue
+		}
+
+		if i+1 < len(str) {
+			next, _ := utf8.DecodeRuneInString(str[i+1:])
+			escapes[i] = isASCIIPunctuation(next) || unicode.IsSpace(next)
+			continue
+		}
+
+		escapes[i] = after == unknownRune || after == '\n' || isASCIIPunctuation(after)
+	}
+}
+
+// markupEscapes finds the characters in the text that would start a tag, a
+// heading, a block reference, a macro, code or HTML when read back.
+func markupEscapes(str string, before rune, escapes map[int]bool) {
+	if !strings.ContainsAny(str, "#({`<") {
+		return
+	}
+
+	for i := 0; i < len(str); i++ {
+		switch str[i] {
+		case '#':
+			previous := before
+			if i > 0 {
+				previous, _ = utf8.DecodeLastRuneInString(str[:i])
+			}
+
+			if startsTag(str, i, previous) || startsHeading(str, i, previous) {
+				escapes[i] = true
+			}
+		case '(':
+			if blockRefLength([]byte(str[i:])) > 0 {
+				escapes[i] = true
+			}
+		case '{':
+			if strings.HasPrefix(str[i:], "{{") && strings.Contains(str[i+2:], "}}") {
+				escapes[i] = true
+			}
+		case '`':
+			end := i
+			for end < len(str) && str[end] == '`' {
+				end++
+			}
+
+			if backtickRunAt(str, end, end-i) >= 0 {
+				// A backslash does not escape a backtick inside code, so an
+				// escaped backtick can still close code that a backtick
+				// that is not escaped opens. All of them are escaped.
+				for k := i; k < len(str); k++ {
+					if str[k] == '`' {
+						escapes[k] = true
+					}
+				}
+			}
+
+			i = end - 1
+		case '<':
+			if startsHTMLOrAutoLink(str[i+1:]) {
+				escapes[i] = true
+			}
+		}
+	}
+}
+
+// startsTag returns true if the `#` at the position would be read back as the
+// start of a tag, using the rules of the tag parser.
+func startsTag(str string, i int, previous rune) bool {
+	if previous != unknownRune && !unicode.IsSpace(asCharacter(previous)) &&
+		!strings.ContainsRune(tagPrefixes, previous) {
+		return false
+	}
+
+	if previous == '[' && i > 0 && isPriorityText(str[i-1:]) {
+		// The priority parser reads `[#A]` and `[#word]` as a whole, so the
+		// tag parser never sees the `#`.
+		return false
+	}
+
+	rest := str[i+1:]
+	if strings.HasPrefix(rest, "#") {
+		return false
+	}
+
+	if strings.HasPrefix(rest, "[[") {
+		return strings.Contains(rest[2:], "]]")
+	}
+
+	return tagNameLength([]byte(rest)) > 0
+}
+
+// isPriorityText returns true if the text starts with `[#` and a closing `]`
+// that has no space or `[` before it, which the priority parser reads as a
+// priority or claims as text.
+func isPriorityText(str string) bool {
+	if len(str) < 4 || !strings.HasPrefix(str, "[#") {
+		return false
+	}
+
+	for i := 2; i < len(str); i++ {
+		if str[i] == ']' {
+			return i > 2
+		}
+
+		if str[i] == '[' || util.IsSpace(str[i]) {
+			return false
+		}
+	}
+
+	return false
+}
+
+// startsHeading returns true if the `#` at the position starts a line and
+// would be read back as the marker of a heading.
+func startsHeading(str string, i int, previous rune) bool {
+	if previous != unknownRune && previous != lineEdgeRune && previous != '\n' {
+		return false
+	}
+
+	end := i
+	for end < len(str) && str[end] == '#' {
+		end++
+	}
+
+	return end-i <= 6 && (end == len(str) || str[end] == ' ' || str[end] == '\t')
+}
+
+// backtickRunAt finds the first run of exactly the given number of
+// backticks from the position, which would close code that a run of the same
+// length opens. Returns -1 if there is no such run.
+func backtickRunAt(str string, from int, length int) int {
+	for i := from; i < len(str); {
+		if str[i] != '`' {
+			i++
+			continue
+		}
+
+		end := i
+		for end < len(str) && str[end] == '`' {
+			end++
+		}
+
+		if end-i == length {
+			return i
+		}
+
+		i = end
+	}
+
+	return -1
+}
+
+// startsHTMLOrAutoLink returns true if the text after a `<` could make the
+// `<` the start of an HTML tag or an autolink such as `<https://a.com>`.
+func startsHTMLOrAutoLink(rest string) bool {
+	if rest == "" || !strings.Contains(rest, ">") {
+		return false
+	}
+
+	c := rest[0]
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '/' || c == '!' || c == '?'
+}
+
+// delimiterEscapes finds the positions in the text that need a backslash so
+// that the runs of `*`, `_`, `~` and `^` in it are read back as text. Every
+// `*` and `_` of a run is escaped. For `~~` and `^^` the first marker is kept,
+// as a single `~` or `^` is not a marker.
+func delimiterEscapes(str string, before rune, after rune, escapes map[int]bool) {
+	if !strings.ContainsAny(str, "*_~^") {
+		return
+	}
+
 	for i := 0; i < len(str); {
 		processor, min := delimiterProcessorFor(str[i])
 		if processor == nil {
@@ -94,8 +295,6 @@ func delimiterEscapes(str string, before rune, after rune) map[int]bool {
 
 		i = end
 	}
-
-	return escapes
 }
 
 // delimiterProcessorFor gets the processor and the shortest run of markers
@@ -124,12 +323,14 @@ func canFormat(str string, start int, end int, min int, processor parser.Delimit
 		previous, _ := utf8.DecodeLastRuneInString(str[:start])
 		befores = []rune{previous}
 	} else if before != unknownRune {
-		befores = []rune{before}
+		befores = []rune{asCharacter(before)}
 	}
 
 	afters := []string{""}
 	if end == len(str) {
-		if after != unknownRune {
+		if after == lineEdgeRune {
+			afters = []string{""}
+		} else if after != unknownRune {
 			afters = []string{string(after)}
 		} else {
 			afters = []string{"", "a", "."}
@@ -148,14 +349,13 @@ func canFormat(str string, start int, end int, min int, processor parser.Delimit
 	return false
 }
 
-// bracketEscapes finds the byte positions in the text that need a backslash
-// so that the square brackets in it are read back as text.
-func bracketEscapes(str string) map[int]bool {
+// bracketEscapes finds the positions in the text that need a backslash so
+// that the square brackets in it are read back as text.
+func bracketEscapes(str string, escapes map[int]bool) {
 	if !strings.ContainsAny(str, "[]") {
-		return nil
+		return
 	}
 
-	escapes := map[int]bool{}
 	for i := 0; i < len(str); i++ {
 		switch str[i] {
 		case '[':
@@ -193,8 +393,6 @@ func bracketEscapes(str string) map[int]bool {
 			}
 		}
 	}
-
-	return escapes
 }
 
 // pageLinkEnd finds the `]]` that ends a page link that starts before the
@@ -252,36 +450,36 @@ func isLinkDefinitionLabel(before string) bool {
 	return !strings.ContainsAny(label, "[]") && strings.TrimSpace(label) != ""
 }
 
-// escapeMath escapes the dollar signs of the parts of a text that would be
+// mathEscapes finds the dollar signs of the parts of a text that would be
 // read back as a LaTeX formula, so that text such as `$x$` stays text. The
 // dollar signs within a formula are escaped as well, as leaving one of them
 // alone would let it pair up with something later in the text.
-func escapeMath(str string) string {
+func mathEscapes(str string, escapes map[int]bool) {
 	if !strings.Contains(str, "$") {
-		return str
+		return
 	}
 
-	out := strings.Builder{}
 	src := []byte(str)
 	for i := 0; i < len(src); {
 		if src[i] != '$' {
-			out.WriteByte(src[i])
 			i++
 			continue
 		}
 
 		_, length, _, ok := mathAt(src[i:])
 		if !ok {
-			out.WriteByte('$')
 			i++
 			continue
 		}
 
-		out.WriteString(strings.ReplaceAll(string(src[i:i+length]), "$", `\$`))
+		for k := i; k < i+length; k++ {
+			if src[k] == '$' {
+				escapes[k] = true
+			}
+		}
+
 		i += length
 	}
-
-	return out.String()
 }
 
 func EscapeLinkURL(str string) string {
@@ -460,8 +658,7 @@ func (w *Output) Write(n content.Node) error {
 	case *content.PageLink:
 		return w.writePageLink(node)
 	case *content.PageRefText:
-		// The title is the whole of the reference, written the same way text is.
-		return w.write(node.To, EscapePotentialMarkdown)
+		return w.writePageRefText(node)
 	case *content.Hashtag:
 		return w.writeHashtag(node)
 	case *content.BlockRef:
@@ -578,10 +775,27 @@ func (w *Output) writeChildren(node content.HasChildren) error {
 	return nil
 }
 
+// writePageRefText writes the title of a page that a property value names
+// without markup. The title is written the same way text is.
+func (w *Output) writePageRefText(node *content.PageRefText) error {
+	before, after := unknownRune, unknownRune
+	if !w.isolated {
+		before, after = w.textSurroundings(node, false)
+	}
+
+	if r := after; r != unknownRune && r != lineEdgeRune && isValueSeparator(r) {
+		// The value is split on the separator before the titles are read, so
+		// the separator acts as the end of the title.
+		after = lineEdgeRune
+	}
+
+	return w.writeRaw(escapeText(node.To, before, after))
+}
+
 func (w *Output) writeText(node *content.Text) error {
 	before, after := unknownRune, unknownRune
 	if !w.isolated {
-		before, after = w.textSurroundings(node)
+		before, after = w.textSurroundings(node, node.SoftLineBreak || node.HardLineBreak)
 	}
 
 	value := escapeText(node.Value, before, after)
@@ -612,12 +826,11 @@ func (w *Output) writeText(node *content.Text) error {
 }
 
 // textSurroundings finds the characters that are written directly before
-// and after a text node, as these decide if the markers in the text can be
-// read back as formatting. Returns unknownRune for a side that is not known.
-func (w *Output) textSurroundings(node *content.Text) (rune, rune) {
-	edge := edgeRuneOf(node.Parent())
+// and after a text node, as these decide if the characters in the text can be
+// read back as markup. Returns unknownRune for a side that is not known.
+func (w *Output) textSurroundings(node content.Node, lineBreak bool) (rune, rune) {
+	before, after := edgeRunesOf(node.Parent())
 
-	before := edge
 	if prev := node.PreviousSibling(); prev != nil {
 		before = unknownRune
 		if text, ok := prev.(*content.Text); ok && (text.SoftLineBreak || text.HardLineBreak) {
@@ -627,8 +840,7 @@ func (w *Output) textSurroundings(node *content.Text) (rune, rune) {
 		}
 	}
 
-	after := edge
-	if node.SoftLineBreak || node.HardLineBreak {
+	if lineBreak {
 		after = '\n'
 	} else if next := node.NextSibling(); next != nil {
 		after = unknownRune
@@ -640,21 +852,24 @@ func (w *Output) textSurroundings(node *content.Text) (rune, rune) {
 	return before, after
 }
 
-// edgeRuneOf gets a character that is like the one written directly before
+// edgeRunesOf gets characters that are like the ones written directly before
 // the first child and after the last child of the node. Returns unknownRune
 // if the node is not one of the known kinds.
-func edgeRuneOf(node content.HasChildren) rune {
+func edgeRunesOf(node content.HasChildren) (rune, rune) {
 	switch node.(type) {
-	case *content.Paragraph, *content.Heading:
-		// The start or the end of a line.
-		return ' '
+	case *content.Paragraph:
+		return lineEdgeRune, lineEdgeRune
+	case *content.Heading, *content.Property:
+		// After the `# ` of a heading or the `:: ` of a property, and at the
+		// end of the line.
+		return ' ', lineEdgeRune
 	case *content.Emphasis, *content.Strong, *content.Strikethrough, *content.Highlight,
 		*content.Link, *content.PageLink, *content.BlockRef:
 		// The markers around formatting and the brackets around a label.
-		return '.'
+		return '.', '.'
 	}
 
-	return unknownRune
+	return unknownRune, unknownRune
 }
 
 // writeIsolated writes a node on its own, to find the characters at its

@@ -52,6 +52,16 @@ var _ = Describe("Parsing then outputting", func() {
 		FullyEqual("Multiple paragraphs", "Basic content\n\nMore content")
 	})
 
+	Describe("Backslashes", func() {
+		FullyEqual("Backslash before a letter", `- C:\Users\foo`)
+		FullyEqual("Backslash at the end of a block with a child", "- C:\\Users\\\n\t- child")
+		FullyEqual("Backslash at the end of a block before the next block", "- C:\\Users\\\n- next")
+		FullyEqual("Escaped emphasis", `- \*not emphasis\*`)
+		FullyEqual("Escaped tag", `- \#tag`)
+		FullyEqual("Escaped code", "- \\`not code\\`")
+		FullyEqual("Backslash in a property value", "- a\n  path:: C:\\Users\\x")
+	})
+
 	Describe("Inline formatting", func() {
 		FullyEqual("Bold text", "**Basic** content")
 		FullyEqual("Bold text with newline", "**Basic\ncontent**")
