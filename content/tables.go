@@ -52,6 +52,21 @@ type Table struct {
 	// Alignments is how the text of each column lines up, in the order the
 	// columns appear. A column without an entry is not aligned.
 	Alignments []TableAlignment
+
+	sourceText string
+}
+
+// SourceText gets the text of the table as it is in the file, with one line
+// per row. A table that reads back as the same rows is written with this
+// text, so that its cells keep their padding. It is empty for a table that was
+// not read from a file.
+func (t *Table) SourceText() string {
+	return t.sourceText
+}
+
+// SetSourceText sets the text of the table as it is in the file.
+func (t *Table) SetSourceText(source string) {
+	t.sourceText = source
 }
 
 // NewTable creates a table out of its rows, the first of which names the

@@ -8,6 +8,7 @@ import (
 	east "github.com/yuin/goldmark/extension/ast"
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/text"
+	"github.com/yuin/goldmark/util"
 )
 
 // pipelessDelimiterRowRegexp matches the row that sets the alignment of the
@@ -44,6 +45,27 @@ func (t *tableParagraphTransformer) Transform(node *ast.Paragraph, reader text.R
 		}
 	}
 
+	// The header must have as many cells as the delimiter row has columns,
+	// otherwise the lines are text. Goldmark fills a short header with empty
+	// cells before it checks this, so the check is made here.
+	delimiter := -1
+	for i := 1; i < lines.Len(); i++ {
+		line := lines.At(i)
+		if columns := tableDelimiterColumns(line.Value(reader.Source())); columns >= 0 {
+			header := lines.At(i - 1)
+			if len(tableRowCells(header.Value(reader.Source()))) != columns {
+				return
+			}
+
+			delimiter = i
+			break
+		}
+	}
+
+	if delimiter < 0 {
+		return
+	}
+
 	parent := node.Parent()
 	previous := node.PreviousSibling()
 	next := node.NextSibling()
@@ -57,7 +79,17 @@ func (t *tableParagraphTransformer) Transform(node *ast.Paragraph, reader text.R
 		lines.SetSliced(0, lines.Len()-len(properties))
 	}
 
+	// The lines of the table are kept before the paragraph is changed.
+	tableLines := make([]text.Segment, 0, lines.Len()-delimiter+1)
+	for i := delimiter - 1; i < lines.Len(); i++ {
+		tableLines = append(tableLines, lines.At(i))
+	}
+
 	t.transformer.Transform(node, reader, pc)
+	if table := tableBetween(parent, previous, next); table != nil {
+		addExtraTableCells(table, tableLines[2:], reader.Source())
+		table.SetAttributeString(tableSourceAttribute, tableSource(tableLines, reader.Source()))
+	}
 	addPropertyLinesAfterTable(parent, previous, next, node, properties)
 
 	// A table is put next to the paragraph it was found in without taking over
@@ -74,6 +106,145 @@ func (t *tableParagraphTransformer) Transform(node *ast.Paragraph, reader text.R
 	if table, ok := first.(*east.Table); ok {
 		table.SetBlankPreviousLines(blankPreviousLines)
 	}
+}
+
+// tableSourceAttribute is the name of the attribute that holds the text of a
+// table, as it is in the file.
+const tableSourceAttribute = "logseq-source"
+
+// tableBetween finds the table that a paragraph was made into. The paragraph
+// was between previous and next, and previous is nil if it was the first
+// child of parent.
+func tableBetween(parent ast.Node, previous ast.Node, next ast.Node) *east.Table {
+	start := parent.FirstChild()
+	if previous != nil {
+		start = previous.NextSibling()
+	}
+
+	for c := start; c != nil && c != next; c = c.NextSibling() {
+		if table, ok := c.(*east.Table); ok {
+			return table
+		}
+	}
+
+	return nil
+}
+
+// addExtraTableCells adds the cells of a row that come after the columns of
+// the header. Logseq keeps them, but Goldmark drops them as GitHub Flavored
+// Markdown does. The rows are the lines below the delimiter row.
+func addExtraTableCells(table *east.Table, rows []text.Segment, source []byte) {
+	i := 0
+	for child := table.FirstChild(); child != nil; child = child.NextSibling() {
+		row, ok := child.(*east.TableRow)
+		if !ok {
+			// The header is not a body row.
+			continue
+		}
+
+		if i >= len(rows) {
+			return
+		}
+
+		line := rows[i]
+		i++
+
+		cells := tableRowCells(line.Value(source))
+		for c := row.ChildCount(); c < len(cells); c++ {
+			cell := east.NewTableCell()
+			cell.Lines().Append(text.NewSegment(line.Start+cells[c][0], line.Start+cells[c][1]))
+			row.AppendChild(row, cell)
+		}
+	}
+}
+
+// tableSource joins the lines of a table, without their line breaks.
+func tableSource(lines []text.Segment, source []byte) []byte {
+	out := make([]byte, 0)
+	for i, line := range lines {
+		if i > 0 {
+			out = append(out, '\n')
+		}
+
+		out = append(out, bytes.TrimRight(line.Value(source), "\r\n")...)
+	}
+
+	return out
+}
+
+// tableDelimiterColumns returns the number of columns of a delimiter row, in
+// the same way as Goldmark reads it. It returns -1 if the line is not a
+// delimiter row.
+func tableDelimiterColumns(line []byte) int {
+	if w, _ := util.IndentWidth(line, 0); w > 3 {
+		return -1
+	}
+
+	for _, b := range line {
+		if !(util.IsSpace(b) || b == '-' || b == '|' || b == ':') {
+			return -1
+		}
+	}
+
+	columns := bytes.Split(line, []byte{'|'})
+	if util.IsBlank(columns[0]) {
+		columns = columns[1:]
+	}
+
+	if len(columns) > 0 && util.IsBlank(columns[len(columns)-1]) {
+		columns = columns[:len(columns)-1]
+	}
+
+	for _, column := range columns {
+		if !tableDelimiterColumnRegexp.Match(column) {
+			return -1
+		}
+	}
+
+	return len(columns)
+}
+
+// tableDelimiterColumnRegexp matches one column of a delimiter row.
+var tableDelimiterColumnRegexp = regexp.MustCompile(`^\s*:?-+:?\s*$`)
+
+// tableRowCells splits a row of a table into its cells, in the same way as
+// Goldmark. It returns the start and end of the text of each cell in the
+// line, without the spaces around it. A pipe after a backslash does not end a
+// cell.
+func tableRowCells(line []byte) [][2]int {
+	pos := util.TrimLeftSpaceLength(line)
+	limit := len(line) - util.TrimRightSpaceLength(line)
+	if pos < limit && line[pos] == '|' {
+		pos++
+	}
+
+	if pos < limit && line[limit-1] == '|' {
+		limit--
+	}
+
+	cells := make([][2]int, 0)
+	for pos < limit {
+		end := pos
+		for ; end < limit; end++ {
+			if line[end] == '|' && (end == 0 || line[end-1] != '\\') {
+				break
+			}
+		}
+
+		start, stop := pos, end
+		for start < stop && util.IsSpace(line[start]) {
+			start++
+		}
+
+		for stop > start && util.IsSpace(line[stop-1]) {
+			stop--
+		}
+
+		cells = append(cells, [2]int{start, stop})
+		pos = end + 1
+	}
+
+	return cells
 }
 
 // trailingPropertyLines finds the property lines at the end of a paragraph

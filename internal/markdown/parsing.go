@@ -875,6 +875,10 @@ func convertTable(src []byte, node *east.Table) (*content.Table, error) {
 		table.AddChild(row)
 	}
 
+	if source, ok := node.AttributeString(tableSourceAttribute); ok {
+		table.SetSourceText(string(source.([]byte)))
+	}
+
 	updatePreviousLine(node, table)
 
 	return table, nil

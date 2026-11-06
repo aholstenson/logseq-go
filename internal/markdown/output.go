@@ -1618,9 +1618,26 @@ func (w *Output) writeList(node *content.List) error {
 	return nil
 }
 
-// writeTable writes a table in the GitHub Flavored Markdown syntax, padding
-// the cells so that the pipes of every row line up in a text editor.
+// writeTable writes a table in the GitHub Flavored Markdown syntax. A table
+// that is not changed is written with its text from the file. Other tables
+// get cells that are padded so that the pipes of every row line up in a text
+// editor.
 func (w *Output) writeTable(node *content.Table) error {
+	if source := node.SourceText(); source != "" && readsBackAsTable(source, node) {
+		err := w.startBlock(node, "")
+		if err != nil {
+			return err
+		}
+
+		err = w.writeRaw(source)
+		if err != nil {
+			return err
+		}
+
+		w.endBlock()
+		return nil
+	}
+
 	rows, err := w.tableRows(node)
 	if err != nil {
 		return err
@@ -1630,10 +1647,17 @@ func (w *Output) writeTable(node *content.Table) error {
 		return fmt.Errorf("table has no rows")
 	}
 
-	widths := tableColumnWidths(rows)
-	for len(widths) < len(node.Alignments) {
+	// The header and the delimiter row set the columns of the table. A row
+	// can have more cells than that, and they are kept after the columns.
+	columns := len(rows[0])
+	if len(node.Alignments) > columns {
 		// A column that the table sets the alignment of, but that no row has a
 		// cell for, is still written out.
+		columns = len(node.Alignments)
+	}
+
+	widths := tableColumnWidths(rows)
+	for len(widths) < columns {
 		widths = append(widths, 3)
 	}
 
@@ -1644,18 +1668,23 @@ func (w *Output) writeTable(node *content.Table) error {
 
 	// The header names the columns and is followed by the row that sets how
 	// the text of each column lines up.
-	err = w.writeRaw(tableRow(rows[0], widths))
+	err = w.writeRaw(tableRow(rows[0], widths[:columns]))
 	if err != nil {
 		return err
 	}
 
-	err = w.writeRaw("\n" + tableDelimiterRow(node, widths))
+	err = w.writeRaw("\n" + tableDelimiterRow(node, widths[:columns]))
 	if err != nil {
 		return err
 	}
 
 	for _, row := range rows[1:] {
-		err = w.writeRaw("\n" + tableRow(row, widths))
+		rowColumns := columns
+		if len(row) > rowColumns {
+			rowColumns = len(row)
+		}
+
+		err = w.writeRaw("\n" + tableRow(row, widths[:rowColumns]))
 		if err != nil {
 			return err
 		}
@@ -1663,6 +1692,40 @@ func (w *Output) writeTable(node *content.Table) error {
 
 	w.endBlock()
 	return nil
+}
+
+// readsBackAsTable returns true if the text of a table is read back as a
+// table with the same rows and alignments. This is false after the table was
+// changed, and then the table is written from its rows.
+func readsBackAsTable(source string, node *content.Table) bool {
+	block, err := ParseString(source)
+	if err != nil {
+		return false
+	}
+
+	parsed, ok := block.FirstChild().(*content.Table)
+	if !ok || parsed.NextSibling() != nil {
+		return false
+	}
+
+	if len(parsed.Alignments) != len(node.Alignments) {
+		return false
+	}
+
+	for i := range parsed.Alignments {
+		if parsed.Alignments[i] != node.Alignments[i] {
+			return false
+		}
+	}
+
+	a, b := parsed.FirstChild(), node.FirstChild()
+	for ; a != nil && b != nil; a, b = a.NextSibling(), b.NextSibling() {
+		if content.Debug(a) != content.Debug(b) {
+			return false
+		}
+	}
+
+	return a == nil && b == nil
 }
 
 // tableRows writes out the cells of every row, so that the width of each

@@ -185,13 +185,12 @@ var _ = Describe("Parsing then outputting", func() {
 
 		// The cells are padded to the width of the column they are in, so a
 		// table that is written any other way lines up on the way out.
-		Varies("Table without padding", "|Name|Value|\n|-|-|\n|a|1|", "| Name | Value |\n| ---- | ----- |\n| a    | 1     |")
-		Varies("Table with extra padding", "| a      |\n| ------ |", "| a   |\n| --- |")
-
-		// A row is read with the columns the header has, so cells that no
-		// column belongs to are dropped and missing ones are filled in.
-		Varies("Table with a row that is too long", "| a   |\n| --- |\n| b   | c |", "| a   |\n| --- |\n| b   |")
-		Varies("Table with a row that is too short", "| a   | b   |\n| --- | --- |\n| c   |", "| a   | b   |\n| --- | --- |\n| c   |     |")
+		// A table that is not changed keeps its text, as Logseq does not
+		// change the text of a table either.
+		FullyEqual("Table without padding", "|Name|Value|\n|-|-|\n|a|1|")
+		FullyEqual("Table with extra padding", "| a      |\n| ------ |")
+		FullyEqual("Table with a row that is too long", "| a   |\n| --- |\n| b   | c |")
+		FullyEqual("Table with a row that is too short", "| a   | b   |\n| --- | --- |\n| c   |")
 	})
 
 	Describe("Macros", func() {
