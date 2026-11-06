@@ -258,6 +258,19 @@ type Config struct {
 	// always does this, and has no setting for it in `config.edn`. Use Bool
 	// to set it.
 	NamespaceParentRefs *bool
+
+	// FirstBlockPageProperties is whether saving a page writes its first
+	// block without a bullet when the block starts with properties, so that
+	// `- tags:: x` as the first block is saved as `tags:: x` and becomes the
+	// page properties. Logseq does this each time it saves a page, and has no
+	// setting for it in `config.edn`. It is on unless it is set to false. Use
+	// Bool to set it.
+	//
+	// Only pages that are written are changed, so a page that is opened and
+	// saved without changes keeps its bullet. A first block that has child
+	// blocks also keeps its bullet, as its children would be read back as a
+	// different outline.
+	FirstBlockPageProperties *bool
 }
 
 // Bool returns a pointer to the value, for the fields of Config that are not
@@ -292,7 +305,17 @@ func (c Config) merge(other Config) Config {
 		c.NamespaceParentRefs = other.NamespaceParentRefs
 	}
 
+	if other.FirstBlockPageProperties != nil {
+		c.FirstBlockPageProperties = other.FirstBlockPageProperties
+	}
+
 	return c
+}
+
+// firstBlockPageProperties returns true if saving a page moves the properties
+// at the start of its first block to the page, see FirstBlockPageProperties.
+func (c Config) firstBlockPageProperties() bool {
+	return c.FirstBlockPageProperties == nil || *c.FirstBlockPageProperties
 }
 
 // applyTo replaces the settings in the config of the graph with the fields

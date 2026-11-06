@@ -237,6 +237,76 @@ var _ = Describe("Aliases", func() {
 	})
 })
 
+var _ = Describe("Page properties in the first bullet", func() {
+	var (
+		graph *logseq.Graph
+		dir   string
+	)
+
+	BeforeEach(func() {
+		dir = setupGraph()
+	})
+
+	AfterEach(func() {
+		if graph != nil {
+			graph.Close()
+			graph = nil
+		}
+	})
+
+	It("does not read the properties of the first bullet as page properties, the same as Logseq", func() {
+		// Given a page whose first bullet has a tags property
+		graph = openGraphWithPages(dir, map[string]string{
+			"target.md": "- tags:: x\n- a\n",
+		})
+
+		page, err := graph.OpenPage("target")
+		Expect(err).ToNot(HaveOccurred())
+
+		// Then the page has no tags, since only content before the first
+		// bullet holds page properties
+		Expect(len(page.Properties().Get("tags"))).To(BeZero())
+	})
+
+	It("does not read an alias in the first bullet as an alias of the page", func() {
+		graph = openGraphWithPages(dir, map[string]string{
+			"target.md": "- alias:: Other\n- a\n",
+		})
+
+		page, err := graph.OpenPage("target")
+		Expect(err).ToNot(HaveOccurred())
+
+		Expect(page.Aliases()).To(BeEmpty())
+	})
+
+	It("does not read the properties after a heading line at the start of a page as page properties", func() {
+		// Given a page that starts with a heading line that has a property
+		graph = openGraphWithPages(dir, map[string]string{
+			"target.md": "# H\ntags:: x\n- a\n",
+		})
+
+		page, err := graph.OpenPage("target")
+		Expect(err).ToNot(HaveOccurred())
+
+		// Then the property belongs to the heading block, not to the page
+		Expect(page.Blocks()[0].Properties().Get("tags")).To(HaveLen(1))
+		Expect(len(page.Properties().Get("tags"))).To(BeZero())
+	})
+
+	It("reads properties before the first bullet as page properties", func() {
+		// Given page properties before the first bullet
+		graph = openGraphWithPages(dir, map[string]string{
+			"target.md": "tags:: x\n\n- a\n",
+		})
+
+		page, err := graph.OpenPage("target")
+		Expect(err).ToNot(HaveOccurred())
+
+		// Then the page has the tags x
+		Expect(len(page.Properties().Get("tags"))).To(Equal(1))
+	})
+})
+
 var _ = Describe("Aliases with quotes", func() {
 	var (
 		graph *logseq.Graph

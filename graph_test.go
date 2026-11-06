@@ -608,7 +608,7 @@ var _ = Describe("Graph", func() {
 			page, err := graph.OpenPage("props")
 			Expect(err).ToNot(HaveOccurred())
 			Expect(page.Blocks()).To(HaveLen(3))
-			Expect(page.Properties().Get("icon")).To(EqualsNodes(content.NewText("🔀")))
+			Expect(page.Blocks()[0].Properties().Get("icon")).To(EqualsNodes(content.NewText("🔀")))
 
 			Expect(saveUnchanged(graph, path, "props")).To(Equal(source))
 		})
@@ -648,6 +648,131 @@ var _ = Describe("Graph", func() {
 			)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(results.Size()).To(Equal(1))
+		})
+	})
+
+	Describe("Properties at the start of the first block", func() {
+		var path string
+
+		BeforeEach(func() {
+			path = filepath.Join(dir, "pages", "props.md")
+		})
+
+		// editSecondBlock opens the page, changes the text of its second block
+		// and saves it, then returns the text of the file.
+		editSecondBlock := func(source string, opts ...logseq.Option) string {
+			Expect(os.WriteFile(path, []byte(source), 0o644)).To(Succeed())
+
+			graph, err := logseq.Open(context.Background(), dir, opts...)
+			Expect(err).ToNot(HaveOccurred())
+			defer graph.Close()
+
+			tx := graph.NewTransaction()
+			page, err := tx.OpenPage("props")
+			Expect(err).ToNot(HaveOccurred())
+
+			page.Blocks()[1].SetChildren(content.NewParagraph(content.NewText("Changed")))
+			Expect(tx.Save()).To(Succeed())
+
+			data, err := os.ReadFile(path)
+			Expect(err).ToNot(HaveOccurred())
+			return string(data)
+		}
+
+		It("become page properties when the page is saved with changes", func() {
+			// Given a page whose first block has only properties
+			// When another block of the page changes and the page is saved
+			data := editSecondBlock("- tags:: x\n- Block 1\n")
+
+			// Then the first block is written without its bullet
+			Expect(data).To(Equal("tags:: x\n- Changed\n"))
+
+			// And the properties are page properties when the page is read
+			graph, err := logseq.Open(context.Background(), dir)
+			Expect(err).ToNot(HaveOccurred())
+			defer graph.Close()
+
+			page, err := graph.OpenPage("props")
+			Expect(err).ToNot(HaveOccurred())
+			Expect(page.Properties().Get("tags")).To(HaveLen(1))
+		})
+
+		It("are page properties in the transaction after it is saved", func() {
+			Expect(os.WriteFile(path, []byte("- tags:: x\n- Block 1\n"), 0o644)).To(Succeed())
+
+			graph, err := logseq.Open(context.Background(), dir)
+			Expect(err).ToNot(HaveOccurred())
+			defer graph.Close()
+
+			tx := graph.NewTransaction()
+			page, err := tx.OpenPage("props")
+			Expect(err).ToNot(HaveOccurred())
+			page.Blocks()[1].AddChild(content.NewParagraph(content.NewText("More")))
+			Expect(tx.Save()).To(Succeed())
+
+			Expect(page.Blocks()[0].IsPreBlock()).To(BeTrue())
+			Expect(page.Properties().Get("tags")).To(HaveLen(1))
+		})
+
+		It("become page properties for a new page", func() {
+			graph, err := logseq.Open(context.Background(), dir)
+			Expect(err).ToNot(HaveOccurred())
+			defer graph.Close()
+
+			// Given a new page whose first block gets a property
+			tx := graph.NewTransaction()
+			page, err := tx.OpenPage("props")
+			Expect(err).ToNot(HaveOccurred())
+
+			first := content.NewBlock()
+			page.AddBlock(first)
+			page.AddBlock(content.NewBlock(content.NewParagraph(content.NewText("Block 1"))))
+			first.Properties().Set("tags", content.NewText("x"))
+
+			// When the page is saved
+			Expect(tx.Save()).To(Succeed())
+
+			// Then the property is written as a page property
+			data, err := os.ReadFile(path)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(string(data)).To(Equal("tags:: x\n- Block 1\n"))
+		})
+
+		It("keep their bullet when the page is saved without changes", func() {
+			source := "- tags:: x\n- Block 1\n"
+			Expect(os.WriteFile(path, []byte(source), 0o644)).To(Succeed())
+
+			graph, err := logseq.Open(context.Background(), dir)
+			Expect(err).ToNot(HaveOccurred())
+			defer graph.Close()
+
+			Expect(saveUnchanged(graph, path, "props")).To(Equal(source))
+		})
+
+		It("keep their bullet when the setting is off", func() {
+			data := editSecondBlock("- tags:: x\n- Block 1\n",
+				logseq.WithConfig(logseq.Config{FirstBlockPageProperties: logseq.Bool(false)}),
+			)
+
+			Expect(data).To(Equal("- tags:: x\n- Changed\n"))
+		})
+
+		It("keep their bullet when the first block starts with text", func() {
+			data := editSecondBlock("- First\n  tags:: x\n- Block 1\n")
+
+			Expect(data).To(Equal("- First\n  tags:: x\n- Changed\n"))
+		})
+
+		It("keep their bullet when the first block has child blocks", func() {
+			data := editSecondBlock("- tags:: x\n\t- Child\n- Block 1\n")
+
+			Expect(data).To(Equal("- tags:: x\n\t- Child\n- Changed\n"))
+		})
+
+		It("keep the text after the properties in the first block", func() {
+			data := editSecondBlock("- tags:: x\n  Text\n- Block 1\n")
+
+			Expect(data).To(Equal("tags:: x\nText\n- Changed\n"))
 		})
 	})
 

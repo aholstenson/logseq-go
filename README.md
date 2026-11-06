@@ -75,16 +75,25 @@ pages `a/b` and `a` as well. Logseq has no setting in `config.edn` to turn this
 off. A slash at the start or at the end of a title is not part of the title, so
 `[[/a/]]` points at the page `a`.
 
+Page properties are the properties before the first bullet of a page, the same
+as in Logseq. Properties in the first bullet, such as `- tags:: x`, belong to
+that block. When Logseq saves a page, it writes a first block that starts with
+properties without its bullet, so the properties become page properties. This
+library does the same when it saves a page with changes. A page that is saved
+without changes, or a first block with child blocks, keeps its bullet. Logseq
+has no setting in `config.edn` to turn this off.
+
 A program can change these settings for itself, without a change to the
 `config.edn` that Logseq uses, with `WithConfig`. A field that is not set keeps
 the value of the graph:
 
 ```go
 graph, err := logseq.Open(ctx, "path/to/graph", logseq.WithConfig(logseq.Config{
-  PropertyPages:         logseq.Bool(false),
-  TaskPages:             logseq.Bool(false),
-  NamespaceParentRefs:   logseq.Bool(false),
-  IgnoredPageReferences: []string{"author"},
+  PropertyPages:            logseq.Bool(false),
+  TaskPages:                logseq.Bool(false),
+  NamespaceParentRefs:      logseq.Bool(false),
+  FirstBlockPageProperties: logseq.Bool(false),
+  IgnoredPageReferences:    []string{"author"},
 }))
 ```
 

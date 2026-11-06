@@ -572,7 +572,22 @@ func (t *Transaction) Save(opts ...SaveOption) error {
 		}
 
 		data = t.keepUnchangedLines(page, data)
-		if !page.isNew && page.original != nil && data == string(page.original) {
+		unchanged := !page.isNew && page.original != nil && data == string(page.original)
+
+		// Like Logseq, a page that is written gets the properties at the
+		// start of its first block as page properties. This is done only
+		// after the check above, so that a page without changes is not
+		// written because of it.
+		if !unchanged && t.graph.options.config.firstBlockPageProperties() && page.moveFirstBlockPropertiesToPage() {
+			data, err = t.pageText(page.root)
+			if err != nil {
+				return fmt.Errorf("failed to convert page %s: %w", page.Title(), err)
+			}
+
+			data = t.keepUnchangedLines(page, data)
+		}
+
+		if unchanged {
 			// The file already has this text, so it is not written again. This
 			// keeps the time the file was changed. The file still holds the
 			// page, so it is kept in written to stop a removal of it.

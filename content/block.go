@@ -41,6 +41,12 @@ func (b *Block) IsPreBlock() bool {
 	return b.preBlock
 }
 
+// SetPreBlock sets whether this block holds the content before the first
+// bullet of a page. See NewPreBlock for details.
+func (b *Block) SetPreBlock(preBlock bool) {
+	b.preBlock = preBlock
+}
+
 // NewHeadingBlock creates a top-level block that starts with a heading line
 // that is not in a bullet, such as `# Title`. Logseq reads each such line as
 // the start of a block, and the text and properties after it are part of

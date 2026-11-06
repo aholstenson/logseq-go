@@ -55,8 +55,11 @@ type Page interface {
 	// has not been changed since this revision.
 	Revision() string
 
-	// Properties returns the properties for the page. Properties belong to the
-	// first block of the page, which is the pre-block if the page has one.
+	// Properties returns the properties for the page. Page properties are the
+	// properties in the pre-block, the content before the first bullet.
+	// Properties in the first bullet belong to that block, not to the page.
+	// If the page has no properties, they are made at the start of the
+	// pre-block.
 	Properties() *content.Properties
 
 	// Aliases returns the alternative titles of the page, as declared by its
@@ -318,13 +321,39 @@ func propertyTitles(property *content.Property) []string {
 // findProperties locates the properties of the page, returning nil if the page
 // does not have any.
 func (p *pageImpl) findProperties() *content.Properties {
-	// Logseq treats properties in the first block of a page as properties of
-	// the page, whether that block is the pre-block or a bullet.
-	if first, ok := p.root.FirstChild().(*content.Block); ok {
+	// Logseq reads page properties only from the pre-block, the content before
+	// the first bullet. Properties in a first bullet such as `- tags:: x`
+	// belong to that block only.
+	if first, ok := p.root.FirstChild().(*content.Block); ok && first.IsPreBlock() {
 		return first.FindProperties()
 	}
 
 	return nil
+}
+
+// moveFirstBlockPropertiesToPage makes the first block of the page its
+// pre-block when the block starts with properties, so that it is written
+// without a bullet and its properties become the page properties. Logseq does
+// the same when it saves a page. It returns true if the page changed.
+func (p *pageImpl) moveFirstBlockPropertiesToPage() bool {
+	first, ok := p.root.FirstChild().(*content.Block)
+	if !ok || first.IsPreBlock() || first.IsHeadingBlock() {
+		return false
+	}
+
+	properties, ok := first.FirstChild().(*content.Properties)
+	if !ok || properties.FirstChild() == nil {
+		return false
+	}
+
+	// Child blocks of a pre-block are written as indented bullets before the
+	// first top-level bullet, which is read back as a different outline.
+	if len(first.Blocks()) > 0 {
+		return false
+	}
+
+	first.SetPreBlock(true)
+	return true
 }
 
 // preBlock returns the block holding the content before the first bullet of
