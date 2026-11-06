@@ -54,6 +54,7 @@ func init() {
 			util.Prioritized(extension.NewTableASTTransformer(), 0),
 			util.Prioritized(defaultTagsInFormattingASTTransformer, 100),
 			util.Prioritized(defaultPropertiesASTTransformer, 200),
+			util.Prioritized(&taskDatePositions{}, 300),
 		),
 	)
 }
@@ -109,6 +110,10 @@ type parseOptions struct {
 
 	// page is whether the text is the text of a whole page, see AsPage.
 	page bool
+
+	// relaxedTaskDates is whether task dates are read also in the forms and
+	// places that Logseq ignores, see WithRelaxedTaskDates.
+	relaxedTaskDates bool
 }
 
 // defaultParseOptions are what Logseq does for a graph that does not configure
@@ -155,6 +160,16 @@ func WithIgnoredPageReferences(names ...string) ParseOption {
 func AsPage() ParseOption {
 	return func(o *parseOptions) {
 		o.page = true
+	}
+}
+
+// WithRelaxedTaskDates sets whether `SCHEDULED:` and `DEADLINE:` lines are
+// read as dates also in the forms and places that Logseq ignores, such as
+// `<2024-01-01>` without a weekday, or a date after the text of a block. By
+// default a date is read only where Logseq reads it, see taskDatePositions.
+func WithRelaxedTaskDates(relaxed bool) ParseOption {
+	return func(o *parseOptions) {
+		o.relaxedTaskDates = relaxed
 	}
 }
 

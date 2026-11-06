@@ -3640,8 +3640,10 @@ var _ = Describe("Parsing", func() {
 				)))
 			})
 
-			It("keeps a blank line before the date", func() {
-				block, err := markdown.ParseString("TODO Task\n\nSCHEDULED: <2024-01-15 Mon>")
+			It("keeps a blank line before the date when dates are relaxed", func() {
+				// Logseq ignores a date after a blank line, so only relaxed
+				// dates read it.
+				block, err := markdown.ParseString("TODO Task\n\nSCHEDULED: <2024-01-15 Mon>", markdown.WithRelaxedTaskDates(true))
 				Expect(err).ToNot(HaveOccurred())
 
 				Expect(block).To(tests.EqualNode(content.NewBlock(

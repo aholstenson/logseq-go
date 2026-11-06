@@ -645,14 +645,17 @@ func (b *Block) SetDeadline(date *TaskDate) {
 	b.setTaskDate(TaskDateTypeDeadline, date)
 }
 
+// taskDate gets the date of the given type. If the block has more than one,
+// the last one is used, the same as Logseq.
 func (b *Block) taskDate(dateType TaskDateType) *TaskDate {
+	var found *TaskDate
 	for node := b.FirstChild(); node != nil; node = node.NextSibling() {
 		if date, ok := node.(*TaskDate); ok && date.Type == dateType {
-			return date
+			found = date
 		}
 	}
 
-	return nil
+	return found
 }
 
 func (b *Block) setTaskDate(dateType TaskDateType, date *TaskDate) {
@@ -672,9 +675,10 @@ func (b *Block) setTaskDate(dateType TaskDateType, date *TaskDate) {
 		return
 	}
 
-	// Logseq keeps these dates directly after the content of the task, so
-	// place the date after the properties, the first paragraph and any date
-	// that is already there.
+	// Logseq keeps these dates directly after the first line of the task, so
+	// place the date after the properties, the first line of the first
+	// paragraph and any date that is already there. Logseq ignores a date
+	// that comes after more lines of text.
 	var after Node
 	seenParagraph := false
 	for node := b.FirstChild(); node != nil; node = node.NextSibling() {
@@ -694,9 +698,45 @@ func (b *Block) setTaskDate(dateType TaskDateType, date *TaskDate) {
 
 	if after == nil {
 		b.PrependChild(date)
-	} else {
-		b.InsertChildAfter(date, after)
+		return
 	}
+
+	b.InsertChildAfter(date, after)
+	if paragraph, ok := after.(*Paragraph); ok {
+		if rest := splitAfterFirstLine(paragraph); rest != nil {
+			b.InsertChildAfter(rest, date)
+		}
+	}
+}
+
+// splitAfterFirstLine takes the lines after the first line out of the
+// paragraph, and returns them as a new paragraph. It returns nil if the
+// paragraph has only one line.
+func splitAfterFirstLine(paragraph *Paragraph) *Paragraph {
+	var lineEnd *Text
+	for node := paragraph.FirstChild(); node != nil; node = node.NextSibling() {
+		if text, ok := node.(*Text); ok && (text.SoftLineBreak || text.HardLineBreak) {
+			lineEnd = text
+			break
+		}
+	}
+
+	if lineEnd == nil || lineEnd.NextSibling() == nil {
+		return nil
+	}
+
+	rest := NewParagraph()
+	rest.SetPreviousLineType(PreviousLineTypeNonBlank)
+	for node := lineEnd.NextSibling(); node != nil; {
+		next := node.NextSibling()
+		node.RemoveSelf()
+		rest.AddChild(node)
+		node = next
+	}
+
+	lineEnd.SoftLineBreak = false
+	lineEnd.HardLineBreak = false
+	return rest
 }
 
 // CompleteTask marks the task in this block as done at the given time, in the

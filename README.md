@@ -83,6 +83,13 @@ library does the same when it saves a page with changes. A page that is saved
 without changes, or a first block with child blocks, keeps its bullet. Logseq
 has no setting in `config.edn` to turn this off.
 
+A `SCHEDULED:` or `DEADLINE:` line is a date of the task where Logseq reads it:
+directly after the first line of the block, or after properties or code. The
+date must have an English weekday, such as `<2024-01-01 Mon>`. A date after
+more text or after a blank line, and a date such as `<2024-01-01>`, is text.
+Turn on `RelaxedTaskDates` to read such lines as dates in graphs that are not
+opened in Logseq.
+
 A program can change these settings for itself, without a change to the
 `config.edn` that Logseq uses, with `WithConfig`. A field that is not set keeps
 the value of the graph:
@@ -93,6 +100,7 @@ graph, err := logseq.Open(ctx, "path/to/graph", logseq.WithConfig(logseq.Config{
   TaskPages:                logseq.Bool(false),
   NamespaceParentRefs:      logseq.Bool(false),
   FirstBlockPageProperties: logseq.Bool(false),
+  RelaxedTaskDates:         logseq.Bool(true),
   IgnoredPageReferences:    []string{"author"},
 }))
 ```

@@ -510,6 +510,29 @@ var _ = Describe("Config", func() {
 			Expect(block.FindProperties().Get("author").PageReferences()).To(HaveLen(2))
 		})
 
+		It("reads task dates in the forms that Logseq ignores when task dates are relaxed", func() {
+			// When the program turns relaxed task dates on
+			graph := openWithConfig(`{}`,
+				logseq.WithConfig(logseq.Config{RelaxedTaskDates: logseq.Bool(true)}),
+			)
+
+			// Then a date without a weekday, after the text of the task, is
+			// the scheduled date
+			block, err := graph.ParseBlock("TODO a\nnote\nSCHEDULED: <2024-01-01>")
+			Expect(err).ToNot(HaveOccurred())
+			Expect(block.Scheduled()).ToNot(BeNil())
+		})
+
+		It("reads task dates the same way as Logseq when task dates are not relaxed", func() {
+			// Given a graph that does not turn relaxed task dates on
+			graph := openWithConfig(`{}`)
+
+			// Then a date without a weekday is text
+			block, err := graph.ParseBlock("TODO a\nSCHEDULED: <2024-01-01>")
+			Expect(err).ToNot(HaveOccurred())
+			Expect(block.Scheduled()).To(BeNil())
+		})
+
 		It("turns task pages off", func() {
 			// Given a task with a priority
 			writePage("referrer.md", "- TODO [#A] x\n")

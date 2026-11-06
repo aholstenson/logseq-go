@@ -283,3 +283,108 @@ var _ = Describe("Task markers after a heading", func() {
 		Expect(v).To(Equal("- ## TODO x"))
 	})
 })
+
+var _ = Describe("Scheduled dates in forms that Logseq ignores", func() {
+	parseAndWrite := func(input string) (*content.Block, string) {
+		root, err := markdown.ParseString(input)
+		Expect(err).ToNot(HaveOccurred())
+
+		v, err := markdown.AsString(root)
+		Expect(err).ToNot(HaveOccurred())
+		return root.Blocks()[0], v
+	}
+
+	// scheduledDate formats the scheduled date of the block, or returns an
+	// empty string when the block is not scheduled.
+	scheduledDate := func(block *content.Block) string {
+		if block.Scheduled() == nil {
+			return ""
+		}
+		return block.Scheduled().Date.Format("2006-01-02 15:04")
+	}
+
+	DescribeTable("is not a date and does not change on save, the same as Logseq",
+		func(input string) {
+			block, out := parseAndWrite(input)
+
+			// Then Logseq reads no scheduled date
+			Expect(scheduledDate(block)).To(BeEmpty())
+
+			// And the text does not change on save
+			Expect(out).To(Equal(input))
+		},
+		Entry("a date without a weekday", "- TODO a\n  SCHEDULED: <2024-01-01>"),
+		Entry("a weekday that is not English", "- TODO a\n  SCHEDULED: <2024-01-01 Mån>"),
+		Entry("two spaces before the weekday", "- TODO a\n  SCHEDULED: <2024-01-01  Mon>"),
+	)
+
+	DescribeTable("is not a date when it is not where Logseq looks for it",
+		func(input string) {
+			block, _ := parseAndWrite(input)
+			Expect(scheduledDate(block)).To(BeEmpty())
+		},
+		Entry("after text in the same paragraph", "- TODO a\n  note\n  SCHEDULED: <2024-01-01 Mon>"),
+		Entry("after a blank line", "- TODO a\n\n  SCHEDULED: <2024-01-01 Mon>"),
+		Entry("on the bullet line", "- SCHEDULED: <2024-01-01 Mon>"),
+	)
+
+	DescribeTable("is a date when task dates are relaxed",
+		func(input string, written string) {
+			root, err := markdown.ParseString(input, markdown.WithRelaxedTaskDates(true))
+			Expect(err).ToNot(HaveOccurred())
+
+			// Then the block is scheduled
+			Expect(scheduledDate(root.Blocks()[0])).To(Equal("2024-01-01 00:00"))
+
+			// And the date is saved with an English weekday, in the same place
+			out, err := markdown.AsString(root)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(out).To(Equal(written))
+		},
+		Entry("a date without a weekday",
+			"- TODO a\n  SCHEDULED: <2024-01-01>", "- TODO a\n  SCHEDULED: <2024-01-01 Mon>"),
+		Entry("a weekday that is not English",
+			"- TODO a\n  SCHEDULED: <2024-01-01 Mån>", "- TODO a\n  SCHEDULED: <2024-01-01 Mon>"),
+		Entry("after text in the same paragraph",
+			"- TODO a\n  note\n  SCHEDULED: <2024-01-01 Mon>", "- TODO a\n  note\n  SCHEDULED: <2024-01-01 Mon>"),
+	)
+
+	It("is a date after properties, the same as Logseq", func() {
+		// Given a date after the properties of a task with more text
+		block, out := parseAndWrite("- TODO a\n  note\n  b:: c\n  SCHEDULED: <2024-01-01 Mon>")
+
+		// Then the date is used, and the text does not change on save
+		Expect(scheduledDate(block)).To(Equal("2024-01-01 00:00"))
+		Expect(out).To(Equal("- TODO a\n  note\n  b:: c\n  SCHEDULED: <2024-01-01 Mon>"))
+	})
+
+	It("uses only the dates of the first group of date lines, the same as Logseq", func() {
+		// Given a scheduled date, code, and then a deadline
+		block, _ := parseAndWrite("- TODO a\n  SCHEDULED: <2024-01-01 Mon>\n  ```\n  x\n  ```\n  DEADLINE: <2024-01-05 Fri>")
+
+		// Then the deadline is ignored
+		Expect(scheduledDate(block)).To(Equal("2024-01-01 00:00"))
+		Expect(block.Deadline()).To(BeNil())
+	})
+
+	It("adds a new date after the first line of a task with more text", func() {
+		// Given a task with a second line of text
+		out := editTask("- TODO a\n  note", func(block *content.Block) {
+			// When it is scheduled
+			block.SetScheduled(content.NewScheduled(time.Date(2024, time.January, 1, 0, 0, 0, 0, time.Local)))
+		})
+
+		// Then the date comes after the first line, where Logseq reads it
+		Expect(out).To(Equal("- TODO a\n  SCHEDULED: <2024-01-01 Mon>\n  note"))
+		block, _ := parseAndWrite(out)
+		Expect(scheduledDate(block)).To(Equal("2024-01-01 00:00"))
+	})
+
+	It("uses the last of two scheduled lines, the same as Logseq", func() {
+		// Given a task with two scheduled lines
+		block, _ := parseAndWrite("- TODO a\n  SCHEDULED: <2024-01-01 Mon>\n  SCHEDULED: <2024-02-01 Thu>")
+
+		// Then the second date is used
+		Expect(scheduledDate(block)).To(Equal("2024-02-01 00:00"))
+	})
+})

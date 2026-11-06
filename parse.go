@@ -68,5 +68,6 @@ func (g *Graph) markdownParseOptions() []markdown.ParseOption {
 	return []markdown.ParseOption{
 		markdown.WithPropertiesSeparatedByCommas(g.config.PropertiesSeparatedByCommas...),
 		markdown.WithIgnoredPageReferences(g.config.IgnoredPageReferencesKeywords...),
+		markdown.WithRelaxedTaskDates(g.options.config.relaxedTaskDates()),
 	}
 }

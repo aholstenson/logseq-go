@@ -271,6 +271,28 @@ type Config struct {
 	// blocks also keeps its bullet, as its children would be read back as a
 	// different outline.
 	FirstBlockPageProperties *bool
+
+	// RelaxedTaskDates is whether `SCHEDULED:` and `DEADLINE:` lines are read
+	// as dates also in the forms and places that Logseq ignores. Logseq has
+	// no setting for it in `config.edn`, and it is off unless it is set to
+	// true. Use Bool to set it.
+	//
+	// When it is off, a date is read the same way as Logseq reads it:
+	//
+	//   - The date has a weekday of ASCII letters after one space, such as
+	//     `<2024-01-01 Mon>`. `<2024-01-01>` and `<2024-01-01 Mån>` are text.
+	//   - The line is directly after the first line of the block, or after
+	//     properties, code or other content that is not text. A date after
+	//     more text, or after a blank line, is text.
+	//   - Only the first group of date lines counts. In it, the last date of
+	//     each kind is the date of the task.
+	//
+	// When it is on, each such line is a date, wherever it is in the block,
+	// and the weekday can be missing or in any language. Such a date is
+	// saved with an English weekday, which Logseq reads, but the place of
+	// the line does not change. This is for graphs that are not opened in
+	// Logseq.
+	RelaxedTaskDates *bool
 }
 
 // Bool returns a pointer to the value, for the fields of Config that are not
@@ -309,6 +331,10 @@ func (c Config) merge(other Config) Config {
 		c.FirstBlockPageProperties = other.FirstBlockPageProperties
 	}
 
+	if other.RelaxedTaskDates != nil {
+		c.RelaxedTaskDates = other.RelaxedTaskDates
+	}
+
 	return c
 }
 
@@ -316,6 +342,12 @@ func (c Config) merge(other Config) Config {
 // at the start of its first block to the page, see FirstBlockPageProperties.
 func (c Config) firstBlockPageProperties() bool {
 	return c.FirstBlockPageProperties == nil || *c.FirstBlockPageProperties
+}
+
+// relaxedTaskDates returns true if task dates are read also in the forms
+// that Logseq ignores, see RelaxedTaskDates.
+func (c Config) relaxedTaskDates() bool {
+	return c.RelaxedTaskDates != nil && *c.RelaxedTaskDates
 }
 
 // applyTo replaces the settings in the config of the graph with the fields
