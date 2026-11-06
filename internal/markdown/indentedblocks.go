@@ -44,8 +44,8 @@ func (p *indentedBlocksParser) Trigger() []byte {
 
 func (p *indentedBlocksParser) Open(parent ast.Node, reader text.Reader, pc parser.Context) (ast.Node, parser.State) {
 	line, _ := reader.PeekLine()
-	pos := pc.BlockOffset()
-	if pos < 0 || pc.BlockIndent() < 4 || !isBlockMarker(line[pos:]) {
+	pos, indent := blockStart(line, reader, pc)
+	if pos < 0 || indent < 4 || !isBlockMarker(line[pos:]) {
 		return nil, parser.NoChildren
 	}
 
