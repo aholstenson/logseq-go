@@ -1,6 +1,8 @@
 package markdown
 
 import (
+	"strings"
+
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/text"
@@ -35,10 +37,28 @@ func (t *pageLinkParser) Parse(parent ast.Node, block text.Reader, pc parser.Con
 		return nil
 	}
 
-	end := 0
-	var value []byte
+	end := pageLinkClose(line)
 
-	// Scan until the closing ]] while also dealing with escaped ] characters.
+	// Didn't find the closing ]], so this isn't a page link.
+	if end == 0 {
+		return nil
+	}
+
+	// The value of the page link is the text between the [[ and ]].
+	value := line[2:end]
+
+	// Advance the block reader to the end of the page link.
+	block.Advance(end + 2)
+
+	return &pageLink{
+		Page: unescapePunctuation(value),
+	}
+}
+
+// pageLinkClose returns the position of the closing ]] of the page link at the
+// start of line, or 0 if it has none. A ] after a backslash does not close the
+// link.
+func pageLinkClose(line []byte) int {
 	for i := 2; i < len(line)-1; i++ {
 		if line[i] == ']' && line[i+1] == ']' {
 			// If the previous character was a \, then this is an escaped ] and
@@ -47,23 +67,24 @@ func (t *pageLinkParser) Parse(parent ast.Node, block text.Reader, pc parser.Con
 				continue
 			}
 
-			end = i
-			break
+			return i
 		}
 	}
 
-	// Didn't find the closing ]], so this isn't a page link.
-	if end == 0 {
-		return nil
+	return 0
+}
+
+// wholePageLink returns the title of the page if all of text is one page
+// link, such as "[[a, b]]". Text such as "[[a]], [[b]]" is not one page link.
+func wholePageLink(text string) (string, bool) {
+	if !strings.HasPrefix(text, "[[") {
+		return "", false
 	}
 
-	// The value of the page link is the text between the [[ and ]].
-	value = line[2:end]
-
-	// Advance the block reader to the end of the page link.
-	block.Advance(end + 2)
-
-	return &pageLink{
-		Page: unescapePunctuation(value),
+	end := pageLinkClose([]byte(text))
+	if end == 0 || end+2 != len(text) {
+		return "", false
 	}
+
+	return unescapePunctuation([]byte(text[2:end])), true
 }

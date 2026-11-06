@@ -582,18 +582,21 @@ func convertMacro(src []byte, node *macro) (content.Node, error) {
 			break
 		}
 
-		return content.NewQuery(node.Arguments[0]), nil
+		// Logseq joins the arguments again, so the query is all of the text
+		// after the name, also when it has commas.
+		return content.NewQuery(node.RawArguments), nil
 	case "embed":
-		// Either a [[page]] or a ((block))
+		// Either a [[page]] or a ((block)). Logseq joins the arguments again,
+		// so a page title with a comma is one target.
 		if len(node.Arguments) == 0 {
 			break
 		}
 
-		arg := node.Arguments[0]
-		if strings.HasPrefix(arg, "((") && strings.HasSuffix(arg, "))") {
+		arg := node.RawArguments
+		if strings.HasPrefix(arg, "((") && strings.HasSuffix(arg, "))") && !strings.Contains(arg[2:len(arg)-2], "))") {
 			return content.NewBlockEmbed(arg[2 : len(arg)-2]), nil
-		} else if strings.HasPrefix(arg, "[[") && strings.HasSuffix(arg, "]]") {
-			return content.NewPageEmbed(arg[2 : len(arg)-2]), nil
+		} else if page, ok := wholePageLink(arg); ok {
+			return content.NewPageEmbed(page), nil
 		}
 	case "cloze":
 		// {{cloze answer \\ cue}} or {{cloze answer}}

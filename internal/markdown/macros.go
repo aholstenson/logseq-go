@@ -36,6 +36,11 @@ type macro struct {
 	ast.BaseInline
 	Name      string
 	Arguments []string
+
+	// RawArguments is the text after the name, without the spaces around it.
+	// Logseq joins the arguments of some macros again, such as `query`, so a
+	// comma in the text does not split it.
+	RawArguments string
 }
 
 func (*macro) Kind() ast.NodeKind {
@@ -84,6 +89,9 @@ func (t *macroParser) Parse(parent ast.Node, block text.Reader, pc parser.Contex
 	name := ""
 	// Arguments are anything after the name, we support quoted arguments and escaped quotes.
 	arguments := []string{}
+	// argumentsStart is where the text of the arguments starts.
+	argumentsStart := -1
+	rawArguments := ""
 
 	// Scan until the closing }} while also dealing with escaped } characters.
 	state := macroParseStateName
@@ -100,6 +108,10 @@ func (t *macroParser) Parse(parent ast.Node, block text.Reader, pc parser.Contex
 			end = i
 			if tripleCurly {
 				end += 1
+			}
+
+			if argumentsStart >= 0 {
+				rawArguments = strings.TrimSpace(string(line[argumentsStart:i]))
 			}
 
 			// Add the name or last argument if there is one.
@@ -127,6 +139,7 @@ func (t *macroParser) Parse(parent ast.Node, block text.Reader, pc parser.Contex
 
 				state = macroParseStateArgumentStart
 				start = i + 1
+				argumentsStart = start
 			}
 		case macroParseStateArgumentStart:
 			// This is the start of an argument, which can be quoted or not.
@@ -193,7 +206,8 @@ func (t *macroParser) Parse(parent ast.Node, block text.Reader, pc parser.Contex
 	block.Advance(end + 2)
 
 	return &macro{
-		Name:      name,
-		Arguments: arguments,
+		Name:         name,
+		Arguments:    arguments,
+		RawArguments: rawArguments,
 	}
 }

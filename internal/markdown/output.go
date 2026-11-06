@@ -676,11 +676,11 @@ func (w *Output) Write(n content.Node) error {
 	case *content.Macro:
 		return w.writeMacro(node, node.Name, node.Arguments)
 	case *content.Query:
-		return w.writeMacro(node, "query", []string{node.Query})
+		return w.writeMacroText("query", node.Query)
 	case *content.PageEmbed:
-		return w.writeMacro(node, "embed", []string{"[[" + EscapeWikiLink(node.To) + "]]"})
+		return w.writeMacroText("embed", "[["+EscapeWikiLink(node.To)+"]]")
 	case *content.BlockEmbed:
-		return w.writeMacro(node, "embed", []string{"((" + EscapeBlockRef(node.ID) + "))"})
+		return w.writeMacroText("embed", "(("+EscapeBlockRef(node.ID)+"))")
 	case *content.Cloze:
 		return w.writeCloze(node)
 	case *content.Heading:
@@ -1382,6 +1382,13 @@ func (w *Output) writeCloze(node *content.Cloze) error {
 	} else {
 		return w.writeMacro(node, "cloze", []string{answer})
 	}
+}
+
+// writeMacroText writes a macro with the text after the name as it is.
+// Logseq joins the arguments of the `query` and `embed` macros again, so a
+// comma in the text needs no quotes.
+func (w *Output) writeMacroText(name string, text string) error {
+	return w.writeRaw("{{" + name + " " + text + "}}")
 }
 
 func (w *Output) writeMacro(node content.Node, name string, arguments []string) error {
