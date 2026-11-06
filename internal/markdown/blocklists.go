@@ -284,6 +284,32 @@ func lineIndentCharacters(reader text.Reader) int {
 	return count
 }
 
+// emptyBulletLine checks if the line of the bullet of a list item has no
+// text after the `-`, and gets the spaces and tabs that follow the `-`.
+func emptyBulletLine(src []byte, item ast.Node) (string, bool) {
+	value, ok := item.Attribute(bulletLineStartAttribute)
+	if !ok {
+		return "", false
+	}
+
+	start, ok := value.(int)
+	if !ok {
+		return "", false
+	}
+
+	line := src[start:]
+	if i := bytes.IndexByte(line, '\n'); i >= 0 {
+		line = line[:i]
+	}
+	line = bytes.TrimSuffix(bytes.TrimLeft(line, " \t"), []byte("\r"))
+
+	if len(line) == 0 || line[0] != '-' || len(bytes.Trim(line[1:], " \t")) > 0 {
+		return "", false
+	}
+
+	return string(line[1:]), true
+}
+
 // readerLineStart gets the offset into the source where the line that the
 // reader is on starts.
 func readerLineStart(reader text.Reader) int {

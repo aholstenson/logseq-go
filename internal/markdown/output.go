@@ -2239,7 +2239,7 @@ func (w *Output) writeBlock(node *content.Block) error {
 				}
 			}
 
-			err := w.out.WriteString("- ")
+			err := w.out.WriteString(bulletMarker(child))
 			if err != nil {
 				return err
 			}
@@ -2270,6 +2270,24 @@ func (w *Output) writeBlock(node *content.Block) error {
 	}
 
 	return nil
+}
+
+// bulletMarker gets the text that starts the line of the bullet of a block.
+// It is `- ` and the content of the block follows it on the same line. If the
+// line of the bullet has no text, the `-` is written with the spaces that
+// followed it, and the content starts on the next line, see
+// content.Block.WithEmptyFirstLine.
+func bulletMarker(block *content.Block) string {
+	if !block.HasEmptyFirstLine() {
+		return "- "
+	}
+
+	marker := "-" + block.EmptyFirstLineSpace()
+	if len(block.Content()) > 0 {
+		marker += "\n"
+	}
+
+	return marker
 }
 
 // writesWithoutBullet checks if a block is written without a bullet. This is

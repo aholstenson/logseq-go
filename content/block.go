@@ -15,6 +15,9 @@ type Block struct {
 	properties   *Properties
 	preBlock     bool
 	headingBlock bool
+
+	emptyFirstLine      bool
+	emptyFirstLineSpace string
 }
 
 func NewBlock(children ...Node) *Block {
@@ -219,6 +222,39 @@ func (b *Block) FindProperties() *Properties {
 func (b *Block) WithPreviousLineType(t PreviousLineType) *Block {
 	b.previousLineType = t
 	return b
+}
+
+// WithEmptyFirstLine sets whether the line of the bullet of the block has no
+// text, so that the content of the block starts on the next line:
+//
+//	-
+//	  id:: 6500e8a3-0000-4000-8000-000000000000
+//
+// Space is the spaces and tabs that follow the `-` on the line of the bullet,
+// such as "" or " ". Logseq reads no title and no task marker from the line
+// after the bullet, so `TODO` on that line is text. If empty is false, the
+// content starts on the line of the bullet, which is how a new block is
+// written.
+func (b *Block) WithEmptyFirstLine(empty bool, space string) *Block {
+	b.emptyFirstLine = empty
+	b.emptyFirstLineSpace = ""
+	if empty {
+		b.emptyFirstLineSpace = space
+	}
+
+	return b
+}
+
+// HasEmptyFirstLine returns true if the line of the bullet of the block has
+// no text. See WithEmptyFirstLine for details.
+func (b *Block) HasEmptyFirstLine() bool {
+	return b.emptyFirstLine
+}
+
+// EmptyFirstLineSpace gets the spaces and tabs after the `-` on the line of
+// the bullet, when that line has no text. See WithEmptyFirstLine for details.
+func (b *Block) EmptyFirstLineSpace() string {
+	return b.emptyFirstLineSpace
 }
 
 func (n *Block) debug(p *debugPrinter) {

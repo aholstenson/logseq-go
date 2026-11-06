@@ -18,6 +18,16 @@ var _ = Describe("Parsing then outputting whitespace in blocks", func() {
 	FullyEqual("Blank line between two child blocks", "- a\n\t- b\n\n\t- c")
 	FullyEqual("Blank line after the text of a block, before the next block", "- a\n\n  more\n\n- b")
 
+	// Given an empty block written as "-", When written, Then no space is
+	// added after the bullet.
+	FullyEqual("Empty block between two blocks", "- a\n-\n- b")
+	FullyEqual("Empty block with spaces after the bullet", "- a\n-  \n- b")
+	FullyEqual("Empty block with a child", "-\n\t- c")
+
+	// Given an empty block with an id property, When written, Then the
+	// property stays on its own line.
+	FullyEqual("Empty block with an id property", "- \n  id:: 6650a7b2-0000-4000-8000-000000000001")
+
 	// Given property lines with special whitespace, When written, Then the
 	// lines are the same.
 	FullyEqual("Line that looks like a property and ends with two spaces", "- a\n  #x::  \n  b")

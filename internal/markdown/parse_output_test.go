@@ -531,3 +531,34 @@ var _ = Describe("Text of commands that is read as Markdown", func() {
 		Expect(block.Children().PageReferences()).To(BeEmpty())
 	})
 })
+
+var _ = Describe("Blocks with an empty first line", func() {
+	FullyEqual("keeps an id on its own line under an empty first line", "- \n  id:: 6500e8a3-0000-4000-8000-000000000000")
+	FullyEqual("keeps a property under a bullet with no space", "-\n  foo:: bar")
+	FullyEqual("keeps a logbook under an empty first line", "- \n  :LOGBOOK:\n  CLOCK: [2024-01-01 Mon 10:00:00]\n  :END:")
+	FullyEqual("keeps a scheduled date under an empty first line", "- \n  SCHEDULED: <2024-01-01 Mon>")
+	FullyEqual("keeps text under an empty first line", "- \n  text")
+	FullyEqual("keeps code under an empty first line", "- \n  ```\n  c\n  ```")
+
+	It("does not read a task marker on the line after the bullet, the same as Logseq", func() {
+		// Given a marker on the line after an empty bullet line
+		root, err := markdown.ParseString("- \n  TODO x")
+		Expect(err).ToNot(HaveOccurred())
+
+		// Then the block is not a task
+		Expect(root.Blocks()[0].TaskStatus()).To(Equal(content.TaskStatusNone))
+
+		// And the text does not change on save
+		Expect(parseAndOutput("- \n  TODO x")).To(Equal("- \n  TODO x"))
+	})
+
+	It("writes a new block with its content on the line of the bullet", func() {
+		// Given a block that was made in code
+		block := content.NewBlock(content.NewParagraph(content.NewText("text")))
+
+		// Then its content is written after the bullet
+		v, err := markdown.AsString(content.NewBlock(block))
+		Expect(err).ToNot(HaveOccurred())
+		Expect(v).To(Equal("- text"))
+	})
+})

@@ -393,6 +393,11 @@ func convertToBlock(src []byte, node ast.Node) (*content.Block, error) {
 // each block, see nestByLevels.
 func convertOutline(src []byte, node ast.Node, headingBlocks bool, levels blockLevels) (*content.Block, error) {
 	block := content.NewBlock()
+	if item, ok := node.(*ast.ListItem); ok {
+		if space, empty := emptyBulletLine(src, item); empty {
+			block.WithEmptyFirstLine(true, space)
+		}
+	}
 
 	// target is the block that content before the first list of blocks goes
 	// into. It changes to a pre-block when the content of a page has child
@@ -529,8 +534,9 @@ func convertOutline(src []byte, node ast.Node, headingBlocks bool, levels blockL
 
 			// The first paragraph of a block can start with a task marker.
 			// Logseq also reads a marker after the `#` marks of a heading
-			// that starts the block, as in `- ## TODO Project`.
-			if block.FirstChild() == nil {
+			// that starts the block, as in `- ## TODO Project`. The marker
+			// must be on the line of the bullet.
+			if block.FirstChild() == nil && !block.HasEmptyFirstLine() {
 				switch n := node.(type) {
 				case *content.Paragraph:
 					convertTaskMarker(n, src, child)
