@@ -90,13 +90,8 @@ func (t *tagParser) Parse(parent ast.Node, block text.Reader, pc parser.Context)
 	// Check for extended tag syntax which wraps tags in [[...]], this is how
 	// Logseq supports tags with spaces.
 	if len(line) > 1 && line[0] == '[' && line[1] == '[' {
-		// This is an extended tag so scan until the closing ]].
-		for i := 1; i < len(line)-1; i++ {
-			if line[i] == ']' && line[i+1] == ']' {
-				end = i
-				break
-			}
-		}
+		// This is an extended tag, which ends in the same way as a page link.
+		end = pageLinkClose(line)
 
 		// Didn't find the closing ]], so this isn't a tag.
 		if end == 0 {

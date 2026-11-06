@@ -310,6 +310,21 @@ var _ = Describe("Transaction", func() {
 			// Then only the link changes and the other blocks keep their text
 			Expect(readPage("r.md")).To(Equal("- see [[new]]\n- *see #x*\n- [1] note\n"))
 		})
+		It("points a page link nested in another page link at the new title", func() {
+			// Given page r with a page link to b nested in a page link
+			graph = openGraphWithPages(dir, map[string]string{
+				"b.md": "- content of b\n",
+				"r.md": "- [[a [[b]]]]\n",
+			})
+
+			// When page b is renamed to c
+			tx := graph.NewTransaction()
+			Expect(tx.RenamePage(ctx, "b", "c")).To(Succeed())
+			Expect(tx.Save()).To(Succeed())
+
+			// Then the inner link points at c and no backslash is added
+			Expect(readPage("r.md")).To(Equal("- [[a [[c]]]]\n"))
+		})
 	})
 
 	Describe("RenamePage with namespace children", func() {

@@ -92,7 +92,8 @@ func IsPageReference() NodePredicate {
 
 // PageReferences finds every reference to a page in these nodes and the nodes
 // below them, which is what makes a page show up in the linked references of
-// another. The values of the properties that ignore references are left out,
+// another. A page link in the title of a page link or tag is a reference too,
+// see NestedPageRef. The values of the properties that ignore references are left out,
 // as Logseq reads those as text rather than as pointing at a page.
 func (n NodeList) PageReferences() NodeList {
 	refs := make(NodeList, 0)
@@ -103,6 +104,7 @@ func (n NodeList) PageReferences() NodeList {
 
 		if IsPageReference()(node) {
 			refs = append(refs, node)
+			refs = append(refs, nestedPageRefsOf(node.(PageRef))...)
 		}
 
 		if children, ok := node.(HasChildren); ok {

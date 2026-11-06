@@ -489,12 +489,25 @@ func EscapeWikiLink(str string) string {
 }
 
 // EscapePageLinkTitle escapes the title of a page link that is written as
-// `[[title]]`. The reader ends a page link at the first `]]`, so only a `]`
-// that is followed by another `]`, or that is the last character, is escaped.
-// Other brackets are kept, so that `[[file:./a.md][A]]` is written as it is.
+// `[[title]]`. A `]` that is followed by another `]`, or that is the last
+// character, could end the link, so it is escaped. Other brackets are kept, so
+// that `[[file:./a.md][A]]` is written as it is.
+//
+// Page links can be nested, so the `]]` of a page link in the title, such as
+// in `a [[b]]`, is kept when every `[[` in the title has its `]]`. The reader
+// then counts the brackets and ends the link at the right `]]`.
 func EscapePageLinkTitle(str string) string {
+	nested := nestedLinkCloses(str)
+
 	out := strings.Builder{}
 	for i := 0; i < len(str); i++ {
+		if nested[i] {
+			// The two characters of a `]]` that closes a nested link.
+			out.WriteString(str[i : i+2])
+			i++
+			continue
+		}
+
 		if str[i] == ']' && (i+1 == len(str) || str[i+1] == ']') {
 			out.WriteByte('\\')
 		}
@@ -503,6 +516,34 @@ func EscapePageLinkTitle(str string) string {
 	}
 
 	return out.String()
+}
+
+// nestedLinkCloses finds the positions of the `]]` in a page title that close
+// a `[[` in the same title. Returns nil if a `[[` in the title is not closed,
+// as the reader then ends the link at the first `]]`.
+func nestedLinkCloses(str string) map[int]bool {
+	if !strings.Contains(str, "[[") {
+		return nil
+	}
+
+	closes := map[int]bool{}
+	open := 0
+	for i := 0; i+1 < len(str); i++ {
+		if str[i] == '[' && str[i+1] == '[' {
+			open++
+			i++
+		} else if str[i] == ']' && str[i+1] == ']' && open > 0 {
+			closes[i] = true
+			open--
+			i++
+		}
+	}
+
+	if open > 0 {
+		return nil
+	}
+
+	return closes
 }
 
 // EscapeFootnoteLabel escapes the label of a footnote, which is read up to the
@@ -658,7 +699,7 @@ func (w *Output) Write(n content.Node) error {
 	case *content.Query:
 		return w.writeMacroText("query", node.Query)
 	case *content.PageEmbed:
-		return w.writeMacroText("embed", "[["+EscapeWikiLink(node.To)+"]]")
+		return w.writeMacroText("embed", "[["+EscapePageLinkTitle(node.To)+"]]")
 	case *content.BlockEmbed:
 		return w.writeMacroText("embed", "(("+EscapeBlockRef(node.ID)+"))")
 	case *content.Cloze:
@@ -1261,7 +1302,12 @@ func (w *Output) writeHashtag(node *content.Hashtag) error {
 		}
 	}
 
-	err = w.write(node.To, EscapeWikiLink)
+	escape := EscapeWikiLink
+	if writeExtended {
+		escape = EscapePageLinkTitle
+	}
+
+	err = w.write(node.To, escape)
 	if err != nil {
 		return err
 	}

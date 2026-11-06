@@ -55,23 +55,35 @@ func (t *pageLinkParser) Parse(parent ast.Node, block text.Reader, pc parser.Con
 	}
 }
 
-// pageLinkClose returns the position of the closing ]] of the page link at the
-// start of line, or 0 if it has none. A ] after a backslash does not close the
-// link.
+// pageLinkClose returns the position of the ]] that closes the page link at
+// the start of line, or 0 if it has none. A ] after a backslash does not close
+// the link.
+//
+// Page links can be nested, as in Logseq, so "[[a [[b]]]]" is a link to the
+// page "a [[b]]". The [[ and ]] in the title are counted. If they do not
+// balance, the first ]] closes the link, so "[[a [[b]]" is a link to "a [[b".
 func pageLinkClose(line []byte) int {
+	depth := 1
+	first := 0
 	for i := 2; i < len(line)-1; i++ {
-		if line[i] == ']' && line[i+1] == ']' {
-			// If the previous character was a \, then this is an escaped ] and
-			// we should continue scanning.
-			if line[i-1] == '\\' {
-				continue
+		if line[i] == '[' && line[i+1] == '[' {
+			depth++
+			i++
+		} else if line[i] == ']' && line[i+1] == ']' && line[i-1] != '\\' {
+			if first == 0 {
+				first = i
 			}
 
-			return i
+			depth--
+			if depth == 0 {
+				return i
+			}
+
+			i++
 		}
 	}
 
-	return 0
+	return first
 }
 
 // wholePageLink returns the title of the page if all of text is one page

@@ -3779,6 +3779,63 @@ var _ = Describe("Parsing", func() {
 		})
 	})
 
+	Describe("Nested page links", func() {
+		// pageRefTitles returns the title of every page the parsed text refers to.
+		pageRefTitles := func(input string) []string {
+			block, err := markdown.ParseString(input)
+			Expect(err).ToNot(HaveOccurred())
+
+			titles := make([]string, 0)
+			for _, ref := range block.Children().PageReferences() {
+				titles = append(titles, ref.(content.PageRef).GetTo())
+			}
+			return titles
+		}
+
+		It("refers to the whole nested title and to the inner page", func() {
+			// Given a block with a page link that has a page link inside it
+			// When it is parsed
+			// Then it refers to the outer title and to the inner page, the same as Logseq
+			titles := pageRefTitles("- [[a [[b]]]]")
+			Expect(titles).To(ConsistOf("a [[b]]", "b"))
+			Expect(titles).ToNot(ContainElement("a [[b"))
+		})
+
+		It("refers to the whole nested title of an extended hashtag", func() {
+			// Given a block with an extended hashtag that has a page link inside it
+			// When it is parsed
+			// Then the tag points at the whole nested title
+			titles := pageRefTitles("- #[[a [[b]]]]")
+			Expect(titles).To(ContainElement("a [[b]]"))
+			Expect(titles).ToNot(ContainElement("a [[b"))
+		})
+
+		It("refers to each page linked in a nested title", func() {
+			Expect(pageRefTitles("- [[a [[b]] c [[d]]]]")).To(ConsistOf("a [[b]] c [[d]]", "b", "d"))
+		})
+
+		It("refers to the pages of page links nested at any depth", func() {
+			Expect(pageRefTitles("- [[a [[b [[c]]]]]]")).To(ConsistOf("a [[b [[c]]]]", "b [[c]]", "c"))
+		})
+
+		It("ends a page link at the first closing brackets when the brackets do not balance", func() {
+			Expect(pageRefTitles("- [[a [[b]]")).To(ConsistOf("a [[b"))
+		})
+
+		It("refers to the nested title of a page link with a label", func() {
+			Expect(pageRefTitles("- [x]([[a [[b]]]])")).To(ConsistOf("a [[b]]", "b"))
+		})
+
+		It("reads an embed of a nested title as a page embed", func() {
+			block, err := markdown.ParseString("{{embed [[a [[b]]]]}}")
+			Expect(err).ToNot(HaveOccurred())
+
+			embed := block.Children()[0].(*content.Paragraph).Children()[0]
+			Expect(embed).To(BeAssignableToTypeOf(&content.PageEmbed{}))
+			Expect(embed.(*content.PageEmbed).To).To(Equal("a [[b]]"))
+		})
+	})
+
 	Describe("Hashtags at the end of emphasis", func() {
 		// pageRefTitles returns the title of every page the parsed text refers to.
 		pageRefTitles := func(input string) []string {

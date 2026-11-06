@@ -65,20 +65,20 @@ func (p *labelledRefLinkParser) CloseBlock(parent ast.Node, block text.Reader, p
 }
 
 // pageRefLength gets the length of the `[[...]]` at the start of the value,
-// including the brackets. A `]]` with a `\` before it does not close the page
-// reference. Returns 0 if the value does not start with a page reference.
+// including the brackets. The page reference ends in the same way as a page
+// link, see pageLinkClose. Returns 0 if the value does not start with a page
+// reference.
 func pageRefLength(value []byte) int {
 	if len(value) < 4 || value[0] != '[' || value[1] != '[' {
 		return 0
 	}
 
-	for i := 2; i < len(value)-1; i++ {
-		if value[i] == ']' && value[i+1] == ']' && value[i-1] != '\\' {
-			return i + 2
-		}
+	end := pageLinkClose(value)
+	if end == 0 {
+		return 0
 	}
 
-	return 0
+	return end + 2
 }
 
 // blockRefLength gets the length of the `((uuid))` at the start of the value,

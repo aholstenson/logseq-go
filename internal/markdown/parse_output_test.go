@@ -387,6 +387,17 @@ var _ = Describe("Parsing then outputting", func() {
 		})
 	})
 
+	Describe("Nested page links", func() {
+		// Given a nested page link, When it is written, Then no backslash is added
+		FullyEqual("Page link with a page link inside", "- [[a [[b]]]]")
+		FullyEqual("Extended hashtag with a page link inside", "- #[[a [[b]]]]")
+		FullyEqual("Page link with two page links inside", "- [[a [[b]] c [[d]]]]")
+		FullyEqual("Page link with page links nested two levels", "- [[a [[b [[c]]]]]]")
+		FullyEqual("Page link with brackets that do not balance", "- [[a [[b]]")
+		FullyEqual("Page link with a label and a page link inside", "- [x]([[a [[b]]]])")
+		FullyEqual("Embed of a page link with a page link inside", "- {{embed [[a [[b]]]]}}")
+	})
+
 	Describe("Hashtags at the end of emphasis", func() {
 		// Given emphasis that ends with a hashtag, When it is written, Then it is unchanged
 		FullyEqual("Italic text that ends with a hashtag", "- *see #x*")
