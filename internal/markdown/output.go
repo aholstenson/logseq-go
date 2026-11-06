@@ -730,7 +730,11 @@ func (w *Output) Write(n content.Node) error {
 	case *content.AdvancedCommand:
 		return w.writeAdvancedCommand(node)
 	case *content.QueryCommand:
-		return w.writeBeginEnd(node, "QUERY", node.Query)
+		variant := "QUERY"
+		if node.LowerCase {
+			variant = "query"
+		}
+		return w.writeBeginEnd(node, beginEndLines{variant, node.Parameters, node.LowerCase}, node.Query)
 	case *content.TaskMarker:
 		return w.writeTaskMarker(node)
 	case *content.TaskPriority:
@@ -2098,7 +2102,7 @@ func frontMatterPropertiesChanged(node *content.FrontMatter) (bool, error) {
 
 func (w *Output) writeAdvancedCommand(node *content.AdvancedCommand) error {
 	if node.FirstChild() == nil {
-		return w.writeBeginEnd(node, node.Type, node.Value)
+		return w.writeBeginEnd(node, beginEndLinesOf(node), node.Value)
 	}
 
 	body, err := w.commandBody(node)
@@ -2106,7 +2110,7 @@ func (w *Output) writeAdvancedCommand(node *content.AdvancedCommand) error {
 		return err
 	}
 
-	return w.writeBeginEnd(node, node.Type, body)
+	return w.writeBeginEnd(node, beginEndLinesOf(node), body)
 }
 
 // commandBody returns the text to write between the BEGIN and END lines of a
@@ -2175,13 +2179,48 @@ func (w *Output) writeNodes(node content.HasChildren) (string, error) {
 	return out.String(), nil
 }
 
-func (w *Output) writeBeginEnd(node content.BlockNode, variant string, value string) error {
+// beginEndLines is how the BEGIN and END lines of a command are written.
+type beginEndLines struct {
+	variant    string
+	parameters string
+	lowerCase  bool
+}
+
+func beginEndLinesOf(node *content.AdvancedCommand) beginEndLines {
+	return beginEndLines{node.Type, node.Parameters, node.LowerCase}
+}
+
+// begin is the BEGIN line, without the line break.
+func (l beginEndLines) begin() string {
+	line := "#+BEGIN_"
+	if l.lowerCase {
+		line = "#+begin_"
+	}
+
+	line += l.variant
+	if l.parameters != "" {
+		line += " " + l.parameters
+	}
+
+	return line
+}
+
+// end is the END line, without the line break.
+func (l beginEndLines) end() string {
+	if l.lowerCase {
+		return "#+end_" + l.variant
+	}
+
+	return "#+END_" + l.variant
+}
+
+func (w *Output) writeBeginEnd(node content.BlockNode, lines beginEndLines, value string) error {
 	err := w.startBlock(node, "")
 	if err != nil {
 		return err
 	}
 
-	err = w.writeRaw("#+BEGIN_" + variant + "\n")
+	err = w.writeRaw(lines.begin() + "\n")
 	if err != nil {
 		return err
 	}
@@ -2198,7 +2237,7 @@ func (w *Output) writeBeginEnd(node content.BlockNode, variant string, value str
 		}
 	}
 
-	err = w.writeRaw("#+END_" + variant)
+	err = w.writeRaw(lines.end())
 	if err != nil {
 		return err
 	}

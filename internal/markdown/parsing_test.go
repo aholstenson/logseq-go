@@ -3820,6 +3820,82 @@ var _ = Describe("Parsing", func() {
 		})
 	})
 
+	Describe("Begin and end blocks with parameters or in lower case", func() {
+		// pageRefTitles returns the title of every page the parsed text refers to.
+		pageRefTitles := func(input string) []string {
+			block, err := markdown.ParseString(input)
+			Expect(err).ToNot(HaveOccurred())
+
+			titles := make([]string, 0)
+			for _, ref := range block.Children().PageReferences() {
+				titles = append(titles, ref.(content.PageRef).GetTo())
+			}
+			return titles
+		}
+
+		It("reads a source block with a language as one source block", func() {
+			// Given a block with `#+BEGIN_SRC python`
+			block, err := markdown.ParseString("- s\n  #+BEGIN_SRC python\n  x [[p]]\n  #+END_SRC")
+			Expect(err).ToNot(HaveOccurred())
+
+			// When it is parsed
+			// Then it holds one SRC block construct, the same as Logseq
+			commands := block.Children().FilterDeep(content.IsOfType[*content.AdvancedCommand]())
+			Expect(commands).To(HaveLen(1))
+			Expect(commands[0].(*content.AdvancedCommand).Type).To(MatchRegexp("(?i)^src$"))
+		})
+
+		It("makes no page references from a source block with a language", func() {
+			// Given source blocks with a language, When they are parsed,
+			// Then the code and the begin and end lines refer to no page
+			Expect(pageRefTitles("- s\n  #+BEGIN_SRC python\n  x [[p]]\n  #+END_SRC")).To(BeEmpty())
+			Expect(pageRefTitles("- #+BEGIN_SRC js\n  [[y]]\n  #+END_SRC")).To(BeEmpty())
+		})
+
+		It("makes no tags from the begin and end lines of a lower case quote block", func() {
+			// Given a block with `#+begin_quote` and `#+end_quote`
+			// When it is parsed
+			// Then the begin and end lines are not tags, the same as Logseq
+			titles := pageRefTitles("- n\n  #+begin_quote\n  q\n  #+end_quote")
+			Expect(titles).ToNot(ContainElement("+begin_quote"))
+			Expect(titles).ToNot(ContainElement("+end_quote"))
+		})
+
+		It("keeps the language of a source block as its parameters", func() {
+			// Given a source block with a language and an option
+			block, err := markdown.ParseString("- s\n  #+begin_src python -n\n  x\n  #+end_src")
+			Expect(err).ToNot(HaveOccurred())
+
+			// Then the type, the parameters and the case are kept
+			command := block.Children().FindDeep(content.IsOfType[*content.AdvancedCommand]()).(*content.AdvancedCommand)
+			Expect(command.Type).To(Equal("src"))
+			Expect(command.Parameters).To(Equal("python -n"))
+			Expect(command.LowerCase).To(BeTrue())
+			Expect(command.Value).To(Equal("x\n"))
+		})
+
+		It("reads the text of a lower case quote block as Markdown", func() {
+			// Given a lower case quote block with a page link
+			// Then the block refers to the page, the same as Logseq
+			Expect(pageRefTitles("- n\n  #+begin_quote\n  q [[p]]\n  #+end_quote")).To(ConsistOf("p"))
+		})
+
+		It("ends a block at an END line in another case", func() {
+			// Given a note block that starts in mixed case and ends in upper case
+			// Then it is one note block that refers to the page, the same as Logseq
+			Expect(pageRefTitles("- n\n  #+Begin_Note\n  q [[p]]\n  #+END_NOTE")).To(ConsistOf("p"))
+		})
+
+		It("reads a lower case query block as a query", func() {
+			// Given a lower case query block
+			block, err := markdown.ParseString("- n\n  #+begin_query\n  {}\n  #+end_query")
+			Expect(err).ToNot(HaveOccurred())
+
+			// Then it is a query
+			Expect(block.Children().FilterDeep(content.IsOfType[*content.QueryCommand]())).To(HaveLen(1))
+		})
+	})
+
 	Describe("References inside quote and admonition blocks", func() {
 		// pageRefTitles returns the title of every page the parsed text refers to.
 		pageRefTitles := func(input string) []string {

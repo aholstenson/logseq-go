@@ -390,6 +390,20 @@ var _ = Describe("Parsing then outputting", func() {
 		})
 	})
 
+	Describe("Begin and end blocks with parameters or in lower case", func() {
+		// Given a source block with a language, When it is written, Then it is unchanged
+		FullyEqual("Source block with a language", "- s\n  #+BEGIN_SRC python\n  x [[p]]\n  #+END_SRC")
+
+		// Given blocks in lower case or with parameters, When they are
+		// written, Then they are unchanged
+		FullyEqual("Source block with code that looks like Markdown", "- s\n  #+BEGIN_SRC python\n  x = a[0] * b_c [[p]]\n  #+END_SRC")
+		FullyEqual("Source block in lower case with options", "- s\n  #+begin_src python -n\n  x\n  #+end_src")
+		FullyEqual("Quote block in lower case", "- n\n  #+begin_quote\n  q [[p]]\n  #+end_quote")
+		FullyEqual("Note block with a title", "- n\n  #+BEGIN_NOTE Title here\n  q [[p]]\n  #+END_NOTE")
+		FullyEqual("Export block with a format", "- n\n  #+BEGIN_EXPORT html\n  <b>[[p]]</b>\n  #+END_EXPORT")
+		FullyEqual("Query block in lower case", "- n\n  #+begin_query\n  {}\n  #+end_query")
+	})
+
 	Describe("Nested page links", func() {
 		// Given a nested page link, When it is written, Then no backslash is added
 		FullyEqual("Page link with a page link inside", "- [[a [[b]]]]")

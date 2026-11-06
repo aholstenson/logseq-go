@@ -14,7 +14,17 @@ var beginEndKind = ast.NewNodeKind("BeginEnd")
 type beginEnd struct {
 	ast.BaseBlock
 
+	// Variant is the type of the command as written, such as `SRC` or
+	// `src`. Logseq reads the type without regard for case.
 	Variant string
+
+	// Parameters is the text after the type on the BEGIN line, such as the
+	// language of a source block.
+	Parameters string
+
+	// LowerCase is whether the BEGIN line is written in lower case, as in
+	// `#+begin_src`.
+	LowerCase bool
 
 	// options are the parse options of the page, which are used to read the
 	// text of a command that Logseq reads as Markdown.
@@ -44,7 +54,23 @@ func (b *beginEndParser) Trigger() []byte {
 	return []byte{'#'}
 }
 
-// Open looks for the start of the org-mode block, which is a line starting with #+BEGIN_
+// beginPrefix and endPrefix start the lines around an org-mode block. Logseq
+// reads them without regard for case.
+var (
+	beginPrefix = []byte("#+begin_")
+	endPrefix   = []byte("#+end_")
+)
+
+// hasPrefixFold checks if the text starts with the prefix, without regard for
+// case.
+func hasPrefixFold(text []byte, prefix []byte) bool {
+	return len(text) >= len(prefix) && bytes.EqualFold(text[:len(prefix)], prefix)
+}
+
+// Open looks for the start of the org-mode block, which is a line starting
+// with `#+BEGIN_` and the type of the block, such as `#+BEGIN_SRC`. The text
+// after the type, such as the language of a source block, is kept as the
+// parameters of the block.
 func (b *beginEndParser) Open(parent ast.Node, reader text.Reader, pc parser.Context) (ast.Node, parser.State) {
 	line, _ := reader.PeekLine()
 	pos := pc.BlockOffset()
@@ -54,30 +80,30 @@ func (b *beginEndParser) Open(parent ast.Node, reader text.Reader, pc parser.Con
 
 	indent := pos
 
-	// Check if the line starts with #+BEGIN_
-	if !bytes.HasPrefix(line[pos:], []byte("#+BEGIN_")) {
+	if !hasPrefixFold(line[pos:], beginPrefix) {
 		return nil, parser.NoChildren
 	}
 
 	// Fetch the type of the block
-	blockType := ""
-	i := pos + 8
+	start := pos + len(beginPrefix)
+	i := start
 	for ; i < len(line); i++ {
-		if line[i] == ' ' || line[i] == '\t' || line[i] == '\n' {
+		if util.IsSpace(line[i]) {
 			break
 		}
-		blockType += string(line[i])
 	}
 
-	// Make sure that the rest of the line is empty
-	if !util.IsBlank(line[i:]) {
+	blockType := string(line[start:i])
+	if blockType == "" {
 		return nil, parser.NoChildren
 	}
 
 	options, _ := pc.Get(parseOptionsKey).(*parseOptions)
 	node := &beginEnd{
-		Variant: blockType,
-		options: options,
+		Variant:    blockType,
+		Parameters: string(util.TrimRightSpace(util.TrimLeftSpace(line[i:]))),
+		LowerCase:  bytes.Equal(line[pos:pos+len(beginPrefix)], beginPrefix),
+		options:    options,
 	}
 	pc.Set(beginEndInfoKey, &beginEndBlockData{
 		indent:  indent,
@@ -94,9 +120,10 @@ func (b *beginEndParser) Continue(node ast.Node, reader text.Reader, pc parser.C
 
 	_, pos := util.IndentWidth(line, reader.LineOffset())
 
-	// Check if the line starts with #+END_ and the type
-	searchFor := []byte("#+END_" + data.keyword)
-	if bytes.HasPrefix(line[pos:], searchFor) && util.IsBlank(line[pos+len(searchFor):]) {
+	// Check if the line starts with #+END_ and the type, without regard for
+	// case
+	searchFor := []byte(string(endPrefix) + data.keyword)
+	if hasPrefixFold(line[pos:], searchFor) && util.IsBlank(line[pos+len(searchFor):]) {
 		newline := 1
 		if line[len(line)-1] != '\n' {
 			newline = 0

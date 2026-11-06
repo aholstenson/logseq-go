@@ -1,6 +1,8 @@
 package markdown
 
 import (
+	"strings"
+
 	"github.com/aholstenson/logseq-go/content"
 	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/parser"
@@ -48,7 +50,7 @@ var verbatimCommands = map[string]struct{}{
 // isMarkdownCommand checks if Logseq reads the text of a BEGIN..END command of
 // the given type as Markdown.
 func isMarkdownCommand(variant string) bool {
-	_, verbatim := verbatimCommands[variant]
+	_, verbatim := verbatimCommands[strings.ToUpper(variant)]
 	return !verbatim
 }
 

@@ -14,8 +14,17 @@ type AdvancedCommand struct {
 	baseNodeWithChildren
 	previousLineAwareImpl
 
-	// Type is the type of the advanced command.
+	// Type is the type of the advanced command as it is written, such as
+	// `NOTE` or `src`. Logseq reads the type without regard for case.
 	Type string
+
+	// Parameters is the text after the type on the BEGIN line, such as the
+	// language of a source block in `#+BEGIN_SRC python`.
+	Parameters string
+
+	// LowerCase is whether the BEGIN and END lines are written in lower case,
+	// as in `#+begin_src` and `#+end_src`.
+	LowerCase bool
 
 	// Value is the text between the BEGIN and END lines, as it was read. For
 	// a command with children, the text is written as it is while the
@@ -45,6 +54,19 @@ func (h *AdvancedCommand) WithType(variant string) *AdvancedCommand {
 	return h
 }
 
+// WithParameters sets the text after the type on the BEGIN line.
+func (h *AdvancedCommand) WithParameters(parameters string) *AdvancedCommand {
+	h.Parameters = parameters
+	return h
+}
+
+// WithLowerCase sets whether the BEGIN and END lines are written in lower
+// case.
+func (h *AdvancedCommand) WithLowerCase(lowerCase bool) *AdvancedCommand {
+	h.LowerCase = lowerCase
+	return h
+}
+
 // WithValue sets the value of the advanced command.
 func (h *AdvancedCommand) WithValue(value string) *AdvancedCommand {
 	h.Value = value
@@ -61,6 +83,7 @@ func (h *AdvancedCommand) WithPreviousLineType(t PreviousLineType) *AdvancedComm
 func (h *AdvancedCommand) debug(p *debugPrinter) {
 	p.StartType("AdvancedCommand")
 	p.Field("type", h.Type)
+	debugCommandLine(p, h.Parameters, h.LowerCase)
 	p.Field("value", h.Value)
 	debugPreviousLineAware(p, h)
 	if h.FirstChild() != nil {
@@ -83,12 +106,32 @@ type QueryCommand struct {
 	previousLineAwareImpl
 
 	Query string
+
+	// Parameters is the text after `QUERY` on the BEGIN line.
+	Parameters string
+
+	// LowerCase is whether the BEGIN and END lines are written in lower case,
+	// as in `#+begin_query` and `#+end_query`.
+	LowerCase bool
 }
 
 func NewQueryCommand(query string) *QueryCommand {
 	return &QueryCommand{
 		Query: query,
 	}
+}
+
+// WithParameters sets the text after `QUERY` on the BEGIN line.
+func (h *QueryCommand) WithParameters(parameters string) *QueryCommand {
+	h.Parameters = parameters
+	return h
+}
+
+// WithLowerCase sets whether the BEGIN and END lines are written in lower
+// case.
+func (h *QueryCommand) WithLowerCase(lowerCase bool) *QueryCommand {
+	h.LowerCase = lowerCase
+	return h
 }
 
 // WithQuery sets the query for the command.
@@ -107,6 +150,7 @@ func (h *QueryCommand) WithPreviousLineType(t PreviousLineType) *QueryCommand {
 func (h *QueryCommand) debug(p *debugPrinter) {
 	p.StartType("QueryCommand")
 	p.Field("query", h.Query)
+	debugCommandLine(p, h.Parameters, h.LowerCase)
 	debugPreviousLineAware(p, h)
 	p.EndType()
 }
@@ -114,6 +158,18 @@ func (h *QueryCommand) debug(p *debugPrinter) {
 func (h *QueryCommand) isBlock() {}
 
 var _ BlockNode = (*QueryCommand)(nil)
+
+// debugCommandLine prints how the BEGIN line of a command is written, when it
+// is not the default form.
+func debugCommandLine(p *debugPrinter, parameters string, lowerCase bool) {
+	if parameters != "" {
+		p.Field("parameters", parameters)
+	}
+
+	if lowerCase {
+		p.Field("lowerCase", "true")
+	}
+}
 
 // QuoteCommand is a command represented by #+BEGIN_QUOTE..#+END_QUOTE in
 // a block.

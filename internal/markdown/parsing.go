@@ -936,9 +936,11 @@ func convertBeginEnd(src []byte, node *beginEnd) (content.Node, error) {
 		_, _ = codeBuf.Write(line.Value(src))
 	}
 
-	switch node.Variant {
+	switch strings.ToUpper(node.Variant) {
 	case "QUERY":
-		query := content.NewQueryCommand(codeBuf.String())
+		query := content.NewQueryCommand(codeBuf.String()).
+			WithParameters(node.Parameters).
+			WithLowerCase(node.LowerCase)
 		updatePreviousLine(node, query)
 		return query, nil
 	default:
@@ -952,7 +954,9 @@ func convertBeginEnd(src []byte, node *beginEnd) (content.Node, error) {
 			}
 		}
 
-		command := content.NewAdvancedCommand(node.Variant, value, children...)
+		command := content.NewAdvancedCommand(node.Variant, value, children...).
+			WithParameters(node.Parameters).
+			WithLowerCase(node.LowerCase)
 		updatePreviousLine(node, command)
 		return command, nil
 	}
