@@ -207,8 +207,9 @@ func (b *Block) IsTask() bool {
 // marker that is already there. Passing TaskStatusNone removes the marker, but
 // keeps the priority and the dates of the block.
 //
-// The marker goes at the start of the first paragraph of the block. If the
-// block does not have a paragraph, one is added.
+// The marker goes at the start of the first paragraph of the block, or after
+// the `#` marks of a heading that starts the block. If the block has neither,
+// a paragraph is added.
 func (b *Block) SetTaskStatus(status TaskStatus) {
 	existing := b.taskMarker()
 
@@ -267,14 +268,16 @@ func (b *Block) SetPriority(priority Priority) {
 	paragraph.PrependChild(node)
 }
 
-// taskParagraph gets the paragraph that holds the marker and priority of a
-// task, which is the first paragraph of the block. Properties before it are
-// skipped, but any other node means that the block does not start with a
-// paragraph.
-func (b *Block) taskParagraph() *Paragraph {
+// taskParagraph gets the node that holds the marker and priority of a task.
+// This is the first paragraph of the block, or the heading that starts the
+// block, as in `- ## TODO Project`. Properties before it are skipped, but any
+// other node means that the block cannot hold a marker.
+func (b *Block) taskParagraph() HasChildren {
 	for node := b.FirstChild(); node != nil; node = node.NextSibling() {
 		switch n := node.(type) {
 		case *Paragraph:
+			return n
+		case *Heading:
 			return n
 		case *Properties:
 			continue
@@ -286,9 +289,9 @@ func (b *Block) taskParagraph() *Paragraph {
 	return nil
 }
 
-// ensureTaskParagraph gets the paragraph that holds the marker and priority of
-// a task, adding an empty one at the start of the block if there is none.
-func (b *Block) ensureTaskParagraph() *Paragraph {
+// ensureTaskParagraph gets the node that holds the marker and priority of a
+// task, adding an empty paragraph at the start of the block if there is none.
+func (b *Block) ensureTaskParagraph() HasChildren {
 	if paragraph := b.taskParagraph(); paragraph != nil {
 		return paragraph
 	}

@@ -208,3 +208,78 @@ var _ = Describe("A task marker alone on its line", func() {
 		Expect(root.Blocks()[0].TaskStatus()).To(Equal(content.TaskStatusNone))
 	})
 })
+
+var _ = Describe("Task markers after a heading", func() {
+	firstBlock := func(input string) *content.Block {
+		root, err := markdown.ParseString(input)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(root.Blocks()).ToNot(BeEmpty())
+		return root.Blocks()[0]
+	}
+
+	It("reads the marker of a heading in a block, the same as Logseq", func() {
+		// Given a block whose first line is a heading with a marker
+		// Then the block is a TODO task
+		Expect(firstBlock("- ## TODO x").TaskStatus()).To(Equal(content.TaskStatusTodo))
+	})
+
+	It("reads the marker and priority of a heading in a block", func() {
+		// Given a heading with a marker and a priority
+		block := firstBlock("- # DONE [#A] x")
+
+		// Then the block is a DONE task with priority A
+		Expect(block.TaskStatus()).To(Equal(content.TaskStatusDone))
+		Expect(block.Priority()).To(Equal(content.PriorityA))
+	})
+
+	It("reads the marker of a heading that is not in a bullet", func() {
+		// Given page content that is a heading with a marker
+		root, err := markdown.ParseString("## TODO x")
+		Expect(err).ToNot(HaveOccurred())
+
+		// Then that content is a TODO task
+		Expect(root.TaskStatus()).To(Equal(content.TaskStatusTodo))
+	})
+
+	It("does not read a marker that is followed by a line break, the same as Logseq", func() {
+		// Given a heading that is only a marker, and a next block
+		// Then the heading is text and not a task
+		Expect(firstBlock("- ## TODO\n- y").TaskStatus()).To(Equal(content.TaskStatusNone))
+	})
+
+	DescribeTable("writes a heading task with no change",
+		func(input string) {
+			root, err := markdown.ParseString(input)
+			Expect(err).ToNot(HaveOccurred())
+
+			v, err := markdown.AsString(root)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(v).To(Equal(input))
+		},
+		Entry("marker", "- ## TODO x"),
+		Entry("marker and priority", "- # DONE [#A] x"),
+		Entry("priority only", "- ## [#B] x"),
+	)
+
+	It("keeps the heading when the status changes", func() {
+		// Given a heading task
+		// When the status is set to DONE
+		v := editTask("- ## TODO x", func(block *content.Block) {
+			block.SetTaskStatus(content.TaskStatusDone)
+		})
+
+		// Then the marker changes and the heading stays
+		Expect(v).To(Equal("- ## DONE x"))
+	})
+
+	It("puts a new marker after the heading marks", func() {
+		// Given a heading block that is not a task
+		// When it is made a task
+		v := editTask("- ## x", func(block *content.Block) {
+			block.SetTaskStatus(content.TaskStatusTodo)
+		})
+
+		// Then the marker goes after the `#` marks, where Logseq reads it
+		Expect(v).To(Equal("- ## TODO x"))
+	})
+})

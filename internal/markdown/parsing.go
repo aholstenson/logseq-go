@@ -410,9 +410,16 @@ func convertToBlock(src []byte, node ast.Node) (*content.Block, error) {
 				return nil, err
 			}
 
-			// When converting a block the first paragraph might contain a task marker
-			if p, ok := node.(*content.Paragraph); ok && block.FirstChild() == nil {
-				convertTaskMarker(p, src, child)
+			// The first paragraph of a block can start with a task marker.
+			// Logseq also reads a marker after the `#` marks of a heading
+			// that starts the block, as in `- ## TODO Project`.
+			if block.FirstChild() == nil {
+				switch n := node.(type) {
+				case *content.Paragraph:
+					convertTaskMarker(n, src, child)
+				case *content.Heading:
+					convertTaskMarker(n, src, child)
+				}
 			}
 
 			if target != block && !hasParsedBlock {
@@ -471,16 +478,16 @@ func addBeforeBlocks(block *content.Block, node content.Node) {
 	}
 }
 
-// convertTaskMarker turns the task marker at the start of the paragraph, such
-// as `TODO`, into a *content.TaskMarker. The source is the paragraph before it
-// was converted.
+// convertTaskMarker turns the task marker at the start of a paragraph or
+// heading, such as `TODO`, into a *content.TaskMarker. The source is the node
+// before it was converted.
 //
 // Logseq reads a marker only if a space follows it, or if it is the end of the
 // file. Thus `TODO` followed by a line break is text. When a space and a line
 // break follow a marker with no title, as in "- TODO \n  text", an empty text
 // with the line break is kept after the marker, so that the line break is
 // written back.
-func convertTaskMarker(node *content.Paragraph, src []byte, source ast.Node) {
+func convertTaskMarker(node content.HasChildren, src []byte, source ast.Node) {
 	textNode, ok := node.FirstChild().(*content.Text)
 	if !ok {
 		return
