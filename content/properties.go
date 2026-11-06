@@ -19,6 +19,13 @@ type Properties struct {
 	// DrawerLowerCase is whether the markers of the drawer are written in
 	// lower case, as `:properties:` and `:end:`.
 	DrawerLowerCase bool
+
+	// PageRefsIgnored is whether the pages named in the values of these
+	// properties are only text rather than references to those pages.
+	// Logseq reads only the first group of properties of a block, so the
+	// groups after it in the same block are read with this set, unless the
+	// text is read with markdown.WithLaterPropertyGroupRefs.
+	PageRefsIgnored bool
 }
 
 // NewProperties creates a new Properties node with the given Property children.
@@ -35,6 +42,13 @@ func NewProperties(children ...*Property) *Properties {
 // WithDrawer sets whether the properties are written in a property drawer.
 func (p *Properties) WithDrawer(drawer bool) *Properties {
 	p.Drawer = drawer
+	return p
+}
+
+// WithPageRefsIgnored sets whether the pages named in the values of these
+// properties are only text, see PageRefsIgnored.
+func (p *Properties) WithPageRefsIgnored(ignored bool) *Properties {
+	p.PageRefsIgnored = ignored
 	return p
 }
 
@@ -91,6 +105,9 @@ func (p *Properties) debug(p2 *debugPrinter) {
 	p2.StartType("Properties")
 	if p.Drawer {
 		p2.Field("Drawer", "true")
+	}
+	if p.PageRefsIgnored {
+		p2.Field("PageRefsIgnored", "true")
 	}
 	debugPreviousLineAware(p2, p)
 	p2.Children(p)

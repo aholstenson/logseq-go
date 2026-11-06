@@ -90,6 +90,12 @@ more text or after a blank line, and a date such as `<2024-01-01>`, is text.
 Turn on `RelaxedTaskDates` to read such lines as dates in graphs that are not
 opened in Logseq.
 
+Logseq reads only the first group of properties of a block. When a text line
+or a blank line splits the properties, as in `- a\n  b:: c\n  text\n  d:: [[e]]`,
+`d` is not a property and `[[e]]` is not a reference. Turn on
+`LaterPropertyGroupRefs` to read the pages in such properties as references in
+graphs that are not opened in Logseq.
+
 A program can change these settings for itself, without a change to the
 `config.edn` that Logseq uses, with `WithConfig`. A field that is not set keeps
 the value of the graph:
@@ -101,6 +107,7 @@ graph, err := logseq.Open(ctx, "path/to/graph", logseq.WithConfig(logseq.Config{
   NamespaceParentRefs:      logseq.Bool(false),
   FirstBlockPageProperties: logseq.Bool(false),
   RelaxedTaskDates:         logseq.Bool(true),
+  LaterPropertyGroupRefs:   logseq.Bool(true),
   IgnoredPageReferences:    []string{"author"},
 }))
 ```

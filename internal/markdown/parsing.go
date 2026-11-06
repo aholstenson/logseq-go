@@ -143,6 +143,10 @@ type parseOptions struct {
 	// relaxedTaskDates is whether task dates are read also in the forms and
 	// places that Logseq ignores, see WithRelaxedTaskDates.
 	relaxedTaskDates bool
+
+	// laterPropertyGroupRefs is whether the groups of properties of a block
+	// after the first make references, see WithLaterPropertyGroupRefs.
+	laterPropertyGroupRefs bool
 }
 
 // defaultParseOptions are what Logseq does for a graph that does not configure
@@ -208,6 +212,18 @@ func WithRelaxedTaskDates(relaxed bool) ParseOption {
 	}
 }
 
+// WithLaterPropertyGroupRefs sets whether the pages named in the groups of
+// properties of a block after its first group are references. A block can
+// have more than one group when its properties are split by a text line or a
+// blank line, as in "- a\n  b:: c\n  text\n  d:: [[e]]". Logseq reads only
+// the first group, so by default the groups after it are read with
+// content.Properties.PageRefsIgnored set, and `e` is not a reference.
+func WithLaterPropertyGroupRefs(enabled bool) ParseOption {
+	return func(o *parseOptions) {
+		o.laterPropertyGroupRefs = enabled
+	}
+}
+
 // isSeparatedByCommas checks if the value of the property with the given name
 // is a list of pages separated by commas.
 func (o *parseOptions) isSeparatedByCommas(name string) bool {
@@ -263,11 +279,33 @@ func parseWithOptions(src []byte, options *parseOptions) (*content.Block, error)
 
 	nestByLevels(block, levels)
 
+	if !options.laterPropertyGroupRefs {
+		ignoreRefsOfLaterPropertyGroups(block)
+	}
+
 	if lineEnding != "\n" {
 		block.WithLineEnding(lineEnding)
 	}
 
 	return block, nil
+}
+
+// ignoreRefsOfLaterPropertyGroups marks the groups of properties of each
+// block after its first group as not making references, as Logseq reads only
+// the first group, see WithLaterPropertyGroupRefs. The first group is the one
+// that content.Block.FindProperties finds.
+func ignoreRefsOfLaterPropertyGroups(block *content.Block) {
+	first := block.FindProperties()
+	for node := block.FirstChild(); node != nil; node = node.NextSibling() {
+		switch n := node.(type) {
+		case *content.Properties:
+			if n != first {
+				n.PageRefsIgnored = true
+			}
+		case *content.Block:
+			ignoreRefsOfLaterPropertyGroups(n)
+		}
+	}
 }
 
 // lineEndingOf finds the line break that most lines of the text end with:

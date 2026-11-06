@@ -533,6 +533,33 @@ var _ = Describe("Config", func() {
 			Expect(block.Scheduled()).To(BeNil())
 		})
 
+		It("makes no references from a second group of properties, the same as Logseq", func() {
+			// Given a block with a second group of properties after a text line
+			writePage("target.md", "- content of target\n")
+			writePage("referrer.md", "- a block\n  b:: c\n  text\n  d:: [[target]]\n")
+
+			// When the graph is opened with the settings of Logseq
+			graph := openWithConfig(`{}`, logseq.WithInMemoryIndex())
+
+			// Then the page in the second group is not a reference
+			Expect(referencesTo(graph, "target")).To(Equal(0))
+		})
+
+		It("makes references from a second group of properties when later property group refs are on", func() {
+			// Given a block with a second group of properties after a text line
+			writePage("target.md", "- content of target\n")
+			writePage("referrer.md", "- a block\n  b:: c\n  text\n  d:: [[target]]\n")
+
+			// When the program turns later property group refs on
+			graph := openWithConfig(`{}`,
+				logseq.WithInMemoryIndex(),
+				logseq.WithConfig(logseq.Config{LaterPropertyGroupRefs: logseq.Bool(true)}),
+			)
+
+			// Then the page in the second group is a reference
+			Expect(referencesTo(graph, "target")).To(Equal(1))
+		})
+
 		It("turns task pages off", func() {
 			// Given a task with a priority
 			writePage("referrer.md", "- TODO [#A] x\n")

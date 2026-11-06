@@ -293,6 +293,23 @@ type Config struct {
 	// the line does not change. This is for graphs that are not opened in
 	// Logseq.
 	RelaxedTaskDates *bool
+
+	// LaterPropertyGroupRefs is whether the pages named in the properties of
+	// a block after its first group of properties are references. A block
+	// has more than one group when its properties are split by a text line
+	// or a blank line, as in:
+	//
+	//	- a
+	//	  b:: c
+	//	  text
+	//	  d:: [[e]]
+	//
+	// Logseq reads only the first group, so `d` is not a property of the
+	// block and `e` is not a reference. Logseq has no setting for it in
+	// `config.edn`, and it is off unless it is set to true. Use Bool to set
+	// it. When it is on, `e` is a reference, but `d` is still not a property
+	// of the block. This is for graphs that are not opened in Logseq.
+	LaterPropertyGroupRefs *bool
 }
 
 // Bool returns a pointer to the value, for the fields of Config that are not
@@ -335,6 +352,10 @@ func (c Config) merge(other Config) Config {
 		c.RelaxedTaskDates = other.RelaxedTaskDates
 	}
 
+	if other.LaterPropertyGroupRefs != nil {
+		c.LaterPropertyGroupRefs = other.LaterPropertyGroupRefs
+	}
+
 	return c
 }
 
@@ -348,6 +369,12 @@ func (c Config) firstBlockPageProperties() bool {
 // that Logseq ignores, see RelaxedTaskDates.
 func (c Config) relaxedTaskDates() bool {
 	return c.RelaxedTaskDates != nil && *c.RelaxedTaskDates
+}
+
+// laterPropertyGroupRefs returns true if the groups of properties of a block
+// after the first make references, see LaterPropertyGroupRefs.
+func (c Config) laterPropertyGroupRefs() bool {
+	return c.LaterPropertyGroupRefs != nil && *c.LaterPropertyGroupRefs
 }
 
 // applyTo replaces the settings in the config of the graph with the fields

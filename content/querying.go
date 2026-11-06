@@ -95,7 +95,8 @@ func IsPageReference() NodePredicate {
 // another. A page link in the title of a page link or tag is a reference too,
 // see NestedPageRef. The values of the properties that ignore references are left out,
 // as Logseq reads those as text rather than as pointing at a page. The same
-// goes for a value that is wrapped in quotes.
+// goes for a value that is wrapped in quotes, and for a group of properties
+// that ignores references, see Properties.PageRefsIgnored.
 //
 // The text after a SCHEDULED or DEADLINE line is left out too, until a node
 // that is not text. Logseq reads that text and the date as one paragraph that
@@ -105,6 +106,10 @@ func (n NodeList) PageReferences() NodeList {
 	afterTaskDate := false
 	for _, node := range n {
 		if property, ok := node.(*Property); ok && (property.PageRefsIgnored || property.Quoted) {
+			continue
+		}
+
+		if properties, ok := node.(*Properties); ok && properties.PageRefsIgnored {
 			continue
 		}
 

@@ -2726,7 +2726,7 @@ var _ = Describe("Parsing", func() {
 					).WithPreviousLineType(content.PreviousLineTypeNonBlank),
 					content.NewProperties(
 						content.NewProperty("key2", content.NewText("value2")),
-					).WithPreviousLineType(content.PreviousLineTypeNonBlank),
+					).WithPreviousLineType(content.PreviousLineTypeNonBlank).WithPageRefsIgnored(true),
 				)))
 			})
 
@@ -2745,7 +2745,7 @@ var _ = Describe("Parsing", func() {
 					content.NewProperties(
 						content.NewProperty("key3", content.NewText("value3")),
 						content.NewProperty("key4", content.NewText("value4")),
-					).WithPreviousLineType(content.PreviousLineTypeNonBlank),
+					).WithPreviousLineType(content.PreviousLineTypeNonBlank).WithPageRefsIgnored(true),
 				)))
 			})
 
@@ -2762,13 +2762,13 @@ var _ = Describe("Parsing", func() {
 					).WithPreviousLineType(content.PreviousLineTypeNonBlank),
 					content.NewProperties(
 						content.NewProperty("key2", content.NewText("value2")),
-					).WithPreviousLineType(content.PreviousLineTypeNonBlank),
+					).WithPreviousLineType(content.PreviousLineTypeNonBlank).WithPageRefsIgnored(true),
 					content.NewParagraph(
 						content.NewText("Line 2"),
 					).WithPreviousLineType(content.PreviousLineTypeNonBlank),
 					content.NewProperties(
 						content.NewProperty("key3", content.NewText("value3")),
-					).WithPreviousLineType(content.PreviousLineTypeNonBlank),
+					).WithPreviousLineType(content.PreviousLineTypeNonBlank).WithPageRefsIgnored(true),
 				)))
 			})
 
@@ -4676,5 +4676,92 @@ var _ = Describe("References in values of built-in properties", func() {
 		// When the references are read
 		// Then neither property makes a reference
 		Expect(root.Blocks()[0].Children().PageReferences()).To(BeEmpty())
+	})
+})
+
+var _ = Describe("References in a second property group", func() {
+	// refTargets parses the input and returns the targets of all page
+	// references in the first block.
+	refTargets := func(input string, opts ...markdown.ParseOption) []string {
+		root, err := markdown.ParseString(input, opts...)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(root.Blocks()).ToNot(BeEmpty())
+
+		targets := make([]string, 0)
+		for _, ref := range root.Blocks()[0].Children().PageReferences() {
+			targets = append(targets, ref.(content.PageRef).GetTo())
+		}
+		return targets
+	}
+
+	It("makes no reference from properties after text in the block, the same as Logseq", func() {
+		// Given a block with a second group of properties after a text line
+		input := "- a\n  b:: c\n  text\n  d:: [[e]]"
+
+		// Then Logseq only reads the first group, so e is not referenced
+		Expect(refTargets(input)).To(BeEmpty())
+
+		root, err := markdown.ParseString(input)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(root.Blocks()[0].FindProperties().Get("d")).To(BeEmpty())
+	})
+
+	It("makes no reference from properties after a blank line in the block", func() {
+		// Given a second group of properties after a blank line
+		// Then Logseq does not reference e
+		Expect(refTargets("- a\n  b:: c\n\n  d:: [[e]]")).To(BeEmpty())
+	})
+
+	It("still makes references from the first group of properties", func() {
+		// Given a block with a link in its first group and its second group
+		// Then only the first group refs its page
+		Expect(refTargets("- a\n  b:: [[c]]\n  text\n  d:: [[e]]")).To(ConsistOf("c"))
+	})
+
+	It("still makes references from the text between the groups", func() {
+		// Given a link in the text between two groups of properties
+		// Then the text refs its page
+		Expect(refTargets("- a\n  b:: c\n  see [[x]]\n  d:: [[e]]")).To(ConsistOf("x"))
+	})
+
+	It("makes no reference from a second group of page properties", func() {
+		// Given a page with page properties, text and more properties
+		root, err := markdown.ParseString("title:: t\ntext\nrelated:: [[e]]\n\n- a", markdown.AsPage())
+		Expect(err).ToNot(HaveOccurred())
+
+		// When the references before the first block are read
+		// Then the page in the second group is not a reference
+		Expect(root.Children().FilterDeep(content.IsOfType[*content.Properties]())).To(HaveLen(2))
+		for _, node := range root.Children() {
+			if _, ok := node.(*content.Block); ok {
+				break
+			}
+			Expect(content.NodeList{node}.PageReferences()).To(BeEmpty())
+		}
+	})
+
+	It("makes a reference from the first group of a child block", func() {
+		// Given a child block whose only group of properties has a link
+		// Then the child block refs its page
+		root, err := markdown.ParseString("- a\n  b:: c\n  text\n  d:: [[e]]\n\t- child\n\t  f:: [[g]]")
+		Expect(err).ToNot(HaveOccurred())
+		child := root.Blocks()[0].Blocks()[0]
+		Expect(child.Children().PageReferences()).To(HaveLen(1))
+	})
+
+	It("makes references from later groups when they are turned on", func() {
+		// Given a second group of properties after a text line
+		// When the text is read with later property group refs on
+		// Then the page in the second group is a reference
+		Expect(refTargets("- a\n  b:: c\n  text\n  d:: [[e]]", markdown.WithLaterPropertyGroupRefs(true))).To(ConsistOf("e"))
+	})
+
+	It("keeps the second group out of the properties of the block when later groups make references", func() {
+		// Given a second group of properties after a text line
+		root, err := markdown.ParseString("- a\n  b:: c\n  text\n  d:: [[e]]", markdown.WithLaterPropertyGroupRefs(true))
+		Expect(err).ToNot(HaveOccurred())
+
+		// Then d is still not a property of the block, the same as Logseq
+		Expect(root.Blocks()[0].FindProperties().Get("d")).To(BeEmpty())
 	})
 })
