@@ -1086,7 +1086,7 @@ var _ = Describe("Parsing", func() {
 
 			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
-					content.NewMacro("macro", "arg1", "arg2"),
+					content.NewMacro("macro", `"arg1"`, "arg2"),
 				),
 			)))
 		})
@@ -1097,7 +1097,7 @@ var _ = Describe("Parsing", func() {
 
 			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
-					content.NewMacro("macro", "arg1", "arg2"),
+					content.NewMacro("macro", `"arg1"`, `"arg2"`),
 				),
 			)))
 		})
@@ -1108,7 +1108,7 @@ var _ = Describe("Parsing", func() {
 
 			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
-					content.NewMacro("macro", "arg1,", "arg2"),
+					content.NewMacro("macro", `"arg1,"`, "arg2"),
 				),
 			)))
 		})
@@ -1141,7 +1141,7 @@ var _ = Describe("Parsing", func() {
 
 			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
-					content.NewMacro("macro", "arg1\""),
+					content.NewMacro("macro", `"arg1\""`),
 				),
 			)))
 		})

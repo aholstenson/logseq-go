@@ -198,7 +198,7 @@ var _ = Describe("Parsing then outputting", func() {
 		FullyEqual("Macro with no arguments", "{{poem}}")
 		FullyEqual("Macro with one argument", "{{poem red}}")
 		FullyEqual("Macro with two arguments", "{{poem red, blue}}")
-		Varies("Macro with two arguments, no space", "{{poem red,blue}}", "{{poem red, blue}}")
+		FullyEqual("Macro with two arguments, no space", "{{poem red,blue}}")
 		FullyEqual("Macro with one argument and spaces", "{{poem red blue}}")
 		FullyEqual("Macro with quoted argument with comma", "{{poem \"red, blue\"}}")
 

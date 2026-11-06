@@ -2,6 +2,31 @@ package content
 
 import "strings"
 
+// MacroSourceAware is implemented by the nodes that are read from a macro,
+// such as Macro, Query, PageEmbed, BlockEmbed and Cloze. They keep the text
+// of the macro as it is in the file. A macro that reads back as the same node
+// is written with this text, so that its quotes and spaces do not change.
+type MacroSourceAware interface {
+	// MacroSource gets the text of the macro, from `{{` to `}}`. It is empty
+	// for a node that was not read from a file.
+	MacroSource() string
+
+	// SetMacroSource sets the text of the macro.
+	SetMacroSource(source string)
+}
+
+type macroSourceImpl struct {
+	macroSource string
+}
+
+func (m *macroSourceImpl) MacroSource() string {
+	return m.macroSource
+}
+
+func (m *macroSourceImpl) SetMacroSource(source string) {
+	m.macroSource = source
+}
+
 // Macro represents a macro, which in the source is on the form `{{macro-name arg1, arg2, ..., argN}}`.
 //
 // Macros share their syntax with some built-ins, such as `{{query}}` and `{{embed}}`,
@@ -9,10 +34,12 @@ import "strings"
 // as its own node type, such as `Query`, `PageEmbed` or `BlockEmbed`.
 //
 // In Logseq arguments are optional, but must be comma separated. Arguments can be quoted,
-// in which case they can contain commas. In this library arguments will be
-// normalized, if a comma is in the argument it will be quoted in the output.
+// in which case they can contain commas. A quoted argument keeps its quotes,
+// as Logseq gives them to queries and renderers. When a macro is written, an
+// argument that has a comma and no quotes is quoted.
 type Macro struct {
 	baseNode
+	macroSourceImpl
 
 	// Name gets the name of this macro.
 	Name string
@@ -51,12 +78,14 @@ func (m *Macro) debug(p *debugPrinter) {
 func (m *Macro) isInline() {}
 
 var _ InlineNode = (*Macro)(nil)
+var _ MacroSourceAware = (*Macro)(nil)
 
 // Query represents a simple query in the source, on the form
 // `{{query (and (task TODO) [[page]])}}`. Query holds the text inside the
 // macro. The query package reads it with query.ParseNode.
 type Query struct {
 	baseNode
+	macroSourceImpl
 
 	Query string
 }
@@ -76,9 +105,11 @@ func (q *Query) debug(p *debugPrinter) {
 func (q *Query) isInline() {}
 
 var _ InlineNode = (*Query)(nil)
+var _ MacroSourceAware = (*Query)(nil)
 
 type PageEmbed struct {
 	baseNode
+	macroSourceImpl
 
 	To string
 }
@@ -116,10 +147,12 @@ func (p *PageEmbed) isInline() {}
 func (p *PageEmbed) isPageRef() {}
 
 var _ InlineNode = (*PageEmbed)(nil)
+var _ MacroSourceAware = (*PageEmbed)(nil)
 var _ PageRef = (*PageEmbed)(nil)
 
 type BlockEmbed struct {
 	baseNode
+	macroSourceImpl
 
 	ID string
 }
@@ -139,9 +172,11 @@ func (b *BlockEmbed) debug(pr *debugPrinter) {
 func (b *BlockEmbed) isInline() {}
 
 var _ InlineNode = (*BlockEmbed)(nil)
+var _ MacroSourceAware = (*BlockEmbed)(nil)
 
 type Cloze struct {
 	baseNode
+	macroSourceImpl
 
 	Answer string
 
@@ -169,3 +204,4 @@ func (c *Cloze) debug(pr *debugPrinter) {
 func (c *Cloze) isInline() {}
 
 var _ InlineNode = (*Cloze)(nil)
+var _ MacroSourceAware = (*Cloze)(nil)

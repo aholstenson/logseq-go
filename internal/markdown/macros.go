@@ -4,6 +4,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/aholstenson/logseq-go/content"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/text"
@@ -14,24 +15,22 @@ var macroKind = ast.NewNodeKind("Macro")
 // macro is the Logseq macro structure which is in the form of {{macro-name arg1, arg2}}.
 // Three curly braces are also supported, such as {{{macro-name arg1, arg2}}}.
 // Arguments are optional, but must be comma separated. Arguments can be quoted,
-// in which case they can contain commas. When rendering in the Logseq editor
-// quotes are not removed.
+// in which case they can contain commas. A quoted argument keeps its quotes
+// and backslashes, in the same way as Logseq.
 //
-// Some examples of how Logseq parses and displays arguments:
+// Some examples of how Logseq parses arguments:
 //
 // - {{poem red, blue}} - 2 arguments: `red`, `blue`
 // - {{poem red,blue}} - 2 arguments: `red`, `blue`
 // - {{poem red blue}} - 1 argument: `red blue`
-// - {{poem "red", "blue"}} - 2 arguments: `red`, `blue`
+// - {{poem "red", "blue"}} - 2 arguments: `"red"`, `"blue"`
 // - {{poem "blue," , red}} - 2 arguments: `"blue,"`, `red`
 // - {{poem "blue," red}} - invalid, quoted and no comma between arguments
 // - {{poem red,}} - invalid, empty arguments
 // - {{poem red,,}} - invalid, empty arguments
 // - {{poem red,",blue"}} - 2 arguments: `red`, `",blue"`
 // - {{poem "red\"",blue}} - 2 arguments: `"red\""`, `blue`
-// - {{poem "r\\ed",blue}} - 2 arguments: `"r\\ed"`, `blue`
-// - {{poem "r\ed",blue}} - 2 arguments: `"red"`, `blue`
-// - {{poem "red\\",blue}} - 2 arguments: `"red\\"`, `blue`
+// - {{poem "r\ed",blue}} - 2 arguments: `"r\ed"`, `blue`
 type macro struct {
 	ast.BaseInline
 	Name      string
@@ -41,6 +40,9 @@ type macro struct {
 	// Logseq joins the arguments of some macros again, such as `query`, so a
 	// comma in the text does not split it.
 	RawArguments string
+
+	// Source is the text of the macro, from `{{` to `}}`.
+	Source string
 }
 
 func (*macro) Kind() ast.NodeKind {
@@ -161,9 +163,8 @@ func (t *macroParser) Parse(parent ast.Node, block text.Reader, pc parser.Contex
 			}
 		case macroParseStateArgumentQuote:
 			if line[i] == '"' && line[i-1] != '\\' {
-				// Quote is being ended
-				value := unescapeString(line[start+1 : i])
-				arguments = append(arguments, value)
+				// Quote is being ended. The argument keeps its quotes.
+				arguments = append(arguments, string(line[start:i+1]))
 
 				state = macroParseStateExpectComma
 				start = i + 1
@@ -209,5 +210,68 @@ func (t *macroParser) Parse(parent ast.Node, block text.Reader, pc parser.Contex
 		Name:         name,
 		Arguments:    arguments,
 		RawArguments: rawArguments,
+		Source:       string(line[:end+2]),
 	}
+}
+
+// readsBackAsMacro returns true if the source of a macro is read back as the
+// same node. This is false after the node was changed, and then the macro is
+// written from the fields of the node.
+func readsBackAsMacro(source string, node content.Node) bool {
+	parsed := (&macroParser{}).Parse(nil, text.NewReader([]byte(source)), parser.NewContext())
+	m, ok := parsed.(*macro)
+	if !ok || m.Source != source {
+		return false
+	}
+
+	switch n := node.(type) {
+	case *content.Macro:
+		other, ok := macroNodeOf(m).(*content.Macro)
+		return ok && other.Name == n.Name && equalStrings(other.Arguments, n.Arguments)
+	case *content.Query:
+		other, ok := macroNodeOf(m).(*content.Query)
+		return ok && other.Query == n.Query
+	case *content.PageEmbed:
+		other, ok := macroNodeOf(m).(*content.PageEmbed)
+		return ok && other.To == n.To
+	case *content.BlockEmbed:
+		other, ok := macroNodeOf(m).(*content.BlockEmbed)
+		return ok && other.ID == n.ID
+	case *content.Cloze:
+		other, ok := macroNodeOf(m).(*content.Cloze)
+		return ok && other.Answer == n.Answer && other.Cue == n.Cue
+	}
+
+	return false
+}
+
+func equalStrings(a []string, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+
+	return true
+}
+
+// isQuotedMacroArgument returns true if the argument is one quoted argument,
+// which the macro parser reads as it is. The first quote that is not escaped
+// after the opening quote must be the last character.
+func isQuotedMacroArgument(arg string) bool {
+	if len(arg) < 2 || arg[0] != '"' {
+		return false
+	}
+
+	for i := 1; i < len(arg); i++ {
+		if arg[i] == '"' && arg[i-1] != '\\' {
+			return i == len(arg)-1
+		}
+	}
+
+	return false
 }

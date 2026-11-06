@@ -655,6 +655,13 @@ func Write(n content.Node, out io.Writer, opts ...Option) error {
 }
 
 func (w *Output) Write(n content.Node) error {
+	if aware, ok := n.(content.MacroSourceAware); ok {
+		if source := aware.MacroSource(); source != "" && readsBackAsMacro(source, n) {
+			// The macro is not changed, so its text is written as it is.
+			return w.writeRaw(source)
+		}
+	}
+
 	switch node := n.(type) {
 	case *content.RawHTML:
 		return w.writeRaw(node.HTML)
@@ -1457,17 +1464,18 @@ func (w *Output) writeMacro(node content.Node, name string, arguments []string) 
 				}
 			}
 
-			// Check if the argument contains a comma, if so we need to quote
-			// the argument.
-			quoted := false
-			for _, r := range arg {
-				if r == ',' {
-					quoted = true
-					break
+			if isQuotedMacroArgument(arg) {
+				// The argument has its quotes, as it was read from a file.
+				err = w.writeRaw(arg)
+				if err != nil {
+					return err
 				}
+
+				continue
 			}
 
-			if quoted {
+			// An argument with a comma needs quotes, so that it is not split.
+			if strings.ContainsRune(arg, ',') {
 				err = w.writeRaw("\"")
 				if err != nil {
 					return err

@@ -274,12 +274,6 @@ func convert(src []byte, in ast.Node) (content.Node, error) {
 	return nil, fmt.Errorf("Could not convert node: %T", in)
 }
 
-// unescapeString removes every backslash. It is used for the quoted arguments
-// of macros, which have their own rules for backslashes.
-func unescapeString(src []byte) string {
-	return string(bytes.ReplaceAll(src, []byte(`\`), []byte(``)))
-}
-
 // unescapePunctuation removes the backslashes that escape ASCII punctuation,
 // in the same way as CommonMark, so `\*` is read as `*` and `\\` as `\`. Other
 // backslashes are text and are kept, so `C:\Users` stays as it is.
@@ -667,7 +661,20 @@ func convertLink(src []byte, node *ast.Link) (content.Node, error) {
 	return link, nil
 }
 
+// convertMacro converts a macro, and keeps its text so that it can be
+// written back unchanged.
 func convertMacro(src []byte, node *macro) (content.Node, error) {
+	converted := macroNodeOf(node)
+	if aware, ok := converted.(content.MacroSourceAware); ok {
+		aware.SetMacroSource(node.Source)
+	}
+
+	return converted, nil
+}
+
+// macroNodeOf returns the node for a macro. Built-in macros, such as `query`
+// and `embed`, get their own node types.
+func macroNodeOf(node *macro) content.Node {
 	switch node.Name {
 	case "query":
 		// A query without a query string is not a query, keep it as a macro so
@@ -678,7 +685,7 @@ func convertMacro(src []byte, node *macro) (content.Node, error) {
 
 		// Logseq joins the arguments again, so the query is all of the text
 		// after the name, also when it has commas.
-		return content.NewQuery(node.RawArguments), nil
+		return content.NewQuery(node.RawArguments)
 	case "embed":
 		// Either a [[page]] or a ((block)). Logseq joins the arguments again,
 		// so a page title with a comma is one target.
@@ -688,9 +695,9 @@ func convertMacro(src []byte, node *macro) (content.Node, error) {
 
 		arg := node.RawArguments
 		if strings.HasPrefix(arg, "((") && strings.HasSuffix(arg, "))") && !strings.Contains(arg[2:len(arg)-2], "))") {
-			return content.NewBlockEmbed(arg[2 : len(arg)-2]), nil
+			return content.NewBlockEmbed(arg[2 : len(arg)-2])
 		} else if page, ok := wholePageLink(arg); ok {
-			return content.NewPageEmbed(page), nil
+			return content.NewPageEmbed(page)
 		}
 	case "cloze":
 		// {{cloze answer \\ cue}} or {{cloze answer}}
@@ -703,16 +710,16 @@ func convertMacro(src []byte, node *macro) (content.Node, error) {
 		if cueIdx < 0 {
 			return content.NewCloze(
 				strings.TrimSpace(arg),
-			), nil
+			)
 		} else {
 			return content.NewClozeWithCue(
 				strings.TrimSpace(arg[:cueIdx]),
 				strings.TrimSpace(arg[cueIdx+1:]),
-			), nil
+			)
 		}
 	}
 
-	return content.NewMacro(node.Name, node.Arguments...), nil
+	return content.NewMacro(node.Name, node.Arguments...)
 }
 
 func convertEmphasis(src []byte, node *ast.Emphasis) (content.HasChildren, error) {
