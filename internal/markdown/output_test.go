@@ -111,7 +111,7 @@ var _ = Describe("Output", func() {
 			Entry("a page link with three brackets", []content.Node{content.NewText("[[[a]]]")}),
 			Entry("a page link in a link", []content.Node{content.NewText("[[a](b)]]")}),
 			Entry("a footnote reference", []content.Node{content.NewText("a[^1]")}),
-			Entry("a link reference definition", []content.Node{content.NewText("[1]: https://example.com")}),
+			Entry("a line like a link reference definition", []content.Node{content.NewText("[Status]: done")}),
 			Entry("a closing bracket before a page link", []content.Node{
 				content.NewText("[a]"),
 				content.NewPageLink("b"),

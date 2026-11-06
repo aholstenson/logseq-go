@@ -29,7 +29,7 @@ func EscapeNone(str string) string {
 // read back as formatting.
 //
 // Square brackets are only escaped where they would be read back as a link, a
-// page link, a footnote or a link reference definition. Logseq reads `\[` up
+// page link or a footnote. Logseq reads `\[` up
 // to a later `\]` as a display math formula, so `[` is never escaped. Where a
 // bracket must be escaped, the escape goes on the `]` or on the `^` of a
 // footnote instead.
@@ -386,18 +386,10 @@ func bracketEscapes(str string, escapes map[int]bool) {
 				continue
 			}
 
-			switch str[i+1] {
-			case '[':
-				// The label of a reference link.
+			// Logseq has no reference links or link reference definitions,
+			// so only a `]` that ends the text of an inline link is escaped.
+			if str[i+1] == '(' && closesLink(str[i+1:]) {
 				escapes[i] = true
-			case '(':
-				if closesLink(str[i+1:]) {
-					escapes[i] = true
-				}
-			case ':':
-				if isLinkDefinitionLabel(str[:i]) {
-					escapes[i] = true
-				}
 			}
 		}
 	}
@@ -444,18 +436,6 @@ func closesLink(rest string) bool {
 	})
 
 	return found
-}
-
-// isLinkDefinitionLabel returns true if the text before a `]:` is the start
-// of a link reference definition, such as `[1]: https://example.com`.
-func isLinkDefinitionLabel(before string) bool {
-	trimmed := strings.TrimLeft(before, " ")
-	if len(before)-len(trimmed) > 3 || !strings.HasPrefix(trimmed, "[") {
-		return false
-	}
-
-	label := trimmed[1:]
-	return !strings.ContainsAny(label, "[]") && strings.TrimSpace(label) != ""
 }
 
 // mathEscapes finds the dollar signs of the parts of a text that would be

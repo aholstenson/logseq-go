@@ -60,8 +60,10 @@ func init() {
 				extension.WithLinkifyWWWRegexp(neverMatch),
 			), 998),
 		),
+		// Logseq has no link reference definitions, so a line such as
+		// `[1]: https://example.com` is text. Goldmark's paragraph transformer
+		// for them is not used.
 		parser.WithParagraphTransformers(
-			util.Prioritized(parser.LinkReferenceParagraphTransformer, 100),
 			util.Prioritized(newTableParagraphTransformer(extension.NewTableParagraphTransformer()), 200),
 		),
 		parser.WithASTTransformers(
