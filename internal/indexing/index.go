@@ -76,7 +76,14 @@ const (
 // of a property. Numbers sort by their value and before text, and text sorts
 // without regard for case.
 func SortFieldProperty(name string) string {
-	return "prop:" + name + ":sort"
+	return propertyField(name) + ":sort"
+}
+
+// propertyField returns the prefix of the fields that index a property. The
+// name is normalized the way Logseq does it, so that `My_Prop::` is found by
+// a query for `my-prop`.
+func propertyField(name string) string {
+	return "prop:" + content.NormalizePropertyName(name)
 }
 
 type SearchResults[V any] interface {

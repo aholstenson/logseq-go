@@ -218,6 +218,12 @@ var _ = Describe("Parsing then outputting", func() {
 		Varies("Property with an empty value and no space after the name", "tags::\nkey:: value", "tags:: \nkey:: value")
 		FullyEqual("Property with a dot in its name", "item\nlogseq.order-list-type:: number")
 		FullyEqual("Properties with dots in their names", "logseq.color:: red\nlogseq.tldraw.page:: value")
+		FullyEqual("Property with an underscore in its name", "my_prop:: value")
+		FullyEqual("Property with letters that are not Latin in its name", "日本語:: value\nändring:: value")
+		FullyEqual("Property with emphasis markup in its name", "a*b*c:: value")
+		FullyEqual("Property with emphasis in its value", "key:: *value*")
+		FullyEqual("Property with a namespace in its name", "ns/name:: value")
+		FullyEqual("Property with a name that Logseq does not allow", "a@b:: value")
 
 		It("writes a set property with a dot in its name", func() {
 			block, err := markdown.ParseString("item")

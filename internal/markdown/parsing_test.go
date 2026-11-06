@@ -2518,6 +2518,66 @@ var _ = Describe("Parsing", func() {
 				)))
 			})
 
+			DescribeTable("reads names that Logseq allows",
+				func(name string) {
+					block, err := markdown.ParseString(name + ":: value")
+					Expect(err).ToNot(HaveOccurred())
+
+					Expect(block).To(tests.EqualNode(content.NewBlock(
+						content.NewProperties(
+							content.NewProperty(name, content.NewText("value")),
+						),
+					)))
+				},
+				Entry("letters with accents", "ändring"),
+				Entry("upper case letters", "Status"),
+				Entry("letters that are not Latin", "日本語"),
+				Entry("an emoji", "🔥"),
+				Entry("only digits", "123"),
+				Entry("an underscore", "my_prop"),
+				Entry("a question mark", "done?"),
+				Entry("an exclamation mark", "important!"),
+				Entry("a plus", "c++"),
+				Entry("an asterisk", "a*b"),
+				Entry("emphasis markup", "a*b*c"),
+				Entry("an underscore between words", "my_long_prop"),
+				Entry("an ampersand", "a&b"),
+				Entry("a less than sign", "a<b"),
+				Entry("an equals sign", "a=b"),
+				Entry("a dollar sign", "a$b"),
+				Entry("a percent sign", "a%b"),
+				Entry("an apostrophe", "it's"),
+				Entry("a # after the first character", "a#b"),
+				Entry("a namespace", "ns/name"),
+			)
+
+			DescribeTable("keeps names that Logseq does not allow as text",
+				func(name string) {
+					block, err := markdown.ParseString(name + ":: value")
+					Expect(err).ToNot(HaveOccurred())
+
+					Expect(block.FindProperties()).To(BeNil())
+				},
+				Entry("a # as the first character", "#tag"),
+				Entry("a comma", "a,b"),
+				Entry("a semicolon", "a;b"),
+				Entry("an at sign", "a@b"),
+				Entry("a tilde", "a~b"),
+				Entry("a backtick", "a`b"),
+				Entry("a backslash", `a\b`),
+				Entry("a quote", `a"b`),
+				Entry("a vertical bar", "a|b"),
+				Entry("a caret", "a^b"),
+				Entry("parentheses", "a(b)"),
+				Entry("braces", "a{b}"),
+				Entry("brackets", "a[b]c"),
+				Entry("a slash first", "/a"),
+				Entry("a slash last", "a/"),
+				Entry("two slashes", "a/b/c"),
+				Entry("a digit after the slash", "a/1"),
+				Entry("a colon", "a:b"),
+			)
+
 			It("can parse property with a value of several words", func() {
 				block, err := markdown.ParseString("key:: a longer value")
 				Expect(err).ToNot(HaveOccurred())

@@ -32,7 +32,7 @@ func (i idTerm) Term() []byte {
 // Increase it when the way pages or blocks are indexed changes, so that an
 // index stored on disk is built again with the new fields. Without that the
 // pages that did not change since they were indexed keep their old documents.
-const indexVersion = 13
+const indexVersion = 14
 
 // versionDocID is the id of the document that stores the version of the
 // index. It does not have a type, so searches for pages and blocks never
@@ -874,17 +874,18 @@ func (i *BlugeIndex) transferProperties(doc *bluge.Document, properties *content
 
 		// The name is indexed on its own so that a query can find what has a
 		// property, also when the property has no value.
-		doc.AddField(bluge.NewKeywordField("props", normalizeRef(prop.Name)))
+		doc.AddField(bluge.NewKeywordField("props", content.NormalizePropertyName(prop.Name)))
 
-		i.transferRefs(doc, "prop:"+prop.Name, prop.Children())
+		field := propertyField(prop.Name)
+		i.transferRefs(doc, field, prop.Children())
 
 		s := plainText(prop.Children())
 		if s == "" {
 			continue
 		}
 
-		doc.AddField(bluge.NewTextField("prop:"+prop.Name+":text", s))
-		value := bluge.NewKeywordField("prop:"+prop.Name+":value", s)
+		doc.AddField(bluge.NewTextField(field+":text", s))
+		value := bluge.NewKeywordField(field+":value", s)
 		if store {
 			value.StoreValue()
 		}
@@ -895,12 +896,12 @@ func (i *BlugeIndex) transferProperties(doc *bluge.Document, properties *content
 		// compared.
 		if numberPattern.MatchString(s) {
 			if f, err := strconv.ParseFloat(s, 64); err == nil {
-				doc.AddField(bluge.NewNumericField("prop:"+prop.Name+":number", f))
+				doc.AddField(bluge.NewNumericField(field+":number", f))
 			}
 		}
 
 		if date, ok := i.propertyDate(prop, s); ok {
-			doc.AddField(bluge.NewDateTimeField("prop:"+prop.Name+":date", date))
+			doc.AddField(bluge.NewDateTimeField(field+":date", date))
 		}
 	}
 }

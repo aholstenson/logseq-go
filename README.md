@@ -57,6 +57,13 @@ which other properties are read that way via `:property/separated-by-commas`,
 and which properties never point at a page via
 `:ignored-page-references-keywords`.
 
+Property names follow the rules of Logseq. A name can hold letters of any
+language, digits and most punctuation, such as `ändring::` or `done?::`. A line
+with a name that Logseq does not allow, such as `a@b::` or `#tag::`, is read as
+text. Logseq makes names lower case and reads an underscore as a dash, so
+`Properties.Get("my-prop")` and the query `(property my-prop)` both find
+`My_Prop::`. The name is written back as it was read.
+
 The blocks that reference a page, what Logseq shows as its linked references,
 are available from the page itself:
 

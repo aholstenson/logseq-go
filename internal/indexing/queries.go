@@ -231,14 +231,14 @@ func ContentMatches(text string) Query {
 
 func PropertyMatches(property string, text string) Query {
 	return &fieldMatches{
-		field: "prop:" + property,
+		field: propertyField(property),
 		text:  text,
 	}
 }
 
 func PropertyEquals(property string, value string) Query {
 	return &fieldEquals{
-		field: "prop:" + property,
+		field: propertyField(property),
 		value: value,
 	}
 }
@@ -247,7 +247,7 @@ func PropertyEquals(property string, value string) Query {
 // min to max. Use math.Inf to leave an end open.
 func PropertyNumberBetween(property string, min float64, max float64, minInclusive bool, maxInclusive bool) Query {
 	return &numberRange{
-		field:        "prop:" + property + ":number",
+		field:        propertyField(property) + ":number",
 		min:          min,
 		max:          max,
 		minInclusive: minInclusive,
@@ -260,7 +260,7 @@ func PropertyNumberBetween(property string, min float64, max float64, minInclusi
 // Dates are values such as 2024-01-15, 20240115 or a reference to a journal.
 func PropertyDateBetween(property string, start time.Time, end time.Time) Query {
 	return &dateRange{
-		field: "prop:" + property + ":date",
+		field: propertyField(property) + ":date",
 		start: start,
 		end:   end,
 	}
@@ -268,22 +268,21 @@ func PropertyDateBetween(property string, start time.Time, end time.Time) Query 
 
 func HasProperty(property string) Query {
 	return &fieldEquals{
-		field:      "props",
-		value:      property,
-		normalized: true,
+		field: "props",
+		value: content.NormalizePropertyName(property),
 	}
 }
 
 func PropertyReferences(property string, target string) Query {
 	return &fieldRefs{
-		field:  "prop:" + property,
+		field:  propertyField(property),
 		target: target,
 	}
 }
 
 func PropertyReferencesTag(property string, target string) Query {
 	return &fieldRefs{
-		field:  "prop:" + property,
+		field:  propertyField(property),
 		target: target,
 		tag:    true,
 	}

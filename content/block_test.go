@@ -51,6 +51,40 @@ var _ = Describe("Blocks", func() {
 			Expect(block.Properties().Get("key")).To(BeEmpty())
 		})
 
+		It("gets a property by a name that only differs in case or in underscores", func() {
+			block := content.NewBlock(content.NewProperties(
+				content.NewProperty("My_Prop", content.NewText("value")),
+			))
+
+			properties := block.Properties()
+			Expect(properties.Get("my-prop")).To(EqualsNodes(content.NewText("value")))
+			Expect(properties.Get("MY_PROP")).To(EqualsNodes(content.NewText("value")))
+		})
+
+		It("keeps the written name when it sets a property by a normalized name", func() {
+			block := content.NewBlock(content.NewProperties(
+				content.NewProperty("My_Prop", content.NewText("value")),
+			))
+
+			properties := block.Properties()
+			properties.Set("my-prop", content.NewText("changed"))
+
+			Expect(properties.Children()).To(HaveLen(1))
+			Expect(properties.GetAsNode("my-prop").Name).To(Equal("My_Prop"))
+			Expect(properties.Get("my-prop")).To(EqualsNodes(content.NewText("changed")))
+		})
+
+		It("removes a property by a normalized name", func() {
+			block := content.NewBlock(content.NewProperties(
+				content.NewProperty("My_Prop", content.NewText("value")),
+			))
+
+			properties := block.Properties()
+			properties.Remove("my-prop")
+
+			Expect(properties.FirstChild()).To(BeNil())
+		})
+
 		It("creates properties after the content of the block", func() {
 			paragraph := content.NewParagraph(content.NewText("content"))
 			block := content.NewBlock(paragraph)

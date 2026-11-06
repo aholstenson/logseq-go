@@ -1,5 +1,7 @@
 package content
 
+import "strings"
+
 // Properties is a collection of Property nodes.
 type Properties struct {
 	baseNodeWithChildren
@@ -22,10 +24,13 @@ func (p *Properties) WithPreviousLineType(t PreviousLineType) *Properties {
 	return p
 }
 
-// GetAsNode gets a Property node by name. Will return nil if no Property with the given name exists.
+// GetAsNode gets a Property node by name. Will return nil if no Property with
+// the given name exists. Names are compared the way Logseq compares them, see
+// NormalizePropertyName.
 func (p *Properties) GetAsNode(key string) *Property {
+	key = NormalizePropertyName(key)
 	for _, child := range p.Children() {
-		if property, ok := child.(*Property); ok && property.Name == key {
+		if property, ok := child.(*Property); ok && NormalizePropertyName(property.Name) == key {
 			return property
 		}
 	}
@@ -43,7 +48,8 @@ func (p *Properties) Get(key string) NodeList {
 	return property.Children()
 }
 
-// Set a Property node by name. If a Property with the given name already exists, it will be replaced.
+// Set a Property node by name. If a Property with the given name already
+// exists, its value is replaced and it keeps the name it was written with.
 func (p *Properties) Set(key string, nodes ...Node) {
 	property := p.GetAsNode(key)
 	if property == nil {
@@ -74,11 +80,19 @@ func (p *Properties) isBlock() {}
 var _ Node = (*Properties)(nil)
 var _ BlockNode = (*Properties)(nil)
 
+// NormalizePropertyName returns the form of a property name that Logseq uses
+// to identify the property. Logseq makes the name lower case and reads an
+// underscore as a dash, so `My_Prop::` and `my-prop::` are the same property.
+func NormalizePropertyName(name string) string {
+	return strings.ReplaceAll(strings.ToLower(name), "_", "-")
+}
+
 // Property is a node that represents a property, which is a key that can have multiple values.
 type Property struct {
 	baseNodeWithChildren
 
-	// Name is the name of the property.
+	// Name is the name of the property as it is written. Use
+	// NormalizePropertyName to compare names.
 	Name string
 
 	// PageRefsIgnored is whether the pages named in the value of this property

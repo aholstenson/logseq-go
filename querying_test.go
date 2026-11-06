@@ -68,6 +68,7 @@ var _ = Describe("Query", func() {
 				"- TODO Plan offsite\n" +
 				"  - Book venue\n",
 			"empty.md": "",
+			"names.md": "- Written names\n  Release_Stage:: beta\n  Ändring:: ja\n",
 			"films.md": "- Good film\n  rating:: 8\n" +
 				"- Great film\n  rating:: 10\n" +
 				"- Fine film\n  rating:: 6\n" +
@@ -185,6 +186,18 @@ var _ = Describe("Query", func() {
 		It("finds blocks by a property", func() {
 			Expect(blocks("(property status draft)")).To(ConsistOf("A note"))
 			Expect(blocks("(property status)")).To(ConsistOf("A note"))
+		})
+
+		It("finds blocks by a property name that only differs in case or in underscores", func() {
+			Expect(blocks("(property release-stage beta)")).To(ConsistOf("Written names"))
+			Expect(blocks("(property release_stage beta)")).To(ConsistOf("Written names"))
+			Expect(blocks("(property RELEASE-STAGE beta)")).To(ConsistOf("Written names"))
+			Expect(blocks("(property release-stage)")).To(ConsistOf("Written names"))
+		})
+
+		It("finds blocks by a property name with letters that are not ASCII", func() {
+			Expect(blocks("(property ändring ja)")).To(ConsistOf("Written names"))
+			Expect(blocks("(property Ändring)")).To(ConsistOf("Written names"))
 		})
 
 		It("finds blocks by priority", func() {

@@ -147,9 +147,9 @@ func (o *parseOptions) ignoresPageReferences(name string) bool {
 
 // normalizePropertyName brings a property name into the form it is matched in,
 // as Logseq does not distinguish between property names that only differ in
-// case.
+// case or in the use of an underscore or a dash.
 func normalizePropertyName(name string) string {
-	return strings.ToLower(name)
+	return content.NormalizePropertyName(name)
 }
 
 func Parse(src []byte, opts ...ParseOption) (*content.Block, error) {

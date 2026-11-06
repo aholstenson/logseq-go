@@ -1,7 +1,7 @@
 package markdown
 
 import (
-	"regexp"
+	"bytes"
 	"strings"
 	"unicode/utf8"
 
@@ -11,7 +11,71 @@ import (
 	"github.com/yuin/goldmark/util"
 )
 
-var propertyRegex = regexp.MustCompile(`^([a-zA-Z0-9_.-]+)::`)
+// findPropertyName finds the name of a property at the start of a line, which
+// is written as `name::`. It returns the name and where the text after the `::`
+// starts.
+//
+// Logseq finds a property in two steps, and both are done here. First its
+// parser, mldoc, takes the name to be all the text up to `::` that is not a
+// colon, a space or a line break. Then Logseq keeps the property only if its
+// name is a valid property name, see validPropertyName. A line with a name that
+// is not valid is kept as text.
+func findPropertyName(line string) (name string, end int, ok bool) {
+	for i := 0; i < len(line); i++ {
+		switch line[i] {
+		case ':':
+			if i == 0 || !strings.HasPrefix(line[i:], "::") {
+				return "", 0, false
+			}
+
+			name = line[:i]
+			if !validPropertyName(name) {
+				return "", 0, false
+			}
+
+			return name, i + 2, true
+		case ' ', '\t', '\r', '\n', '\f', '\x1a':
+			return "", 0, false
+		}
+	}
+
+	return "", 0, false
+}
+
+// validPropertyName checks if Logseq keeps a property with the given name.
+// Logseq turns the name into a keyword, so the name must be one that reads as
+// a keyword in EDN, the data format of Logseq. A name can hold letters of any
+// language, digits and most punctuation, but some characters are not allowed.
+func validPropertyName(name string) bool {
+	name = normalizePropertyName(name)
+	if name == "" || name[0] == '#' {
+		// A name that starts with # is a tag
+		return false
+	}
+
+	// The characters that Logseq does not allow and the characters that end or
+	// cannot be part of a keyword in EDN.
+	if strings.ContainsAny(name, "\"|^(){}[],;\\@~`") {
+		return false
+	}
+
+	// A keyword can have a namespace in front of a slash, as in `ns/name`.
+	slash := strings.IndexByte(name, '/')
+	if slash == -1 || name == "/" {
+		return true
+	}
+
+	local := name[slash+1:]
+	if slash == 0 || local == "" {
+		return false
+	}
+
+	if local == "/" {
+		return true
+	}
+
+	return !strings.Contains(local, "/") && (local[0] < '0' || local[0] > '9')
+}
 
 var propertiesKind = ast.NewNodeKind("Properties")
 
@@ -310,44 +374,21 @@ func (t *propertiesASTTransformer) transformTextBlockOrParagraph(node ast.Node, 
 			}
 
 			if wasPreviousLinebreak {
-				// Potentially a new property
-				potentialName := string(reader.Value(textNode.Segment))
+				// Potentially a new property. The name is found in the source
+				// of the line, as Goldmark can split the name into several
+				// nodes, such as at an underscore.
+				name, valueStart, ok := findPropertyAt(reader.Source(), textNode.Segment.Start)
+				var rest ast.Node
+				if ok {
+					rest, ok = nodeAfterName(textNode, valueStart)
+				}
 
-				// In Goldmark the space after :: will either be part of the
-				// current text node or the next one.
-				matches := propertyRegex.FindStringSubmatchIndex(potentialName)
-				if matches == nil {
+				if !ok {
 					// Not a property
 					node = maybeSplitParagraph(node, currentProperties, child)
 					currentProperties = nil
 					wasPreviousLinebreak = textNode.HardLineBreak() || textNode.SoftLineBreak()
 					continue
-				}
-
-				// The value of the property starts after the name and the space
-				// that separates the two.
-				valueStart := matches[1]
-
-				// Check if there is a space after the ::
-				if strings.HasPrefix(potentialName[valueStart:], " ") {
-					valueStart++
-				} else if valueStart == len(potentialName) && endsLine(textNode, next) {
-					// Nothing follows the :: on the line, so the property has
-					// an empty value. Goldmark removes the space at the end of
-					// a line, so `key:: ` is read the same as `key::`.
-				} else {
-					// There isn't a space after :: in the current text node
-					nextTextNode, _ := next.(*ast.Text)
-					if startsWithSpace(nextTextNode, reader) {
-						// The text node has a space, update it to remove the space
-						nextTextNode.Segment = nextTextNode.Segment.WithStart(nextTextNode.Segment.Start + 1)
-					} else {
-						// The space is missing, not parsing as property
-						node = maybeSplitParagraph(node, currentProperties, child)
-						currentProperties = nil
-						wasPreviousLinebreak = textNode.HardLineBreak() || textNode.SoftLineBreak()
-						continue
-					}
 				}
 
 				if currentProperties == nil {
@@ -367,33 +408,41 @@ func (t *propertiesASTTransformer) transformTextBlockOrParagraph(node ast.Node, 
 				}
 
 				currentProperty = &property{}
-				currentProperty.Name = potentialName[matches[2]:matches[3]]
+				currentProperty.Name = name
 
 				currentProperties.AppendChild(currentProperties, currentProperty)
 
 				// The previous node no longer has a line break
-				if previousTextNode, ok := textNode.PreviousSibling().(*ast.Text); ok {
+				if previousTextNode, ok := child.PreviousSibling().(*ast.Text); ok {
 					previousTextNode.SetHardLineBreak(false)
 					previousTextNode.SetSoftLineBreak(false)
 				}
 
-				// Only the name is taken out of the text node, as anything that
-				// follows it on the line is the start of the value.
-				textNode.Segment = textNode.Segment.WithStart(textNode.Segment.Start + valueStart)
+				// The nodes that hold the name are taken out, and the value of
+				// the property continues with the node after them.
+				lineEnded := false
+				for nameNode := child; nameNode != rest; {
+					following := nameNode.NextSibling()
+					if nameText, ok := nameNode.(*ast.Text); ok && (nameText.HardLineBreak() || nameText.SoftLineBreak()) {
+						lineEnded = true
+					}
 
-				if textNode.Segment.IsEmpty() {
-					node.RemoveChild(node, child)
-				} else {
-					currentProperty.AppendChild(currentProperty, child)
+					node.RemoveChild(node, nameNode)
+					nameNode = following
 				}
 
-				if textNode.HardLineBreak() || textNode.SoftLineBreak() {
-					// The value of the property ends with the line it starts on
+				// A text node can hold both the end of the name and the start of
+				// the value, so only the value is kept.
+				if restText, ok := rest.(*ast.Text); ok && restText.Segment.Start < valueStart {
+					restText.Segment = restText.Segment.WithStart(valueStart)
+				}
+
+				next = rest
+
+				if lineEnded {
+					// Nothing follows the name on the line, so the property has
+					// an empty value.
 					currentProperty = nil
-
-					textNode.SetHardLineBreak(false)
-					textNode.SetSoftLineBreak(false)
-
 					wasPreviousLinebreak = true
 				}
 			} else {
@@ -408,25 +457,115 @@ func (t *propertiesASTTransformer) transformTextBlockOrParagraph(node ast.Node, 
 	}
 }
 
-// endsLine checks if a text node is the last text on its line. Goldmark can put
-// the line break on an empty text node that follows the text, so that node is
-// also checked.
-func endsLine(node *ast.Text, next ast.Node) bool {
-	if node.HardLineBreak() || node.SoftLineBreak() || next == nil {
-		return true
+// findPropertyAt finds the name of a property at the start of the line that
+// starts at the given offset into the source. It returns the name and the
+// offset where the value of the property starts.
+//
+// The name is followed by `::` and a space, after which the value starts. If
+// nothing follows the `::` on the line the property has an empty value.
+func findPropertyAt(source []byte, start int) (name string, valueStart int, ok bool) {
+	line := source[start:]
+	if i := bytes.IndexByte(line, '\n'); i >= 0 {
+		line = line[:i]
+	}
+	line = bytes.TrimSuffix(line, []byte("\r"))
+
+	name, end, ok := findPropertyName(string(line))
+	if !ok {
+		return "", 0, false
 	}
 
-	nextTextNode, ok := next.(*ast.Text)
-	return ok && nextTextNode.Segment.IsEmpty() && (nextTextNode.HardLineBreak() || nextTextNode.SoftLineBreak())
+	rest := line[end:]
+	switch {
+	case len(rest) > 0 && rest[0] == ' ':
+		return name, start + end + 1, true
+	case len(bytes.Trim(rest, " \t")) == 0:
+		return name, start + len(line), true
+	default:
+		// The space after the :: is missing
+		return "", 0, false
+	}
 }
 
-func startsWithSpace(node *ast.Text, reader text.Reader) bool {
-	if node == nil {
-		return false
+// nodeAfterName finds the first node that holds a part of the value of a
+// property, when the name of the property starts with the given node and the
+// value starts at the given offset into the source. It returns nil if the
+// value is empty, or if the line ends before the value.
+//
+// It is not possible to take the name out when a node that is not text holds
+// both a part of the name and a part of the value, such as emphasis that
+// starts in the name, so then ok is false.
+func nodeAfterName(first *ast.Text, valueStart int) (rest ast.Node, ok bool) {
+	// covered is where the text of the nodes before this one ends.
+	covered := first.Segment.Start
+	for n := ast.Node(first); n != nil; n = n.NextSibling() {
+		start, stop, ok := nodeRange(n)
+		if !ok {
+			// A node such as a link to a page has no text of its own, but if
+			// the name ends before it, the node is the start of the value.
+			if covered >= valueStart {
+				return n, true
+			}
+
+			return nil, false
+		}
+
+		covered = stop
+
+		if stop <= valueStart {
+			if t, isText := n.(*ast.Text); isText && (t.HardLineBreak() || t.SoftLineBreak()) {
+				// The line ends with the name
+				return n.NextSibling(), true
+			}
+
+			continue
+		}
+
+		if start >= valueStart {
+			return n, true
+		}
+
+		if _, isText := n.(*ast.Text); isText {
+			// The text holds the end of the name and the start of the value
+			return n, true
+		}
+
+		return nil, false
 	}
 
-	value := string(reader.Value(node.Segment))
-	return strings.HasPrefix(value, " ")
+	return nil, true
+}
+
+// nodeRange finds the part of the source that the text in a node comes from.
+// The markup around the text, such as the * of emphasis, is not included. It
+// is not known for nodes that hold no text from the source.
+func nodeRange(n ast.Node) (start int, stop int, ok bool) {
+	switch n := n.(type) {
+	case *ast.Text:
+		return n.Segment.Start, n.Segment.Stop, true
+	case *ast.RawHTML:
+		if n.Segments.Len() == 0 {
+			return 0, 0, false
+		}
+
+		return n.Segments.At(0).Start, n.Segments.At(n.Segments.Len() - 1).Stop, true
+	}
+
+	for child := n.FirstChild(); child != nil; child = child.NextSibling() {
+		childStart, childStop, childOk := nodeRange(child)
+		if !childOk {
+			return 0, 0, false
+		}
+
+		if !ok {
+			start = childStart
+			ok = true
+		}
+
+		stop = childStop
+	}
+
+	return start, stop, ok
 }
 
 func maybeSplitParagraph(node ast.Node, divider *properties, firstChildOfNewParagraph ast.Node) ast.Node {
