@@ -405,6 +405,144 @@ var _ = Describe("Config", func() {
 		})
 	})
 
+	Describe("Overrides from the program", func() {
+		// writePage puts a page in the graph, which has to happen before the
+		// graph is opened for it to be indexed.
+		writePage := func(name string, content string) {
+			Expect(os.WriteFile(
+				filepath.Join(dir, "pages", name),
+				[]byte(content),
+				0o644,
+			)).To(Succeed())
+		}
+
+		referencesTo := func(graph *logseq.Graph, title string) int {
+			page, err := graph.OpenPage(title)
+			Expect(err).ToNot(HaveOccurred())
+
+			results, err := page.LinkedReferences(context.Background())
+			Expect(err).ToNot(HaveOccurred())
+			return results.Size()
+		}
+
+		It("turns property pages off when the graph does not set them", func() {
+			// Given a graph that does not set property pages
+			writePage("referrer.md", "- a\n  type:: book\n")
+
+			// When the program turns them off
+			graph := openWithConfig(`{}`,
+				logseq.WithInMemoryIndex(),
+				logseq.WithConfig(logseq.Config{PropertyPages: logseq.Bool(false)}),
+			)
+
+			// Then the property name is not a reference
+			Expect(referencesTo(graph, "type")).To(Equal(0))
+		})
+
+		It("turns property pages on when the graph turns them off", func() {
+			// Given a graph that turns property pages off
+			writePage("referrer.md", "- a\n  type:: book\n")
+
+			// When the program turns them on
+			graph := openWithConfig(`{:property-pages/enabled? false}`,
+				logseq.WithInMemoryIndex(),
+				logseq.WithConfig(logseq.Config{PropertyPages: logseq.Bool(true)}),
+			)
+
+			// Then the property name is a reference
+			Expect(referencesTo(graph, "type")).To(Equal(1))
+		})
+
+		It("replaces the excluded property pages of the graph", func() {
+			// Given a graph that excludes the property type
+			writePage("referrer.md", "- a\n  type:: book\n  status:: open\n")
+
+			// When the program excludes status instead
+			graph := openWithConfig(`{:property-pages/excludelist [:type]}`,
+				logseq.WithInMemoryIndex(),
+				logseq.WithConfig(logseq.Config{PropertyPagesExcluded: []string{"status"}}),
+			)
+
+			// Then type is a reference and status is not
+			Expect(referencesTo(graph, "type")).To(Equal(1))
+			Expect(referencesTo(graph, "status")).To(Equal(0))
+		})
+
+		It("replaces the ignored page references of the graph", func() {
+			// Given a graph that does not ignore the references of author
+			writePage("target.md", "- content of target\n")
+			writePage("referrer.md", "- a block\n  author:: [[target]]\n")
+
+			// When the program ignores them
+			graph := openWithConfig(`{}`,
+				logseq.WithInMemoryIndex(),
+				logseq.WithConfig(logseq.Config{IgnoredPageReferences: []string{"author"}}),
+			)
+
+			// Then the value is not a reference
+			Expect(referencesTo(graph, "target")).To(Equal(0))
+		})
+
+		It("clears a list of the graph with an empty list", func() {
+			// Given a graph that ignores the references of author
+			writePage("target.md", "- content of target\n")
+			writePage("referrer.md", "- a block\n  author:: [[target]]\n")
+
+			// When the program sets an empty list
+			graph := openWithConfig(`{:ignored-page-references-keywords #{:author}}`,
+				logseq.WithInMemoryIndex(),
+				logseq.WithConfig(logseq.Config{IgnoredPageReferences: []string{}}),
+			)
+
+			// Then the value is a reference again
+			Expect(referencesTo(graph, "target")).To(Equal(1))
+		})
+
+		It("replaces the properties of the graph that are separated by commas", func() {
+			// When the program reads author as separated by commas
+			graph := openWithConfig(`{}`,
+				logseq.WithConfig(logseq.Config{PropertiesSeparatedByCommas: []string{"author"}}),
+			)
+
+			// Then the value of author is two pages
+			block, err := graph.ParseBlock("author:: First, Second Name")
+			Expect(err).ToNot(HaveOccurred())
+			Expect(block.FindProperties().Get("author").PageReferences()).To(HaveLen(2))
+		})
+
+		It("keeps the settings of an earlier use that a later use does not set", func() {
+			// Given a graph with type excluded from property pages
+			writePage("referrer.md", "- a\n  type:: book\n  status:: open\n")
+
+			// When the program sets the excluded pages and then property pages
+			graph := openWithConfig(`{}`,
+				logseq.WithInMemoryIndex(),
+				logseq.WithConfig(logseq.Config{PropertyPagesExcluded: []string{"type"}}),
+				logseq.WithConfig(logseq.Config{PropertyPages: logseq.Bool(true)}),
+			)
+
+			// Then both settings are used
+			Expect(referencesTo(graph, "type")).To(Equal(0))
+			Expect(referencesTo(graph, "status")).To(Equal(1))
+		})
+
+		It("does not change the settings of an open graph when the list of the program changes", func() {
+			// Given a graph opened with a list from the program
+			ignored := []string{"author"}
+			graph := openWithConfig(`{}`,
+				logseq.WithConfig(logseq.Config{IgnoredPageReferences: ignored}),
+			)
+
+			// When the program changes the list
+			ignored[0] = "other"
+
+			// Then the graph keeps the list it was opened with
+			block, err := graph.ParseBlock("author:: [[target]]")
+			Expect(err).ToNot(HaveOccurred())
+			Expect(block.FindProperties().GetAsNode("author").PageRefsIgnored).To(BeTrue())
+		})
+	})
+
 	Describe("DefaultJournalQueries", func() {
 		It("returns no queries when the graph has none", func() {
 			graph := openWithConfig(`{}`)

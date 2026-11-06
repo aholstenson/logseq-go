@@ -65,6 +65,17 @@ not point at a page. A graph turns this off with
 `:property-pages/enabled? false`, or for some properties with
 `:property-pages/excludelist [:type]`.
 
+A program can change these settings for itself, without a change to the
+`config.edn` that Logseq uses, with `WithConfig`. A field that is not set keeps
+the value of the graph:
+
+```go
+graph, err := logseq.Open(ctx, "path/to/graph", logseq.WithConfig(logseq.Config{
+  PropertyPages:         logseq.Bool(false),
+  IgnoredPageReferences: []string{"author"},
+}))
+```
+
 Property names follow the rules of Logseq. A name can hold letters of any
 language, digits and most punctuation, such as `ändring::` or `done?::`. A line
 with a name that Logseq does not allow, such as `a@b::` or `#tag::`, is read as

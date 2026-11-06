@@ -213,3 +213,91 @@ func (g *Graph) DefaultJournalQueries() []DefaultQuery {
 
 	return queries
 }
+
+// Config changes settings of the graph for this library only, on top of the
+// settings in `logseq/config.edn`. Use it with WithConfig when a program needs
+// the graph to be read in another way than Logseq reads it, without changing
+// the config of the graph for Logseq.
+//
+// A field that is not set keeps the value from `config.edn`, or the default of
+// Logseq when `config.edn` does not set it. A nil slice is not set, while an
+// empty slice that is not nil replaces the value with an empty list.
+type Config struct {
+	// PropertiesSeparatedByCommas are the properties whose value is a list of
+	// pages separated by commas. It replaces `:property/separated-by-commas`.
+	// The properties that Logseq always reads that way, `alias` and `tags`,
+	// are read that way also when they are not in the list.
+	PropertiesSeparatedByCommas []string
+
+	// IgnoredPageReferences are the properties whose value never points at a
+	// page, also when it is written as a link. It replaces
+	// `:ignored-page-references-keywords`.
+	IgnoredPageReferences []string
+
+	// PropertyPages is whether the name of a property points at the page with
+	// that name, so that a block with `type:: book` is a linked reference of
+	// the page `type`. It replaces `:property-pages/enabled?`. Logseq does
+	// this unless the graph turns it off. Use Bool to set it.
+	PropertyPages *bool
+
+	// PropertyPagesExcluded are the properties whose names do not point at a
+	// page, also when PropertyPages is on. It replaces
+	// `:property-pages/excludelist`.
+	PropertyPagesExcluded []string
+}
+
+// Bool returns a pointer to the value, for the fields of Config that are not
+// set when they are nil.
+func Bool(value bool) *bool {
+	return &value
+}
+
+// merge returns the config with the fields that are set in other replaced.
+func (c Config) merge(other Config) Config {
+	if other.PropertiesSeparatedByCommas != nil {
+		c.PropertiesSeparatedByCommas = other.PropertiesSeparatedByCommas
+	}
+
+	if other.IgnoredPageReferences != nil {
+		c.IgnoredPageReferences = other.IgnoredPageReferences
+	}
+
+	if other.PropertyPages != nil {
+		c.PropertyPages = other.PropertyPages
+	}
+
+	if other.PropertyPagesExcluded != nil {
+		c.PropertyPagesExcluded = other.PropertyPagesExcluded
+	}
+
+	return c
+}
+
+// applyTo replaces the settings in the config of the graph with the fields
+// that are set.
+func (c Config) applyTo(config *utils.GraphConfig) {
+	if c.PropertiesSeparatedByCommas != nil {
+		config.PropertiesSeparatedByCommas = copyStrings(c.PropertiesSeparatedByCommas)
+	}
+
+	if c.IgnoredPageReferences != nil {
+		config.IgnoredPageReferencesKeywords = copyStrings(c.IgnoredPageReferences)
+	}
+
+	if c.PropertyPages != nil {
+		enabled := *c.PropertyPages
+		config.PropertyPagesEnabled = &enabled
+	}
+
+	if c.PropertyPagesExcluded != nil {
+		config.PropertyPagesExcludelist = copyStrings(c.PropertyPagesExcluded)
+	}
+}
+
+// copyStrings copies a list, so that a change to the list of the caller does
+// not change the settings of an open graph.
+func copyStrings(values []string) []string {
+	result := make([]string, len(values))
+	copy(result, values)
+	return result
+}

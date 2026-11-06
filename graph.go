@@ -80,6 +80,9 @@ func Open(ctx context.Context, directory string, opts ...Option) (*Graph, error)
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
 	}
 
+	// The settings that the program changes replace the ones in the file.
+	options.config.applyTo(config)
+
 	// This library reads and writes Markdown, so a graph in another format
 	// can not be handled without silently mangling it.
 	if config.PreferredFormat != utils.PreferredFormatMarkdown {

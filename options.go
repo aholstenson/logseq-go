@@ -14,6 +14,18 @@ type options struct {
 
 	blockTimeFormat       string
 	blockTimeFormatToNode func(string) content.InlineNode
+
+	config Config
+}
+
+// WithConfig changes settings of the graph for this library only, on top of
+// the settings in `logseq/config.edn`. See Config for the settings. If the
+// option is used more than once, a field that is set in a later use replaces
+// the value of an earlier use.
+func WithConfig(config Config) Option {
+	return func(o *options) {
+		o.config = o.config.merge(config)
+	}
 }
 
 // WithIndex enables indexing of the graph in the given directory. The index
