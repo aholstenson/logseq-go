@@ -18,7 +18,12 @@ import (
 
 var markdownParser parser.Parser
 
-var neverMatch = regexp.MustCompile(`$.^`)
+// neverMatch is a regexp that matches no text. Logseq does not make links
+// from bare e-mail and www addresses, so the linkify parser gets it for them.
+// It is anchored at the start of the text. The parser calls it at each space
+// of a line, and a regexp that is not anchored reads to the end of the line
+// each time, which makes a long line slow to read.
+var neverMatch = regexp.MustCompile(`\A[^\x00-\x{10FFFF}]`)
 
 func init() {
 	markdownParser = parser.NewParser(
@@ -316,6 +321,21 @@ func convertChildren(src []byte, node ast.Node, target content.HasChildren) erro
 	// text nodes that are merged are unescaped as one. A backslash at the end
 	// of one of them can escape the first character of the next.
 	mergedStart := 0
+
+	// merged is the text node that the text nodes after it are merged into,
+	// and mergedStop is where the source of the last of them stops. The
+	// value is set once, when no more text nodes are merged into it, so that
+	// a line of many text nodes is read in a time that grows with its
+	// length.
+	var merged *content.Text
+	mergedStop := 0
+	setMergedValue := func() {
+		if merged != nil {
+			merged.Value = unescapePunctuation(src[mergedStart:mergedStop])
+			merged = nil
+		}
+	}
+
 	for child := node.FirstChild(); child != nil; child = child.NextSibling() {
 		node, err := convert(src, child)
 		if err != nil {
@@ -327,17 +347,19 @@ func convertChildren(src []byte, node ast.Node, target content.HasChildren) erro
 		// to work with.
 		if pText, pOk := previousChild.(*ast.Text); pOk {
 			if text, ok := child.(*ast.Text); ok && canMergeTextNodes(pText, text) {
-				previousNode := target.LastChild().(*content.Text)
-				previousNode.Value = unescapePunctuation(src[mergedStart:text.Segment.Stop])
+				merged = target.LastChild().(*content.Text)
+				mergedStop = text.Segment.Stop
 				previousChild = child
 
-				previousNode.HardLineBreak = text.HardLineBreak()
-				previousNode.SoftLineBreak = text.SoftLineBreak()
-				previousNode.TrailingSpace = trailingSpaceOf(src, text)
+				merged.HardLineBreak = text.HardLineBreak()
+				merged.SoftLineBreak = text.SoftLineBreak()
+				merged.TrailingSpace = trailingSpaceOf(src, text)
 				continue
 			}
 
 		}
+
+		setMergedValue()
 
 		if text, ok := child.(*ast.Text); ok {
 			mergedStart = text.Segment.Start
@@ -347,6 +369,7 @@ func convertChildren(src []byte, node ast.Node, target content.HasChildren) erro
 		previousChild = child
 	}
 
+	setMergedValue()
 	return nil
 }
 

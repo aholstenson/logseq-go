@@ -80,7 +80,7 @@ func (t *tagParser) Parse(parent ast.Node, block text.Reader, pc parser.Context)
 
 	// Logseq does not make tags in the text of a link, so
 	// "[Teams:#](https://a.com/)" is a link and not a tag.
-	if insideLinkLabel(parent) && closesAsInlineLink(line) {
+	if insideLinkLabel(pc) && comesLater(block, pc, "]", 1) && closesAsInlineLink(line) {
 		return nil
 	}
 
@@ -96,6 +96,10 @@ func (t *tagParser) Parse(parent ast.Node, block text.Reader, pc parser.Context)
 	// Check for extended tag syntax which wraps tags in [[...]], this is how
 	// Logseq supports tags with spaces.
 	if len(line) > 1 && line[0] == '[' && line[1] == '[' {
+		if !comesLater(block, pc, "]]", 3) {
+			return nil
+		}
+
 		// This is an extended tag, which ends in the same way as a page link.
 		end = pageLinkClose(line)
 
@@ -275,16 +279,12 @@ func followsTag(parent ast.Node) bool {
 	return ok
 }
 
-// insideLinkLabel returns true if the inline content of parent has a "[" or
-// "![" that Goldmark has not closed yet. Goldmark keeps each open bracket as
-// a node of the kind "LinkLabelState" until it finds the closing "]".
-func insideLinkLabel(parent ast.Node) bool {
-	for c := parent.LastChild(); c != nil; c = c.PreviousSibling() {
-		if c.Kind().String() == "LinkLabelState" {
-			return true
-		}
-	}
-	return false
+// insideLinkLabel returns true if the inline content has a "[" or "![" that
+// Goldmark has not closed yet. Goldmark keeps the open brackets in the parse
+// context until it finds the closing "]", so this does not have to look at
+// the content that is already parsed, which would make a long line slow.
+func insideLinkLabel(pc parser.Context) bool {
+	return pc.IsInLinkLabel()
 }
 
 // closesAsInlineLink returns true if rest has the "]" that closes the open

@@ -33,7 +33,7 @@ func (t *pageLinkParser) Trigger() []byte {
 func (t *pageLinkParser) Parse(parent ast.Node, block text.Reader, pc parser.Context) ast.Node {
 	line, _ := block.PeekLine()
 
-	if len(line) < 2 || line[0] != '[' || line[1] != '[' {
+	if len(line) < 2 || line[0] != '[' || line[1] != '[' || !comesLater(block, pc, "]]", 2) {
 		return nil
 	}
 

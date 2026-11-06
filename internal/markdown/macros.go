@@ -78,6 +78,11 @@ func (t *macroParser) Parse(parent ast.Node, block text.Reader, pc parser.Contex
 		return nil
 	}
 
+	if !comesLater(block, pc, "}}", 2) {
+		// Without a closing }} on the line, this isn't a macro.
+		return nil
+	}
+
 	// Check if there is an extra {
 	tripleCurly := false
 	if len(line) > 2 && line[2] == '{' {

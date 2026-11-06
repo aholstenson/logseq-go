@@ -132,6 +132,17 @@ func markupEscapes(str string, before rune, tags bool, headings bool, escapes ma
 		return
 	}
 
+	// Where the closing markers are last found. A marker that opens before
+	// one of them can be closed. Finding them once keeps a long text with
+	// many opening markers fast to write.
+	lastMacroClose := strings.LastIndex(str, "}}")
+	lastPageLinkClose := strings.LastIndex(str, "]]")
+	lastAngleClose := strings.LastIndexByte(str, '>')
+
+	// backticksEscaped is whether all backticks from a position on have been
+	// escaped, which is at most once.
+	backticksEscaped := false
+
 	for i := 0; i < len(str); i++ {
 		switch str[i] {
 		case '#':
@@ -140,7 +151,7 @@ func markupEscapes(str string, before rune, tags bool, headings bool, escapes ma
 				previous, _ = utf8.DecodeLastRuneInString(str[:i])
 			}
 
-			if (tags && startsTag(str, i, previous)) || (headings && startsHeading(str, i, previous)) {
+			if (tags && startsTag(str, i, previous, lastPageLinkClose)) || (headings && startsHeading(str, i, previous)) {
 				escapes[i] = true
 			}
 		case '(':
@@ -148,7 +159,7 @@ func markupEscapes(str string, before rune, tags bool, headings bool, escapes ma
 				escapes[i] = true
 			}
 		case '{':
-			if strings.HasPrefix(str[i:], "{{") && strings.Contains(str[i+2:], "}}") {
+			if strings.HasPrefix(str[i:], "{{") && lastMacroClose >= i+2 {
 				escapes[i] = true
 			}
 		case '`':
@@ -157,7 +168,7 @@ func markupEscapes(str string, before rune, tags bool, headings bool, escapes ma
 				end++
 			}
 
-			if backtickRunAt(str, end, end-i) >= 0 {
+			if !backticksEscaped && backtickRunAt(str, end, end-i) >= 0 {
 				// A backslash does not escape a backtick inside code, so an
 				// escaped backtick can still close code that a backtick
 				// that is not escaped opens. All of them are escaped.
@@ -166,11 +177,13 @@ func markupEscapes(str string, before rune, tags bool, headings bool, escapes ma
 						escapes[k] = true
 					}
 				}
+
+				backticksEscaped = true
 			}
 
 			i = end - 1
 		case '<':
-			if startsHTMLOrAutoLink(str[i+1:]) {
+			if lastAngleClose > i && startsHTMLOrAutoLink(str[i+1:]) {
 				escapes[i] = true
 			}
 		}
@@ -178,8 +191,9 @@ func markupEscapes(str string, before rune, tags bool, headings bool, escapes ma
 }
 
 // startsTag returns true if the `#` at the position would be read back as the
-// start of a tag, using the rules of the tag parser.
-func startsTag(str string, i int, previous rune) bool {
+// start of a tag, using the rules of the tag parser. lastPageLinkClose is
+// where the last `]]` of the text starts, or -1 if it has none.
+func startsTag(str string, i int, previous rune, lastPageLinkClose int) bool {
 	if previous != unknownRune && !unicode.IsSpace(asCharacter(previous)) &&
 		!strings.ContainsRune(tagPrefixes, previous) {
 		return false
@@ -202,7 +216,7 @@ func startsTag(str string, i int, previous rune) bool {
 	}
 
 	if strings.HasPrefix(rest, "[[") {
-		return strings.Contains(rest[2:], "]]")
+		return lastPageLinkClose >= i+3
 	}
 
 	return tagNameLength([]byte(rest)) > 0
@@ -271,8 +285,10 @@ func backtickRunAt(str string, from int, length int) int {
 
 // startsHTMLOrAutoLink returns true if the text after a `<` could make the
 // `<` the start of an HTML tag or an autolink such as `<https://a.com>`.
+//
+// The caller checks that a `>` comes later in the text.
 func startsHTMLOrAutoLink(rest string) bool {
-	if rest == "" || !strings.Contains(rest, ">") {
+	if rest == "" {
 		return false
 	}
 
@@ -372,6 +388,7 @@ func bracketEscapes(str string, escapes map[int]bool) {
 		return
 	}
 
+	ends := &pageLinkEnds{str: str, escapes: escapes}
 	for i := 0; i < len(str); i++ {
 		switch str[i] {
 		case '[':
@@ -382,7 +399,7 @@ func bracketEscapes(str string, escapes map[int]bool) {
 			if str[i+1] == '[' && (i == 0 || str[i-1] != '!') {
 				// A page link. After `![` the reader starts an image, so
 				// `![[Page]]` is text and is not changed.
-				if end := pageLinkEnd(str, i+2, escapes); end >= 0 {
+				if end := ends.find(i + 2); end >= 0 {
 					escapes[end+1] = true
 				}
 			} else if str[i+1] == '^' && footnoteLabelEnd([]byte(str[i:])) >= 0 {
@@ -403,25 +420,76 @@ func bracketEscapes(str string, escapes map[int]bool) {
 	}
 }
 
-// pageLinkEnd finds the `]]` that ends a page link that starts before the
-// given position, in the same way as the page link parser. Returns the
-// position of the first `]`, or -1 if the page link does not end on the same
-// line.
-func pageLinkEnd(str string, from int, escapes map[int]bool) int {
-	for j := from; j+1 < len(str) && str[j] != '\n'; j++ {
-		if str[j] == ']' && str[j+1] == ']' && !escapes[j] && !escapes[j+1] {
-			return j
+// pageLinkEnds finds the `]]` that end page links in a text. It remembers the
+// last `]]` and line break it found, so that a long line with many `[[` is
+// read about once, and not once for each `[[`.
+type pageLinkEnds struct {
+	str     string
+	escapes map[int]bool
+
+	closers    nextMatch
+	lineBreaks nextMatch
+}
+
+// find finds the `]]` that ends a page link that starts before the given
+// position, in the same way as the page link parser. Returns the position of
+// the first `]`, or -1 if the page link does not end on the same line.
+func (e *pageLinkEnds) find(from int) int {
+	search := func(from int) int {
+		for j := from; j+1 < len(e.str); j++ {
+			if e.closes(j) {
+				return j
+			}
 		}
+
+		return -1
 	}
 
-	return -1
+	end := e.closers.find(from, search)
+	if end >= 0 && !e.closes(end) {
+		// The `]]` has been escaped since it was found.
+		e.closers = nextMatch{}
+		end = e.closers.find(from, search)
+	}
+
+	if end < 0 {
+		return -1
+	}
+
+	lineBreak := e.lineBreaks.find(from, func(from int) int {
+		if i := strings.IndexByte(e.str[from:], '\n'); i >= 0 {
+			return from + i
+		}
+
+		return -1
+	})
+
+	if lineBreak >= 0 && lineBreak < end {
+		return -1
+	}
+
+	return end
+}
+
+// closes checks if a `]]` that is not escaped starts at the position.
+func (e *pageLinkEnds) closes(j int) bool {
+	return e.str[j] == ']' && e.str[j+1] == ']' && !e.escapes[j] && !e.escapes[j+1]
 }
 
 // closesLink returns true if a `]` that is directly followed by rest would end
 // the text of a link. The reader decides this, so that a `]` before something
 // that is not a valid destination, such as `(Page name)`, is not escaped.
+//
+// Only the part of rest that a link can take up is read, see linkCloseBound,
+// so that a long text with many `](` is written in a time that grows with its
+// length.
 func closesLink(rest string) bool {
-	src := []byte("[x]" + rest)
+	end := linkCloseBound(rest)
+	if end < 0 {
+		return false
+	}
+
+	src := []byte("[x]" + rest[:end])
 
 	options := defaultParseOptions()
 	context := parser.NewContext()
@@ -446,6 +514,101 @@ func closesLink(rest string) bool {
 	return found
 }
 
+// linkCloseBound finds where the destination and title of a link that starts
+// with the `(` at the start of rest would end, after the closing `)`. It
+// returns -1 if no link can start there. The rules are looser than those of
+// the reader, so that the reader can decide from the part of rest before the
+// end.
+func linkCloseBound(rest string) int {
+	if !strings.HasPrefix(rest, "(") {
+		return -1
+	}
+
+	if length := pageRefLength([]byte(rest[1:])); length > 0 && 1+length < len(rest) && rest[1+length] == ')' {
+		// A label for a page, as in `[label]([[Page]])`, see
+		// labelledRefLinkParser.
+		return 1 + length + 1
+	}
+
+	i := skipLinkSpace(rest, 1)
+	if i < len(rest) && rest[i] == ')' {
+		return i + 1
+	}
+
+	// The destination.
+	if i < len(rest) && rest[i] == '<' {
+		for i++; i < len(rest) && rest[i] != '>'; i++ {
+			if rest[i] == '\\' && i+1 < len(rest) && util.IsPunct(rest[i+1]) {
+				i++
+			}
+		}
+
+		if i >= len(rest) {
+			return -1
+		}
+
+		i++
+	} else {
+		depth := 0
+	destination:
+		for ; i < len(rest); i++ {
+			switch c := rest[i]; {
+			case c == '\\' && i+1 < len(rest) && util.IsPunct(rest[i+1]):
+				// A backslash escapes only ASCII punctuation.
+				i++
+			case c == '(':
+				depth++
+			case c == ')':
+				if depth == 0 {
+					return i + 1
+				}
+
+				depth--
+			case c <= ' ':
+				break destination
+			}
+		}
+	}
+
+	// The title, if there is one, and then the closing `)`.
+	i = skipLinkSpace(rest, i)
+	if i >= len(rest) {
+		return -1
+	}
+
+	switch rest[i] {
+	case ')':
+		return i + 1
+	case '"', '\'', '(':
+		closer := rest[i]
+		if closer == '(' {
+			closer = ')'
+		}
+
+		for i++; i < len(rest) && rest[i] != closer; i++ {
+			if rest[i] == '\\' && i+1 < len(rest) && util.IsPunct(rest[i+1]) {
+				i++
+			}
+		}
+
+		i = skipLinkSpace(rest, i+1)
+		if i < len(rest) && rest[i] == ')' {
+			return i + 1
+		}
+	}
+
+	return -1
+}
+
+// skipLinkSpace skips the spaces, tabs and line breaks from the position.
+func skipLinkSpace(str string, i int) int {
+	for i < len(str) && (str[i] == ' ' || str[i] == '\t' || str[i] == '\n' || str[i] == '\r') {
+		i++
+	}
+
+	return i
+}
+
 // mathEscapes finds the dollar signs of the parts of a text that would be
 // read back as a LaTeX formula, so that text such as `$x$` stays text. The
 // dollar signs within a formula are escaped as well, as leaving one of them
@@ -456,13 +619,14 @@ func mathEscapes(str string, escapes map[int]bool) {
 	}
 
 	src := []byte(str)
+	scanner := newMathScanner(src)
 	for i := 0; i < len(src); {
 		if src[i] != '$' {
 			i++
 			continue
 		}
 
-		_, length, _, ok := mathAt(src[i:])
+		_, length, _, ok := scanner.at(i, scanner.lineEnd(i))
 		if !ok {
 			i++
 			continue

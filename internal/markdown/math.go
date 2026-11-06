@@ -49,10 +49,14 @@ func (m *mathParser) Trigger() []byte {
 func (m *mathParser) Parse(parent ast.Node, block text.Reader, pc parser.Context) ast.Node {
 	line, _ := block.PeekLine()
 	if len(line) > 0 && line[0] == '\\' {
+		if !closesInParagraph(parent, block, pc) {
+			return nil
+		}
+
 		return parseBackslashMath(block)
 	}
 
-	value, length, displayed, ok := mathAt(line)
+	value, length, displayed, ok := m.formulaAt(block, pc)
 	if !ok {
 		return nil
 	}
@@ -64,7 +68,60 @@ func (m *mathParser) Parse(parent ast.Node, block text.Reader, pc parser.Context
 	}
 }
 
+// mathScannerKey is where the mathScanner of the current parse is kept.
+var mathScannerKey = parser.NewContextKey()
+
+// formulaAt reads the formula that starts at the position of the reader, see
+// mathScanner.at. All formulas of a parse use the same mathScanner, which is
+// kept in the parse context.
+func (m *mathParser) formulaAt(block text.Reader, pc parser.Context) ([]byte, int, bool, bool) {
+	line, segment := block.PeekLine()
+	end := len(line)
+	for end > 0 && (line[end-1] == '\n' || line[end-1] == '\r') {
+		end--
+	}
+
+	if segment.Padding != 0 {
+		// The line does not match the source, so it is read on its own.
+		return newMathScanner(line).at(0, end)
+	}
+
+	source := block.Source()
+	scanner, _ := pc.Get(mathScannerKey).(*mathScanner)
+	if scanner == nil || len(scanner.src) != len(source) || (len(source) > 0 && &scanner.src[0] != &source[0]) {
+		scanner = newMathScanner(source)
+		pc.Set(mathScannerKey, scanner)
+	}
+
+	return scanner.at(segment.Start, segment.Start+end)
+}
+
 var _ parser.InlineParser = (*mathParser)(nil)
+
+// closesInParagraph checks if the `\)` or `\]` that closes a formula that
+// starts with `\(` or `\[` at the position of the reader comes later in the
+// paragraph. It returns true if this cannot be known, and the formula is then
+// read to find out. See nextInSource for why this is checked first.
+func closesInParagraph(parent ast.Node, block text.Reader, pc parser.Context) bool {
+	line, segment := block.PeekLine()
+	if len(line) < 2 || (line[1] != '(' && line[1] != '[') || segment.Padding != 0 {
+		return true
+	}
+
+	lines := parent.Lines()
+	if lines == nil || lines.Len() == 0 {
+		return true
+	}
+
+	closing := `\)`
+	if line[1] == '[' {
+		closing = `\]`
+	}
+
+	end := lines.At(lines.Len() - 1).Stop
+	at := nextInSource(block.Source(), pc, closing, segment.Start+2)
+	return at >= 0 && at+len(closing) <= end
+}
 
 // parseBackslashMath reads a formula between `\(` and `\)`, or between `\[`
 // and `\]`. The formula ends at the first closing delimiter, and it can go on
@@ -108,56 +165,103 @@ func parseBackslashMath(block text.Reader) ast.Node {
 	}
 }
 
-// mathAt reads the formula that starts at the beginning of the given text,
+// mathScanner finds the formulas in a text. It remembers the last match of
+// each search, so that looking for the end of a formula at each dollar sign
+// of a long line reads the line about once instead of once for each dollar
+// sign.
+type mathScanner struct {
+	src []byte
+
+	lineEnds nextMatch
+	doubles  nextMatch
+	closers  nextMatch
+}
+
+func newMathScanner(src []byte) *mathScanner {
+	return &mathScanner{src: src}
+}
+
+// lineEnd finds where the line that holds the offset ends, as a formula does
+// not carry on past the line it starts on.
+func (s *mathScanner) lineEnd(offset int) int {
+	end := s.lineEnds.find(offset, func(from int) int {
+		if i := bytes.IndexByte(s.src[from:], '\n'); i >= 0 {
+			return from + i
+		}
+
+		return -1
+	})
+
+	if end < 0 {
+		return len(s.src)
+	}
+
+	return end
+}
+
+// at reads the formula that starts at the offset and ends before end,
 // returning its LaTeX, how much of the text it takes up and whether it was
 // written with two dollar signs.
 //
-// A formula ends with the line it starts on. The rules for a formula between
-// single dollar signs keep the amounts in a sentence such as `$5 and $10` out
-// of it: the opening dollar sign is followed by something other than a space,
-// the closing one comes after something other than a space, and a digit never
-// follows the closing one.
-func mathAt(line []byte) (value []byte, length int, displayed bool, ok bool) {
-	if end := lineEnd(line); end < len(line) {
-		line = line[:end]
-	}
-
+// The rules for a formula between single dollar signs keep the amounts in a
+// sentence such as `$5 and $10` out of it: the opening dollar sign is
+// followed by something other than a space, the closing one comes after
+// something other than a space, and a digit never follows the closing one.
+func (s *mathScanner) at(offset int, end int) (value []byte, length int, displayed bool, ok bool) {
+	line := s.src[offset:end]
 	if bytes.HasPrefix(line, []byte("$$")) {
-		closing := bytes.Index(line[2:], []byte("$$"))
-		if closing <= 0 {
+		closing := s.doubles.find(offset+2, func(from int) int {
+			if i := bytes.Index(s.src[from:], []byte("$$")); i >= 0 {
+				return from + i
+			}
+
+			return -1
+		})
+
+		if closing <= offset+2 || closing+2 > end {
 			return nil, 0, false, false
 		}
 
-		return line[2 : 2+closing], closing + 4, true, true
+		return s.src[offset+2 : closing], closing + 2 - offset, true, true
 	}
 
 	if len(line) < 3 || line[0] != '$' || isMathSpace(line[1]) {
 		return nil, 0, false, false
 	}
 
-	for i := 2; i < len(line); i++ {
-		if line[i] != '$' || isMathSpace(line[i-1]) {
-			continue
+	closing := s.closers.find(offset+2, func(from int) int {
+		for i := from; i < len(s.src); i++ {
+			if s.closesFormula(i) {
+				return i
+			}
 		}
 
-		if i+1 < len(line) && util.IsNumeric(line[i+1]) {
-			continue
-		}
+		return -1
+	})
 
-		return line[1:i], i + 1, false, true
+	if (closing < 0 || closing >= end) && end-1 >= offset+2 &&
+		s.src[end-1] == '$' && !isMathSpace(s.src[end-2]) {
+		// A dollar sign at the end of the line closes the formula also when
+		// a digit comes after the end, such as in the next cell of a table.
+		closing = end - 1
 	}
 
-	return nil, 0, false, false
+	if closing < 0 || closing >= end {
+		return nil, 0, false, false
+	}
+
+	return s.src[offset+1 : closing], closing + 1 - offset, false, true
 }
 
-// lineEnd finds where the first line of the given text ends, as a formula does
-// not carry on past the line it starts on.
-func lineEnd(line []byte) int {
-	if i := bytes.IndexByte(line, '\n'); i >= 0 {
-		return i
+// closesFormula checks if the dollar sign at the position can close a formula
+// between single dollar signs: it comes after something other than a space,
+// and no digit follows it.
+func (s *mathScanner) closesFormula(i int) bool {
+	if s.src[i] != '$' || isMathSpace(s.src[i-1]) {
+		return false
 	}
 
-	return len(line)
+	return i+1 >= len(s.src) || !util.IsNumeric(s.src[i+1])
 }
 
 func isMathSpace(b byte) bool {
