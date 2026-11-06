@@ -156,7 +156,7 @@ func markupEscapes(str string, before rune, tags bool, headings bool, escapes ma
 				escapes[i] = true
 			}
 		case '(':
-			if blockRefLength([]byte(str[i:])) > 0 {
+			if blockRefLength([]byte(str[i:])) > 0 && blockRefCanStartAt(str, i, escapes) {
 				escapes[i] = true
 			}
 		case '{':
@@ -189,6 +189,24 @@ func markupEscapes(str string, before rune, tags bool, headings bool, escapes ma
 			}
 		}
 	}
+}
+
+// blockRefCanStartAt returns true if a block reference can start at the
+// position in the text when it is read back, using the rules of
+// canStartBlockRef. At the start of the text, the node before can be markup,
+// after which a block reference can start. escapes are the characters that
+// are already escaped, as an escaped character is its own element.
+func blockRefCanStartAt(str string, i int, escapes map[int]bool) bool {
+	if i == 0 || escapes[i-1] || strings.IndexByte(blockRefPrefixes, str[i-1]) >= 0 {
+		return true
+	}
+
+	start := 0
+	if i > maxTimestampLength {
+		start = i - maxTimestampLength
+	}
+
+	return endsWithTimestamp([]byte(str[start:i]))
 }
 
 // startsTag returns true if the `#` at the position would be read back as the
@@ -1144,6 +1162,13 @@ func (w *Output) writeText(node *content.Text) error {
 		// The next node starts with `(` or `[`, which together with the
 		// closing bracket would be read back as a link.
 		value = value[:len(value)-1] + `\]`
+	}
+
+	if ref, ok := node.NextSibling().(*content.BlockRef); ok && !ref.HasLabel() &&
+		!node.SoftLineBreak && !node.HardLineBreak && value != "" && !blockRefCanFollow([]byte(value)) && isASCIIPunctuation(rune(value[len(value)-1])) {
+		// A block reference directly after text is read back as text, but
+		// it is read after an escaped character, as in `\)((id))`.
+		value = value[:len(value)-1] + `\` + value[len(value)-1:]
 	}
 
 	if image, ok := node.PreviousSibling().(*content.Image); ok && image.Metadata == "" &&

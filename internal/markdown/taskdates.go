@@ -196,55 +196,13 @@ func parseLogseqTaskDate(line string) *taskDate {
 		return nil
 	}
 
-	var closer rune
-	switch afterKeyword[0] {
-	case '<':
-		closer = '>'
-	case '[':
-		closer = ']'
-	default:
-		return nil
-	}
-
-	r := &timestampReader{value: afterKeyword[1:], closer: closer}
-
-	// The date and exactly one space.
-	dateText := r.part()
-	if dateText == "" || !r.space() {
-		return nil
-	}
-
-	numbers, ok := leadingNumbers(dateText, '-', 3)
+	timestamp, ok := scanLogseqTimestamp(afterKeyword)
 	if !ok {
 		return nil
 	}
 
-	// The weekday.
-	if r.letters() == "" {
-		return nil
-	}
-
-	// The time and the repeater.
-	// A space must be followed by a part, as in `<2024-01-01 Mon >` the space
-	// is where the closing character must be.
-	var first, second string
-	if r.space() {
-		if first = r.part(); first == "" {
-			return nil
-		}
-
-		if r.space() {
-			if second = r.part(); second == "" {
-				return nil
-			}
-		}
-	}
-
-	if !r.close() {
-		return nil
-	}
-
-	node.length = len(line) - len(r.value)
+	node.length = len(line) - len(timestamp.rest)
+	numbers, first, second := timestamp.date, timestamp.first, timestamp.second
 
 	timeText, repeaterText := "", ""
 	switch {
@@ -283,6 +241,74 @@ func parseLogseqTaskDate(line string) *taskDate {
 	}
 
 	return node
+}
+
+// logseqTimestamp is a timestamp split into its parts by
+// scanLogseqTimestamp.
+type logseqTimestamp struct {
+	// date is the year, month and day.
+	date []int
+	// first and second are the parts after the weekday, or empty.
+	first  string
+	second string
+	// rest is the text after the timestamp.
+	rest string
+}
+
+// scanLogseqTimestamp reads a timestamp in `<` and `>` or in `[` and `]` at
+// the start of the value, with the syntax rules of mldoc that
+// parseLogseqTaskDate gives. mldoc uses the same rules for a timestamp in
+// text. It does not check that the date or the time exists.
+func scanLogseqTimestamp(value string) (logseqTimestamp, bool) {
+	var closer rune
+	switch {
+	case strings.HasPrefix(value, "<"):
+		closer = '>'
+	case strings.HasPrefix(value, "["):
+		closer = ']'
+	default:
+		return logseqTimestamp{}, false
+	}
+
+	r := &timestampReader{value: value[1:], closer: closer}
+
+	// The date and exactly one space.
+	dateText := r.part()
+	if dateText == "" || !r.space() {
+		return logseqTimestamp{}, false
+	}
+
+	numbers, ok := leadingNumbers(dateText, '-', 3)
+	if !ok {
+		return logseqTimestamp{}, false
+	}
+
+	// The weekday.
+	if r.letters() == "" {
+		return logseqTimestamp{}, false
+	}
+
+	// The time and the repeater.
+	// A space must be followed by a part, as in `<2024-01-01 Mon >` the space
+	// is where the closing character must be.
+	var first, second string
+	if r.space() {
+		if first = r.part(); first == "" {
+			return logseqTimestamp{}, false
+		}
+
+		if r.space() {
+			if second = r.part(); second == "" {
+				return logseqTimestamp{}, false
+			}
+		}
+	}
+
+	if !r.close() {
+		return logseqTimestamp{}, false
+	}
+
+	return logseqTimestamp{date: numbers, first: first, second: second, rest: r.value}, true
 }
 
 // parseRepeater reads a repeater in the way mldoc reads it. When the second

@@ -3827,6 +3827,103 @@ var _ = Describe("Parsing", func() {
 		})
 	})
 
+	Describe("Block references directly after a word", func() {
+		// blockRefIDs returns the id of every block reference in the parsed text.
+		blockRefIDs := func(input string) []string {
+			block, err := markdown.ParseString(input)
+			Expect(err).ToNot(HaveOccurred())
+
+			ids := make([]string, 0)
+			for _, node := range block.Children().FilterDeep(content.IsOfType[*content.BlockRef]()) {
+				ids = append(ids, node.(*content.BlockRef).ID)
+			}
+			return ids
+		}
+
+		It("makes no block reference directly after a colon", func() {
+			// Given `ref:((uuid))` with no space before the parentheses
+			// When it is parsed
+			// Then there is no block reference, the same as Logseq
+			Expect(blockRefIDs("- ref:((64f0a2b1-1234-4abc-9def-0123456789ab))")).To(BeEmpty())
+		})
+
+		It("reads a block reference after a space", func() {
+			// Given `ref: ((uuid))` with a space before the parentheses
+			// When it is parsed
+			// Then it is a block reference
+			Expect(blockRefIDs("- ref: ((64f0a2b1-1234-4abc-9def-0123456789ab))")).To(ConsistOf("64f0a2b1-1234-4abc-9def-0123456789ab"))
+		})
+
+		DescribeTable("block references that Logseq reads",
+			func(input string) {
+				// Given `((uuid))` after a character or element that ends a
+				// run of plain text in Logseq
+				// When it is parsed
+				// Then it is a block reference
+				Expect(blockRefIDs(input)).To(ConsistOf("64f0a2b1-1234-4abc-9def-0123456789ab"))
+			},
+			Entry("at the start", "- ((64f0a2b1-1234-4abc-9def-0123456789ab))"),
+			Entry("after an underscore", "- a_((64f0a2b1-1234-4abc-9def-0123456789ab))"),
+			Entry("after a page link", "- [[x]]((64f0a2b1-1234-4abc-9def-0123456789ab))"),
+			Entry("after an escaped character", "- \\)((64f0a2b1-1234-4abc-9def-0123456789ab))"),
+			Entry("after a timestamp", "- <2024-01-01 Mon>((64f0a2b1-1234-4abc-9def-0123456789ab))"),
+			Entry("after a timestamp with a time and a repeater", "- <2024-01-01 Mon 10:00 .+1w>((64f0a2b1-1234-4abc-9def-0123456789ab))"),
+			Entry("with a label", "- see[lbl](((64f0a2b1-1234-4abc-9def-0123456789ab)))"),
+		)
+
+		DescribeTable("text that Logseq does not read as a block reference",
+			func(input string) {
+				// Given `((uuid))` that continues a run of plain text
+				// When it is parsed
+				// Then there is no block reference
+				Expect(blockRefIDs(input)).To(BeEmpty())
+			},
+			Entry("after a letter", "- a((64f0a2b1-1234-4abc-9def-0123456789ab))"),
+			Entry("after a letter that is not ASCII", "- é((64f0a2b1-1234-4abc-9def-0123456789ab))"),
+			Entry("after a closing parenthesis", "- )((64f0a2b1-1234-4abc-9def-0123456789ab))"),
+			Entry("in three parentheses", "- (((64f0a2b1-1234-4abc-9def-0123456789ab)))"),
+			Entry("after an escaped backslash", "- \\\\)((64f0a2b1-1234-4abc-9def-0123456789ab))"),
+			Entry("after a timestamp directly after a word", "- a<2024-01-01 Mon>((64f0a2b1-1234-4abc-9def-0123456789ab))"),
+		)
+
+		DescribeTable("saves the text unchanged",
+			func(input string) {
+				// Given a block with `((uuid))` directly after other text
+				block, err := markdown.ParseString(input)
+				Expect(err).ToNot(HaveOccurred())
+
+				// When it is written
+				written, err := markdown.AsString(block)
+
+				// Then the text is unchanged
+				Expect(err).ToNot(HaveOccurred())
+				Expect(written).To(Equal(input))
+			},
+			Entry("text after a word", "- ref:((64f0a2b1-1234-4abc-9def-0123456789ab))"),
+			Entry("text in three parentheses", "- (((64f0a2b1-1234-4abc-9def-0123456789ab)))"),
+			Entry("a reference after an escaped character", "- \\)((64f0a2b1-1234-4abc-9def-0123456789ab))"),
+			Entry("a reference after a timestamp", "- <2024-01-01 Mon>((64f0a2b1-1234-4abc-9def-0123456789ab))"),
+			Entry("a reference after a page link", "- [[x]]((64f0a2b1-1234-4abc-9def-0123456789ab))"),
+			Entry("a reference on the next line", "- {\n  ((64f0a2b1-1234-4abc-9def-0123456789ab))"),
+		)
+
+		It("keeps a block reference after text that is built in code", func() {
+			// Given text that ends in `)` and a block reference after it
+			block := content.NewBlock(content.NewParagraph(
+				content.NewText("see)"),
+				content.NewBlockRef("64f0a2b1-1234-4abc-9def-0123456789ab"),
+			))
+
+			// When it is written and read again
+			written, err := markdown.AsString(block)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Then the `)` is escaped and the block reference is kept
+			Expect(written).To(Equal("see\\)((64f0a2b1-1234-4abc-9def-0123456789ab))"))
+			Expect(blockRefIDs("- " + written)).To(ConsistOf("64f0a2b1-1234-4abc-9def-0123456789ab"))
+		})
+	})
+
 	Describe("Page links after an exclamation mark", func() {
 		It("refers to the page of a page link after an exclamation mark", func() {
 			// Given a block with `![[My Page]]`
