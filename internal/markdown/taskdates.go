@@ -15,10 +15,10 @@ import (
 
 // taskDateRegexp matches a full `SCHEDULED:` or `DEADLINE:` line in the form
 // that Logseq reads: one space between the parts, and a weekday of ASCII
-// letters after the date. The weekday is only there for readability and is
-// regenerated on output, so it is matched but not captured. Lines that do not
-// match in full are left alone and parsed as regular text, so nothing is lost
-// for syntax this library does not model.
+// letters after the date. The weekday is only there for readability, so it is
+// matched but not captured. Lines that do not match in full are left alone
+// and parsed as regular text, so nothing is lost for syntax this library does
+// not model.
 var taskDateRegexp = regexp.MustCompile(
 	`^(SCHEDULED|DEADLINE): +<(\d{4})-(\d{2})-(\d{2}) [A-Za-z]+(?: (\d{1,2}):(\d{2}))?(?: (\+\+|\.\+|\+)(\d+)([hdwmy]))?>$`,
 )
@@ -104,6 +104,28 @@ func (b *taskDateParser) CanInterruptParagraph() bool {
 
 func (b *taskDateParser) CanAcceptIndentedLine() bool {
 	return false
+}
+
+// taskDateReadsBack returns true if Logseq reads the text of a task date line
+// as the same date: the same type, day, time of day and repeater. The text is
+// read in the form that Logseq reads, see taskDateRegexp. A line that only
+// WithRelaxedTaskDates reads is not kept, so that it is written in a form
+// that Logseq reads.
+func taskDateReadsBack(source string, date *content.TaskDate) bool {
+	if strings.ContainsAny(source, "\r\n") {
+		return false
+	}
+
+	parsed := parseTaskDate(source, taskDateRegexp)
+	if parsed == nil || parsed.DateType != date.Type || parsed.HasTime != date.HasTime || !parsed.Date.Equal(date.Date) {
+		return false
+	}
+
+	if (parsed.Repeater == nil) != (date.Repeater == nil) {
+		return false
+	}
+
+	return parsed.Repeater == nil || *parsed.Repeater == *date.Repeater
 }
 
 // parseTaskDate parses a single line with the given pattern, see

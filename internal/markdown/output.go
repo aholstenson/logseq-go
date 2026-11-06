@@ -2937,6 +2937,35 @@ func (w *Output) writeTaskDate(node *content.TaskDate) error {
 	}
 
 	value := strings.Builder{}
+	if source := node.DateSource(); source != "" && taskDateReadsBack(source, node) {
+		// The date is not changed, so its text is written as it is.
+		value.WriteString(source)
+	} else {
+		err := writeTaskDateValue(&value, keyword, node)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Task dates belong to the line above them, so they never get a blank line
+	// of their own when the previous line type is automatic.
+	err := w.startBlockWithAutomaticBehavior(node, "", false)
+	if err != nil {
+		return err
+	}
+
+	err = w.writeRaw(value.String())
+	if err != nil {
+		return err
+	}
+
+	w.endBlock()
+	return nil
+}
+
+// writeTaskDateValue writes a task date in the form that Logseq writes, such
+// as `SCHEDULED: <2024-01-15 Mon 09:00 .+3d>`.
+func writeTaskDateValue(value *strings.Builder, keyword string, node *content.TaskDate) error {
 	value.WriteString(keyword)
 	value.WriteString(": <")
 	value.WriteString(node.Date.Format("2006-01-02 Mon"))
@@ -2956,20 +2985,6 @@ func (w *Output) writeTaskDate(node *content.TaskDate) error {
 	}
 
 	value.WriteString(">")
-
-	// Task dates belong to the line above them, so they never get a blank line
-	// of their own when the previous line type is automatic.
-	err := w.startBlockWithAutomaticBehavior(node, "", false)
-	if err != nil {
-		return err
-	}
-
-	err = w.writeRaw(value.String())
-	if err != nil {
-		return err
-	}
-
-	w.endBlock()
 	return nil
 }
 

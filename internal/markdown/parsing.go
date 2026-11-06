@@ -304,7 +304,7 @@ func convert(src []byte, in ast.Node) (content.Node, error) {
 	case *logbook:
 		return convertLogbook(src, node)
 	case *taskDate:
-		return convertTaskDate(node)
+		return convertTaskDate(src, node)
 	case *frontMatter:
 		return convertFrontMatter(src, node)
 	}
@@ -1232,7 +1232,7 @@ func convertLogbook(src []byte, node *logbook) (content.Node, error) {
 	return logbook, nil
 }
 
-func convertTaskDate(node *taskDate) (content.Node, error) {
+func convertTaskDate(src []byte, node *taskDate) (content.Node, error) {
 	var date *content.TaskDate
 	if node.HasTime {
 		date = content.NewTaskDateWithTime(node.DateType, node.Date)
@@ -1240,6 +1240,7 @@ func convertTaskDate(node *taskDate) (content.Node, error) {
 		date = content.NewTaskDate(node.DateType, node.Date)
 	}
 	date.Repeater = node.Repeater
+	date.SetDateSource(string(node.Segment.Value(src)))
 
 	updatePreviousLineKeepingBlank(node, date)
 

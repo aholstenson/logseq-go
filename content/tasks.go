@@ -449,6 +449,9 @@ type TaskDate struct {
 
 	// Repeater describes how the date repeats, or nil if it does not repeat.
 	Repeater *Repeater
+
+	// dateSource is the text of the line in the file, see DateSource.
+	dateSource string
 }
 
 // NewTaskDate creates a date without a time of day. Any time of day in the
@@ -579,6 +582,19 @@ func addMonths(date time.Time, months int) time.Time {
 	}
 
 	return first.AddDate(0, 0, day-1)
+}
+
+// DateSource gets the text of the line as it is in the file, such as
+// `SCHEDULED: <2024-01-01 Monday 9:00>`. A date whose text reads back as the
+// same date is written with this text, so that its weekday, time and spaces
+// do not change. It is empty for a date that was not read from a file.
+func (t *TaskDate) DateSource() string {
+	return t.dateSource
+}
+
+// SetDateSource sets the text of the line, see DateSource.
+func (t *TaskDate) SetDateSource(source string) {
+	t.dateSource = source
 }
 
 func (t *TaskDate) WithPreviousLineType(previousLineType PreviousLineType) *TaskDate {

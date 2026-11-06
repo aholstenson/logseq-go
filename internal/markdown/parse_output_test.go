@@ -377,9 +377,9 @@ var _ = Describe("Parsing then outputting", func() {
 			FullyEqual("Scheduled in sub blocks", "- TODO Task\n  SCHEDULED: <2024-01-15 Mon>\n- TODO Other")
 			FullyEqual("Scheduled after a blank line", "TODO Task\n\nSCHEDULED: <2024-01-15 Mon>")
 
-			// The day name is regenerated from the date, so a wrong one is
-			// corrected on the way out.
-			Varies("Scheduled with the wrong day name", "TODO Task\nSCHEDULED: <2024-01-15 Fri>", "TODO Task\nSCHEDULED: <2024-01-15 Mon>")
+			// Logseq reads the date and not the day name, so a wrong day name
+			// is kept as it is when the date is not changed.
+			FullyEqual("Scheduled with the wrong day name", "TODO Task\nSCHEDULED: <2024-01-15 Fri>")
 
 			// Syntax that is not modelled stays as text so nothing is lost.
 			FullyEqual("Scheduled with a time range", "TODO Task\nSCHEDULED: <2024-01-15 Mon 10:00-11:00>")
@@ -622,5 +622,55 @@ var _ = Describe("Blocks with an empty first line", func() {
 		v, err := markdown.AsString(content.NewBlock(block))
 		Expect(err).ToNot(HaveOccurred())
 		Expect(v).To(Equal("- text"))
+	})
+})
+
+var _ = Describe("Task dates that are not changed", func() {
+	FullyEqual("keeps a weekday that does not match the date", "- TODO a\n  SCHEDULED: <2024-01-01 Tue>")
+	FullyEqual("keeps a time without a leading zero", "- TODO a\n  SCHEDULED: <2024-01-01 Mon 9:00>")
+	FullyEqual("keeps a full weekday name", "- TODO a\n  SCHEDULED: <2024-01-01 Monday>")
+	FullyEqual("keeps two spaces after SCHEDULED", "- TODO a\n  SCHEDULED:  <2024-01-01 Mon>")
+	FullyEqual("keeps a deadline with a time and a repeater", "- TODO a\n  DEADLINE: <2024-01-01 Mon 9:00 .+1d>")
+	FullyEqual("keeps spaces at the end of the line", "- TODO a\n  SCHEDULED: <2024-01-01 Mon>  ")
+	FullyEqual("keeps both dates of a task", "- TODO a\n  SCHEDULED: <2024-01-01 Tue>\n  DEADLINE: <2024-01-05 Friday>")
+
+	changedDate := func(change func(date *content.TaskDate)) string {
+		// Given a scheduled date with a wrong weekday and a short time
+		block, err := markdown.ParseString("- TODO a\n  SCHEDULED: <2024-01-01 Tue 9:00 +1d>")
+		Expect(err).ToNot(HaveOccurred())
+		date := block.Children().FindDeep(content.IsOfType[*content.TaskDate]()).(*content.TaskDate)
+
+		// When the date is changed and written
+		change(date)
+		written, err := markdown.AsString(block)
+		Expect(err).ToNot(HaveOccurred())
+		return written
+	}
+
+	It("writes a date that is moved in the form that Logseq writes", func() {
+		written := changedDate(func(date *content.TaskDate) {
+			date.WithDateAndTime(date.Date.AddDate(0, 0, 1))
+		})
+
+		// Then the new date is written with its weekday and a two digit hour
+		Expect(written).To(Equal("- TODO a\n  SCHEDULED: <2024-01-02 Tue 09:00 +1d>"))
+	})
+
+	It("writes a date with a changed repeater in the form that Logseq writes", func() {
+		written := changedDate(func(date *content.TaskDate) {
+			date.Repeater.Value = 2
+		})
+
+		// Then the new repeater is written
+		Expect(written).To(Equal("- TODO a\n  SCHEDULED: <2024-01-01 Mon 09:00 +2d>"))
+	})
+
+	It("writes a date that is changed to a deadline as a deadline", func() {
+		written := changedDate(func(date *content.TaskDate) {
+			date.Type = content.TaskDateTypeDeadline
+		})
+
+		// Then it is written as a deadline
+		Expect(written).To(Equal("- TODO a\n  DEADLINE: <2024-01-01 Mon 09:00 +1d>"))
 	})
 })
