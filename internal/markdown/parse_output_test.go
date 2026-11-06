@@ -411,3 +411,14 @@ var _ = Describe("Parsing then outputting", func() {
 		Varies("Lazy line after a quote", "- > a\n  b", "- > a\n  > b")
 	})
 })
+
+var _ = Describe("Blank lines before a paragraph that ends in properties", func() {
+	FullyEqual("keeps the blank line between two paragraphs when properties follow", "- a\n  b\n\n  c\n  d:: e")
+	FullyEqual("keeps the blank line after the first line when properties follow", "- a\n\n  c\n  d:: e")
+	FullyEqual("adds no blank line before a paragraph that ends in properties", "- a\n  c\n  d:: e")
+	FullyEqual("keeps the blank line between paragraphs when an id follows", "- first\n\n  second\n  id:: 65e5a8b0-0000-4000-8000-000000000000")
+	FullyEqual("keeps the blank line after a scheduled date when properties follow", "- TODO first\n  SCHEDULED: <2024-01-01 Mon>\n\n  second\n  key:: v")
+	FullyEqual("keeps the blank line between page paragraphs when properties follow", "first\n\nsecond\nkey:: v")
+	FullyEqual("keeps the blank line before properties that come before text", "- a\n\n  d:: e\n  c")
+	FullyEqual("keeps the blank lines before a paragraph and before its properties", "- a\n\n  c\n\n  d:: e")
+})

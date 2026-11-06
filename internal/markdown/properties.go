@@ -396,15 +396,19 @@ func (t *propertiesASTTransformer) transformTextBlockOrParagraph(node ast.Node, 
 					currentProperties = &properties{}
 					node.Parent().InsertAfter(node.Parent(), node, currentProperties)
 
-					// If the properties is the first child of the paragraph we
-					// set explicit blank line information if the paragraph
-					// is not the first child at its level
-					if child.PreviousSibling() == nil && node.PreviousSibling() != nil {
-						currentProperties.SetBlankPreviousLines(node.HasBlankPreviousLines())
-					}
+					// If the properties are the first child of the paragraph,
+					// they take the place of the paragraph, so the blank lines
+					// before the paragraph move to them. This information is
+					// only set if the paragraph is not the first child at its
+					// level. Otherwise the paragraph keeps its text before the
+					// properties, and the blank lines before it.
+					if child.PreviousSibling() == nil {
+						if node.PreviousSibling() != nil {
+							currentProperties.SetBlankPreviousLines(node.HasBlankPreviousLines())
+						}
 
-					// The paragraph does not have any blank lines before it
-					node.SetBlankPreviousLines(false)
+						node.SetBlankPreviousLines(false)
+					}
 				}
 
 				currentProperty = &property{}
