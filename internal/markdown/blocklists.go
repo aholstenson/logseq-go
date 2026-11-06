@@ -8,8 +8,10 @@ import (
 )
 
 // blockListParser parses lists in the same way as the list parser of
-// Goldmark, with two differences that Logseq has for lists of blocks:
+// Goldmark, with these differences that Logseq has:
 //
+//   - A list with "*", "+" or numbers in a page or a block ends at a line
+//     that starts with "- ", as such a line is always a block.
 //   - A bullet without text, such as "-", can interrupt a paragraph. Thus the
 //     second line of "- a\n\t-" is an empty child block of "a". CommonMark
 //     reads it as the text "-".
@@ -33,6 +35,13 @@ func (p *blockListParser) Open(parent ast.Node, reader text.Reader, pc parser.Co
 }
 
 func (p *blockListParser) Continue(node ast.Node, reader text.Reader, pc parser.Context) parser.State {
+	if !isBlockList(node) && inBlockContent(node) && startsWithBlockMarker(reader) {
+		// Logseq reads each line that starts with "- " as a block, at any
+		// indentation. Thus a list with "*", "+" or numbers ends before it,
+		// also when CommonMark would nest the bullet in the list.
+		return parser.Close
+	}
+
 	state := p.BlockParser.Continue(node, reader, pc)
 	if state&parser.Close == 0 || !isBlockList(node) {
 		return state
@@ -52,6 +61,31 @@ func (p *blockListParser) Continue(node ast.Node, reader text.Reader, pc parser.
 	}
 
 	return state
+}
+
+// inBlockContent returns true if the node is in the content of a page or of
+// blocks, and not in other content such as a quote.
+func inBlockContent(node ast.Node) bool {
+	for p := node.Parent(); p != nil; p = p.Parent() {
+		switch p.(type) {
+		case *ast.Document:
+			return true
+		case *ast.List, *ast.ListItem, *indentedBlocks:
+			continue
+		default:
+			return false
+		}
+	}
+
+	return false
+}
+
+// startsWithBlockMarker returns true if the first character of the line that
+// is not a space starts a bullet "- ".
+func startsWithBlockMarker(reader text.Reader) bool {
+	line, _ := reader.PeekLine()
+	_, pos := util.IndentWidth(line, reader.LineOffset())
+	return pos < len(line) && isBlockMarker(line[pos:])
 }
 
 // indentedUnderLastItem returns true if the line is not blank and is indented
