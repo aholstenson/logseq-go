@@ -288,14 +288,23 @@ var _ BlockNode = (*Heading)(nil)
 
 type ThematicBreak struct {
 	baseNode
+	previousLineAwareImpl
 }
 
 func NewThematicBreak() *ThematicBreak {
 	return &ThematicBreak{}
 }
 
+// WithPreviousLineType sets the type of the line before the thematic break
+// and returns it.
+func (t *ThematicBreak) WithPreviousLineType(lineType PreviousLineType) *ThematicBreak {
+	t.previousLineType = lineType
+	return t
+}
+
 func (t *ThematicBreak) debug(p *debugPrinter) {
 	p.StartType("ThematicBreak")
+	debugPreviousLineAware(p, t)
 	p.EndType()
 }
 

@@ -250,7 +250,9 @@ func convert(src []byte, in ast.Node) (content.Node, error) {
 	case *ast.Image:
 		return convertImage(src, node)
 	case *ast.ThematicBreak:
-		return content.NewThematicBreak(), nil
+		thematicBreak := content.NewThematicBreak()
+		updatePreviousLine(node, thematicBreak)
+		return thematicBreak, nil
 	case *beginEnd:
 		return convertBeginEnd(src, node)
 	case *properties:
@@ -577,6 +579,8 @@ func convertTextBlock(src []byte, node ast.Node) (*content.Paragraph, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	updatePreviousLine(node, paragraph)
 	return paragraph, nil
 }
 
@@ -882,6 +886,7 @@ func convertHTMLBlock(src []byte, node *ast.HTMLBlock) (*content.RawHTMLBlock, e
 	}
 
 	raw := content.NewRawHTMLBlock(codeBuf.String())
+	updatePreviousLine(node, raw)
 	return raw, nil
 }
 
@@ -927,9 +932,13 @@ func convertBeginEnd(src []byte, node *beginEnd) (content.Node, error) {
 
 	switch node.Variant {
 	case "QUERY":
-		return content.NewQueryCommand(codeBuf.String()), nil
+		query := content.NewQueryCommand(codeBuf.String())
+		updatePreviousLine(node, query)
+		return query, nil
 	default:
-		return content.NewAdvancedCommand(node.Variant, codeBuf.String()), nil
+		command := content.NewAdvancedCommand(node.Variant, codeBuf.String())
+		updatePreviousLine(node, command)
+		return command, nil
 	}
 }
 

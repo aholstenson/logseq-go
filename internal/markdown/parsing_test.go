@@ -3159,7 +3159,8 @@ var _ = Describe("Parsing", func() {
 						content.NewParagraph(
 							content.NewText("Item"),
 						),
-						content.NewAdvancedCommand("ABCDEF", "raw text\n  raw text\n"),
+						content.NewAdvancedCommand("ABCDEF", "raw text\n  raw text\n").
+							WithPreviousLineType(content.PreviousLineTypeNonBlank),
 					),
 				),
 			)))
@@ -3176,7 +3177,8 @@ var _ = Describe("Parsing", func() {
 						content.NewParagraph(
 							content.NewText("Item"),
 						),
-						content.NewAdvancedCommand("ABCDEF", "raw text\n  raw text\n"),
+						content.NewAdvancedCommand("ABCDEF", "raw text\n  raw text\n").
+							WithPreviousLineType(content.PreviousLineTypeNonBlank),
 					),
 					content.NewListItem(
 						content.NewParagraph(

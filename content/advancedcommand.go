@@ -6,6 +6,7 @@ package content
 // See https://docs.logseq.com/#/page/advanced%20commands
 type AdvancedCommand struct {
 	baseNode
+	previousLineAwareImpl
 
 	// Type is the type of the advanced command.
 	Type string
@@ -34,10 +35,18 @@ func (h *AdvancedCommand) WithValue(value string) *AdvancedCommand {
 	return h
 }
 
+// WithPreviousLineType sets the type of the line before the command and returns
+// it.
+func (h *AdvancedCommand) WithPreviousLineType(t PreviousLineType) *AdvancedCommand {
+	h.previousLineType = t
+	return h
+}
+
 func (h *AdvancedCommand) debug(p *debugPrinter) {
 	p.StartType("AdvancedCommand")
 	p.Field("type", h.Type)
 	p.Field("value", h.Value)
+	debugPreviousLineAware(p, h)
 	p.EndType()
 }
 
@@ -51,6 +60,7 @@ var _ BlockNode = (*AdvancedCommand)(nil)
 // with query.ParseNode.
 type QueryCommand struct {
 	baseNode
+	previousLineAwareImpl
 
 	Query string
 }
@@ -67,9 +77,17 @@ func (h *QueryCommand) WithQuery(query string) *QueryCommand {
 	return h
 }
 
+// WithPreviousLineType sets the type of the line before the query and returns
+// it.
+func (h *QueryCommand) WithPreviousLineType(t PreviousLineType) *QueryCommand {
+	h.previousLineType = t
+	return h
+}
+
 func (h *QueryCommand) debug(p *debugPrinter) {
 	p.StartType("QueryCommand")
 	p.Field("query", h.Query)
+	debugPreviousLineAware(p, h)
 	p.EndType()
 }
 
