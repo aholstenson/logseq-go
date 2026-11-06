@@ -1,6 +1,10 @@
 package content
 
-import "github.com/google/uuid"
+import (
+	"strings"
+
+	"github.com/google/uuid"
+)
 
 // Block is a piece of information in an outline, either belonging to a page
 // or another block.
@@ -93,39 +97,53 @@ func (b *Block) Blocks() BlockList {
 // ID gets the identifier of the block. If the block does not have an ID this
 // will return an empty string. This never changes the block, use WithID to
 // give the block an ID.
+//
+// The ID is read in the same way as Logseq reads it: from `custom-id` or
+// `custom_id` before `id`, and only if the value is a uuid such as
+// `6500e8a3-0000-4000-8000-000000000000`. Logseq gives a block with an id
+// that is not a uuid a new random id, so such an id is not returned.
 func (b *Block) ID() string {
 	p := b.FindProperties()
 	if p == nil {
 		return ""
 	}
 
-	// Logseq takes the id from `custom-id` or `custom_id` before `id`.
 	for _, name := range []string{"custom-id", "id"} {
 		id := p.GetAsNode(name)
-		if id != nil {
-			if child, ok := id.FirstChild().(*Text); ok {
-				return child.Value
-			}
+		if id == nil {
+			continue
+		}
+
+		if child, ok := id.FirstChild().(*Text); ok && isUUID(child.Value) {
+			return strings.TrimSpace(child.Value)
 		}
 	}
 
 	return ""
 }
 
+// isUUID checks if a value is a uuid in the form that Logseq accepts as the
+// id of a block: 32 hexadecimal digits in groups of 8-4-4-4-12, with spaces
+// around them allowed.
+func isUUID(value string) bool {
+	value = strings.TrimSpace(value)
+	if len(value) != 36 {
+		return false
+	}
+
+	_, err := uuid.Parse(value)
+	return err == nil
+}
+
 // WithID ensures that the block has an ID. If the block already has an ID this
-// will do nothing.
+// will do nothing. If the block has an `id` property that is not a uuid, its
+// value is replaced with a new uuid, as Logseq does not use such an id.
 func (b *Block) WithID() *Block {
 	if b.ID() != "" {
 		return b
 	}
 
-	p := b.Properties()
-	id := p.GetAsNode("id")
-	if id != nil {
-		return b
-	}
-
-	p.Set("id", NewText(uuid.NewString()))
+	b.Properties().Set("id", NewText(uuid.NewString()))
 	return b
 }
 

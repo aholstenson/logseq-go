@@ -132,6 +132,13 @@ type Property struct {
 	// `#+name: value`, instead of as `name:: value`. Logseq also reads
 	// directives in Markdown files, and uses them as page properties.
 	Directive bool
+
+	// SpaceBeforeValue is the spaces and tabs that are written after the
+	// separator and its one space, before the value, such as the second space
+	// in `id::  <uuid>`. Logseq does not read them as part of the value. They
+	// are kept so that the text of the property does not change when it is
+	// written.
+	SpaceBeforeValue string
 }
 
 // NewProperty creates a new Property node with the given name and values.
@@ -170,6 +177,13 @@ func (p *Property) WithDirective(directive bool) *Property {
 	return p
 }
 
+// WithSpaceBeforeValue sets the spaces and tabs that are written before the
+// value, after the separator and its one space.
+func (p *Property) WithSpaceBeforeValue(space string) *Property {
+	p.SpaceBeforeValue = space
+	return p
+}
+
 func (p *Property) debug(p2 *debugPrinter) {
 	p2.StartType("Property")
 	p2.Field("Name", p.Name)
@@ -181,6 +195,9 @@ func (p *Property) debug(p2 *debugPrinter) {
 	}
 	if p.Directive {
 		p2.Field("Directive", "true")
+	}
+	if p.SpaceBeforeValue != "" {
+		p2.Field("SpaceBeforeValue", p.SpaceBeforeValue)
 	}
 	p2.Children(p)
 	p2.EndType()

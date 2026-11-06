@@ -1040,7 +1040,8 @@ func convertProperties(src []byte, node *properties) (*content.Properties, error
 		prop := content.NewProperty(p.Name).
 			WithPageRefsIgnored(p.PageRefsIgnored).
 			WithQuoted(p.Quoted).
-			WithDirective(p.Directive)
+			WithDirective(p.Directive).
+			WithSpaceBeforeValue(p.SpaceBeforeValue)
 		err := convertChildren(src, p, prop)
 		if err != nil {
 			return nil, err

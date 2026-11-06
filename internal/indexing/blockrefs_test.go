@@ -56,18 +56,18 @@ var _ = Describe("References of blocks", func() {
 		}
 
 		indexPage(idx, "pages/b.md", "Page B",
-			withID("parent-id", "parent",
+			withID("6500e8a3-0000-4000-8000-000000000001", "parent",
 				textBlock(text("first child"), textBlock(text("grandchild"))),
-				withID("second-id", "second child"),
+				withID("6500e8a3-0000-4000-8000-000000000002", "second child"),
 			),
 			textBlock(text("no id"), textBlock(text("child of no id"))),
 		)
 
-		Expect(previewsOf(searchBlocks(idx, indexing.ParentIs("parent-id")))).To(ConsistOf("first child", "second child"))
-		Expect(previewsOf(searchBlocks(idx, indexing.ParentIs("second-id")))).To(BeEmpty())
+		Expect(previewsOf(searchBlocks(idx, indexing.ParentIs("6500e8a3-0000-4000-8000-000000000001")))).To(ConsistOf("first child", "second child"))
+		Expect(previewsOf(searchBlocks(idx, indexing.ParentIs("6500e8a3-0000-4000-8000-000000000002")))).To(BeEmpty())
 
-		Expect(previewsOf(searchBlocks(idx, indexing.AncestorIs("parent-id")))).To(ConsistOf("first child", "grandchild", "second child"))
-		Expect(previewsOf(searchBlocks(idx, indexing.AncestorIs("second-id")))).To(BeEmpty())
+		Expect(previewsOf(searchBlocks(idx, indexing.AncestorIs("6500e8a3-0000-4000-8000-000000000001")))).To(ConsistOf("first child", "grandchild", "second child"))
+		Expect(previewsOf(searchBlocks(idx, indexing.AncestorIs("6500e8a3-0000-4000-8000-000000000002")))).To(BeEmpty())
 	})
 
 	It("matches the blocks below a block by its location", func() {

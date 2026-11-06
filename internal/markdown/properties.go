@@ -112,6 +112,10 @@ type property struct {
 
 	// Directive is whether the property is written as `#+name: value`.
 	Directive bool
+
+	// SpaceBeforeValue is the spaces and tabs between the separator and the
+	// value that are not part of the value. See skipSpaceBeforeValue.
+	SpaceBeforeValue string
 }
 
 func (*property) Kind() ast.NodeKind {
@@ -430,7 +434,9 @@ func (t *propertiesASTTransformer) transformTextBlockOrParagraph(node ast.Node, 
 				}
 
 				var rest ast.Node
+				var spaceBeforeValue string
 				if ok {
+					valueStart, spaceBeforeValue = skipSpaceBeforeValue(reader.Source(), valueStart)
 					rest, ok = nodeAfterName(textNode, valueStart)
 				}
 
@@ -465,6 +471,7 @@ func (t *propertiesASTTransformer) transformTextBlockOrParagraph(node ast.Node, 
 				currentProperty = &property{}
 				currentProperty.Name = name
 				currentProperty.Directive = directive
+				currentProperty.SpaceBeforeValue = spaceBeforeValue
 
 				currentProperties.AppendChild(currentProperties, currentProperty)
 
@@ -541,6 +548,26 @@ func findPropertyAt(source []byte, start int) (name string, valueStart int, ok b
 		// The space after the :: is missing
 		return "", 0, false
 	}
+}
+
+// skipSpaceBeforeValue skips the spaces and tabs at the start of the value of
+// a property, which starts at the given offset into the source. Logseq does
+// not read them as part of the value, so `id::  <uuid>` has the value
+// `<uuid>`. It returns the offset where the value starts after them, and the
+// spaces and tabs that it skipped, so that the text can be written back
+// unchanged. If only spaces and tabs follow on the line, the value is empty
+// and nothing is skipped.
+func skipSpaceBeforeValue(source []byte, valueStart int) (int, string) {
+	end := valueStart
+	for end < len(source) && (source[end] == ' ' || source[end] == '\t') {
+		end++
+	}
+
+	if end == len(source) || source[end] == '\n' || source[end] == '\r' {
+		return valueStart, ""
+	}
+
+	return end, string(source[valueStart:end])
 }
 
 // nodeAfterName finds the first node that holds a part of the value of a

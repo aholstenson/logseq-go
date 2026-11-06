@@ -119,11 +119,11 @@ var _ = Describe("Blocks", func() {
 			block := content.NewBlock(
 				content.NewParagraph(content.NewText("content")),
 				content.NewProperties(
-					content.NewProperty("id", content.NewText("the-id")),
+					content.NewProperty("id", content.NewText("6500e8a3-0000-4000-8000-000000000001")),
 				),
 			)
 
-			Expect(block.ID()).To(Equal("the-id"))
+			Expect(block.ID()).To(Equal("6500e8a3-0000-4000-8000-000000000001"))
 		})
 
 		It("returns an empty id for a block without properties", func() {

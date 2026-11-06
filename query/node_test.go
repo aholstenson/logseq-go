@@ -296,9 +296,9 @@ var _ = Describe("Queries in nodes", func() {
 			})
 
 			It("names blocks with a UUID by it without the query page", func() {
-				advanced, err := query.ParseNode(onPage(below, "abc"))
+				advanced, err := query.ParseNode(onPage(below, "6500e8a3-0000-4000-8000-000000000001"))
 				Expect(err).ToNot(HaveOccurred())
-				Expect(advanced.Query.String()).To(Equal("(ancestor ((abc)))"))
+				Expect(advanced.Query.String()).To(Equal("(ancestor ((6500e8a3-0000-4000-8000-000000000001)))"))
 			})
 
 			It("uses the blocks given as options first", func() {

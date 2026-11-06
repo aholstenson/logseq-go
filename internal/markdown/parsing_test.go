@@ -3827,6 +3827,48 @@ var _ = Describe("Parsing", func() {
 	})
 })
 
+var _ = Describe("Spaces and alternative names for block ids", func() {
+	const id = "6500e8a3-0000-4000-8000-000000000000"
+
+	firstBlock := func(input string) *content.Block {
+		root, err := markdown.ParseString(input)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(root.Blocks()).ToNot(BeEmpty())
+		return root.Blocks()[0]
+	}
+
+	It("reads the id of a block written with two spaces after the colons", func() {
+		// Given an id with two spaces after ::
+		input := "- a\n  id::  " + id
+
+		// Then the id is the uuid without a leading space, the same as Logseq
+		Expect(firstBlock(input).ID()).To(Equal(id))
+
+		// And the text does not change on save
+		Expect(parseAndOutput(input)).To(Equal(input))
+	})
+
+	It("reads custom_id as the id of the block", func() {
+		// Given a block with custom_id, which Logseq reads as the id
+		Expect(firstBlock("- a\n  custom_id:: " + id).ID()).To(Equal(id))
+	})
+
+	It("does not use an id that is not a uuid", func() {
+		// Given an id that is not a uuid, which Logseq replaces
+		// Then the block has no id from the text
+		Expect(firstBlock("- a\n  id:: not-a-uuid").ID()).To(BeEmpty())
+	})
+
+	It("reads a value without the spaces that follow the colons", func() {
+		// Given a value with two spaces after ::
+		value := firstBlock("- a\n  b::  c").FindProperties().Get("b")
+
+		// Then the value is c, the same as Logseq
+		Expect(value).To(HaveLen(1))
+		Expect(value[0]).To(tests.EqualNode(content.NewText("c")))
+	})
+})
+
 var _ = Describe("Directives at the start of a page", func() {
 	// pageRefTargets parses a page and returns the targets of all page
 	// references in it.

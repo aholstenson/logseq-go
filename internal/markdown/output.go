@@ -2316,16 +2316,24 @@ func (w *Output) writeProperties(node *content.Properties) error {
 
 // writePropertyName writes the name of a property and the separator before
 // its value, as `name:: ` or, for a directive, as `#+name: `.
+//
+// If the property has a value, the spaces and tabs that were written before
+// the value are written again, see content.Property.SpaceBeforeValue.
 func (w *Output) writePropertyName(property *content.Property) error {
+	space := ""
+	if property.FirstChild() != nil {
+		space = property.SpaceBeforeValue
+	}
+
 	if !property.Directive {
-		return w.writeRaw(property.Name + ":: ")
+		return w.writeRaw(property.Name + ":: " + space)
 	}
 
 	if property.FirstChild() == nil {
 		return w.writeRaw("#+" + property.Name + ":")
 	}
 
-	return w.writeRaw("#+" + property.Name + ": ")
+	return w.writeRaw("#+" + property.Name + ": " + space)
 }
 
 // writePropertyDrawer writes properties in a `:PROPERTIES:` drawer, with one
