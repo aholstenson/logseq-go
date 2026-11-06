@@ -550,7 +550,7 @@ var _ = Describe("Parsing", func() {
 
 			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
-					content.NewAutoLink("https://example.com"),
+					content.NewAutoLink("https://example.com").WithBracketed(true),
 				),
 			)))
 		})

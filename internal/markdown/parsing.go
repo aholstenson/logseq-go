@@ -78,7 +78,7 @@ func inlineParsers() []util.PrioritizedValue {
 		util.Prioritized(&pageLinkParser{}, 199),
 		util.Prioritized(&tagParser{}, 999),
 		util.Prioritized(newLabelledRefLinkParser(), 200),
-		util.Prioritized(parser.NewAutoLinkParser(), 300),
+		util.Prioritized(newBracketedAutoLinkParser(), 300),
 		util.Prioritized(parser.NewRawHTMLParser(), 400),
 		util.Prioritized(&emphasisParser{}, 500),
 		util.Prioritized(&strikethroughParser{}, 501),
@@ -262,7 +262,8 @@ func convert(src []byte, in ast.Node) (content.Node, error) {
 	case *ast.Link:
 		return convertLink(src, node)
 	case *ast.AutoLink:
-		return content.NewAutoLink(string(node.URL(src))), nil
+		_, bracketed := node.AttributeString(bracketedAttribute)
+		return content.NewAutoLink(string(node.URL(src))).WithBracketed(bracketed), nil
 	case *tag:
 		return content.NewHashtag(node.Page).WithBracketed(node.Extended), nil
 	case *pageLink:
@@ -870,6 +871,9 @@ func convertLink(src []byte, node *ast.Link) (content.Node, error) {
 		return nil, err
 	}
 	link.Title = unescapePunctuation(node.Title)
+	if source, ok := node.AttributeString(destinationSourceAttribute); ok {
+		link.SetDestinationSource(source.(string))
+	}
 	return link, nil
 }
 
@@ -1141,6 +1145,9 @@ func convertImage(src []byte, node *ast.Image) (*content.Image, error) {
 	image.Title = unescapePunctuation(node.Title)
 	if metadata, ok := node.AttributeString(imageMetadataAttribute); ok {
 		image.Metadata = metadata.(string)
+	}
+	if source, ok := node.AttributeString(destinationSourceAttribute); ok {
+		image.SetDestinationSource(source.(string))
 	}
 
 	err := convertChildren(src, node, image)

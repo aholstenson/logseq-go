@@ -2,6 +2,7 @@ package content
 
 type Image struct {
 	baseNodeWithChildren
+	destinationSourceImpl
 
 	// URL is the URL of the image.
 	URL string
@@ -59,3 +60,4 @@ func (i *Image) debug(p *debugPrinter) {
 }
 
 var _ InlineNode = (*Image)(nil)
+var _ DestinationSourceAware = (*Image)(nil)

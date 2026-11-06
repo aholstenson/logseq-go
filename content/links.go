@@ -8,8 +8,36 @@ type HasLinkURL interface {
 	GetURL() string
 }
 
+// DestinationSourceAware is implemented by the nodes that are read from a
+// link or an image with a destination in parentheses, such as Link and Image.
+// They keep the text between the parentheses as it is in the file. A node
+// whose text reads back as the same URL and title is written with this text,
+// so that its quotes, angle brackets and backslashes do not change.
+type DestinationSourceAware interface {
+	// DestinationSource gets the text between the parentheses, such as
+	// `http://a.com "title"`. It is empty for a node that was not read from
+	// a file.
+	DestinationSource() string
+
+	// SetDestinationSource sets the text between the parentheses.
+	SetDestinationSource(source string)
+}
+
+type destinationSourceImpl struct {
+	destinationSource string
+}
+
+func (d *destinationSourceImpl) DestinationSource() string {
+	return d.destinationSource
+}
+
+func (d *destinationSourceImpl) SetDestinationSource(source string) {
+	d.destinationSource = source
+}
+
 type Link struct {
 	baseNodeWithChildren
+	destinationSourceImpl
 
 	// URL is the target of the link.
 	URL string
@@ -57,12 +85,18 @@ func (l *Link) debug(p *debugPrinter) {
 
 var _ InlineNode = (*Link)(nil)
 var _ HasLinkURL = (*Link)(nil)
+var _ DestinationSourceAware = (*Link)(nil)
 
 type AutoLink struct {
 	baseNode
 
 	// URL is where this link points to.
 	URL string
+
+	// Bracketed is whether the link is written in angle brackets, such as
+	// `<http://a.com>`. A URL that Logseq does not find without the brackets
+	// is always written in brackets.
+	Bracketed bool
 }
 
 func NewAutoLink(url string) *AutoLink {
@@ -82,6 +116,12 @@ func (l *AutoLink) WithURL(target string) *AutoLink {
 	return l
 }
 
+// WithBracketed sets if the link is written in angle brackets. See Bracketed.
+func (l *AutoLink) WithBracketed(bracketed bool) *AutoLink {
+	l.Bracketed = bracketed
+	return l
+}
+
 // ReplaceWithLink replaces this node with a new `Link` node containing the
 // given text.
 func (l *AutoLink) ReplaceWithLink(text ...Node) *Link {
@@ -95,6 +135,9 @@ func (l *AutoLink) isInline() {}
 func (l *AutoLink) debug(p *debugPrinter) {
 	p.StartType("AutoLink")
 	p.Field("url", l.URL)
+	if l.Bracketed {
+		p.Field("bracketed", "true")
+	}
 	p.EndType()
 }
 

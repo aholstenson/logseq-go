@@ -1,6 +1,8 @@
 package markdown
 
 import (
+	"strings"
+
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/text"
@@ -28,6 +30,36 @@ func newLabelledRefLinkParser() *labelledRefLinkParser {
 }
 
 func (p *labelledRefLinkParser) Parse(parent ast.Node, block text.Reader, pc parser.Context) ast.Node {
+	startLine, start := block.Position()
+	result := p.parse(parent, block, pc)
+	switch result.(type) {
+	case *ast.Link, *ast.Image:
+		stopLine, stop := block.Position()
+		if startLine == stopLine {
+			setDestinationSource(result, block.Source()[start.Start:stop.Start])
+		}
+	}
+
+	return result
+}
+
+// destinationSourceAttribute is the name of the attribute that holds the
+// text between the parentheses of a link or an image, as it is in the file.
+const destinationSourceAttribute = "logseq-destination"
+
+// setDestinationSource keeps the text between the parentheses of a link or
+// an image. The text is what the link parser read, from the `]` of the label
+// to the `)` at the end. A reference link, such as `[a][b]`, has no such
+// text.
+func setDestinationSource(node ast.Node, consumed []byte) {
+	if len(consumed) < 3 || consumed[0] != ']' || consumed[1] != '(' || consumed[len(consumed)-1] != ')' {
+		return
+	}
+
+	node.SetAttributeString(destinationSourceAttribute, string(consumed[2:len(consumed)-1]))
+}
+
+func (p *labelledRefLinkParser) parse(parent ast.Node, block text.Reader, pc parser.Context) ast.Node {
 	line, segment := block.PeekLine()
 	if len(line) < 2 || line[0] != ']' || line[1] != '(' {
 		return p.InlineParser.Parse(parent, block, pc)
@@ -133,4 +165,28 @@ func (r *spacelessReader) PeekLine() ([]byte, text.Segment) {
 	}
 
 	return changed, segment
+}
+
+// destinationParser reads only paragraphs and links. It is used to check what
+// the text between the parentheses of a link is read as.
+var destinationParser = parser.NewParser(
+	parser.WithBlockParsers(util.Prioritized(parser.NewParagraphParser(), 1000)),
+	parser.WithInlineParsers(util.Prioritized(parser.NewLinkParser(), 200)),
+)
+
+// destinationReadsBack returns true if the text between the parentheses of a
+// link is read as the URL and the title.
+func destinationReadsBack(source string, url string, title string) bool {
+	if strings.ContainsAny(source, "\r\n") {
+		return false
+	}
+
+	doc := destinationParser.Parse(text.NewReader([]byte("[x](" + source + ")")))
+	paragraph := doc.FirstChild()
+	if paragraph == nil || paragraph.FirstChild() == nil || paragraph.FirstChild() != paragraph.LastChild() {
+		return false
+	}
+
+	link, ok := paragraph.FirstChild().(*ast.Link)
+	return ok && unescapePunctuation(link.Destination) == url && unescapePunctuation(link.Title) == title
 }

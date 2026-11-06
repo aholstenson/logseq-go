@@ -1503,26 +1503,9 @@ func (w *Output) writeLink(node *content.Link) error {
 		return err
 	}
 
-	err = w.write(node.URL, EscapeLinkURL)
+	err = w.writeDestination(node, node.URL, node.Title)
 	if err != nil {
 		return err
-	}
-
-	if node.Title != "" {
-		err = w.writeRaw(" '")
-		if err != nil {
-			return err
-		}
-
-		err = w.write(node.Title, EscapeLinkTitle)
-		if err != nil {
-			return err
-		}
-
-		err = w.writeRaw("'")
-		if err != nil {
-			return err
-		}
 	}
 
 	err = w.writeRaw(")")
@@ -1533,8 +1516,50 @@ func (w *Output) writeLink(node *content.Link) error {
 	return nil
 }
 
+// writeDestination writes the text between the parentheses of a link or an
+// image: the URL and the title. If the node was read from a file and its text
+// reads back as the same URL and title, the text is written as it is.
+func (w *Output) writeDestination(node content.DestinationSourceAware, url string, title string) error {
+	if source := node.DestinationSource(); source != "" && destinationReadsBack(source, url, title) {
+		return w.writeRaw(source)
+	}
+
+	var err error
+	if strings.ContainsFunc(url, unicode.IsSpace) {
+		// A URL with spaces is only read as one destination in angle
+		// brackets.
+		err = w.writeRaw("<" + escapeRunes(url, func(prev rune, r rune) bool {
+			return r == '<' || r == '>'
+		}) + ">")
+	} else {
+		err = w.write(url, EscapeLinkURL)
+	}
+	if err != nil {
+		return err
+	}
+
+	if title != "" {
+		err = w.writeRaw(" '")
+		if err != nil {
+			return err
+		}
+
+		err = w.write(title, EscapeLinkTitle)
+		if err != nil {
+			return err
+		}
+
+		err = w.writeRaw("'")
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (w *Output) writeAutoLink(node *content.AutoLink) error {
-	if urlRegexp.Match([]byte(node.URL)) {
+	if !node.Bracketed && urlRegexp.Match([]byte(node.URL)) {
 		// No need for brackets, Logseq will automatically linkify the URL.
 		return w.writeRaw(node.URL)
 	}
@@ -1683,26 +1708,9 @@ func (w *Output) writeImage(node *content.Image) error {
 		return err
 	}
 
-	err = w.write(node.URL, EscapeLinkURL)
+	err = w.writeDestination(node, node.URL, node.Title)
 	if err != nil {
 		return err
-	}
-
-	if node.Title != "" {
-		err = w.writeRaw(" '")
-		if err != nil {
-			return err
-		}
-
-		err = w.write(node.Title, EscapeLinkTitle)
-		if err != nil {
-			return err
-		}
-
-		err = w.writeRaw("'")
-		if err != nil {
-			return err
-		}
 	}
 
 	err = w.writeRaw(")")
