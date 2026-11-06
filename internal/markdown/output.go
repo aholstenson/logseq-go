@@ -1443,7 +1443,9 @@ func (w *Output) writeRawHTMLBlock(node *content.RawHTMLBlock) error {
 		return err
 	}
 
-	err = w.writeRaw(node.HTML)
+	// The HTML of a block read from a file ends with the line break of its
+	// last line. The line break before the next node is written by that node.
+	err = w.writeRaw(strings.TrimSuffix(node.HTML, "\n"))
 	if err != nil {
 		return err
 	}

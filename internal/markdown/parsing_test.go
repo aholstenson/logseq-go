@@ -1,6 +1,7 @@
 package markdown_test
 
 import (
+	"strings"
 	"time"
 
 	"github.com/aholstenson/logseq-go/content"
@@ -3775,6 +3776,86 @@ var _ = Describe("Parsing", func() {
 					content.NewLogbookEntryRaw("* State \"SOMEDAY\" from \"TODO\" [2023-06-26 Mon 17:25:56]"),
 				)))
 			})
+		})
+	})
+
+	Describe("Block properties after a quote, table, list or HTML", func() {
+		const id = "65e5a0b2-1c2d-4e3f-9a8b-0c1d2e3f4a5b"
+
+		// firstBlock parses the text and returns its first block.
+		firstBlock := func(input string) *content.Block {
+			root, err := markdown.ParseString(input)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(root.Blocks()).ToNot(BeEmpty())
+			return root.Blocks()[0]
+		}
+
+		// Given a block whose content ends in a container followed by an id
+		// property, When it is parsed, Then the id belongs to the block, the
+		// same as Logseq.
+		DescribeTable("reads the id of the block",
+			func(input string) {
+				Expect(firstBlock(input).ID()).To(Equal(id))
+			},
+			Entry("after a quote", "- > quoted\n  id:: "+id),
+			Entry("after a list with stars", "- * star\n  id:: "+id),
+			Entry("after an ordered list", "- 1. one\n  id:: "+id),
+			Entry("after HTML", "- <div>x</div>\n  id:: "+id),
+		)
+
+		It("keeps a property line inside HTML that ends with a closing tag", func() {
+			// Given a pre block with a line that looks like a property
+			// When it is parsed
+			block := firstBlock("- <pre>\n  id:: " + id + "\n  </pre>")
+
+			// Then the line is a part of the HTML and not a property
+			Expect(block.ID()).To(BeEmpty())
+		})
+
+		It("reads properties after a table as properties and not as table rows", func() {
+			// Given a block with a table followed by id and collapsed properties
+			root, err := markdown.ParseString("- | a | b |\n  |---|---|\n  | 1 | 2 |\n  id:: " + id + "\n  collapsed:: true\n\t- child")
+			Expect(err).ToNot(HaveOccurred())
+			block := root.Blocks()[0]
+
+			// When it is parsed
+			// Then both are properties of the block
+			Expect(block.ID()).To(Equal(id))
+			properties := block.FindProperties()
+			Expect(properties).ToNot(BeNil())
+			Expect(properties.Get("collapsed")).ToNot(BeEmpty())
+
+			// And the table has a header and one body row
+			Expect(block.Content().FilterDeep(content.IsOfType[*content.TableRow]())).To(HaveLen(2))
+		})
+
+		It("does not write properties after a table as table rows", func() {
+			// Given a block with a table followed by id and collapsed properties
+			root, err := markdown.ParseString("- | a | b |\n  |---|---|\n  | 1 | 2 |\n  id:: " + id + "\n  collapsed:: true\n\t- child")
+			Expect(err).ToNot(HaveOccurred())
+
+			// When it is written
+			// Then no property is written as a table row
+			written, err := markdown.AsString(root)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(written).ToNot(ContainSubstring("| id::"))
+			Expect(written).ToNot(ContainSubstring("| collapsed::"))
+		})
+
+		It("keeps the id of a block after a quote when an id is asked for", func() {
+			// Given a block with a quote followed by an id property
+			root, err := markdown.ParseString("- > quoted\n  id:: " + id)
+			Expect(err).ToNot(HaveOccurred())
+
+			// When WithID is called
+			block := root.Blocks()[0].WithID()
+
+			// Then the id is unchanged and only one id line is written
+			Expect(block.ID()).To(Equal(id))
+
+			written, err := markdown.AsString(root)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(strings.Count(written, "id::")).To(Equal(1))
 		})
 	})
 })

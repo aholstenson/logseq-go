@@ -35,8 +35,9 @@ func init() {
 			util.Prioritized(&taskDateParser{}, 897),
 			util.Prioritized(&logbookParser{}, 898),
 			util.Prioritized(&beginEndParser{}, 899),
-			util.Prioritized(parser.NewHTMLBlockParser(), 900),
+			util.Prioritized(newHTMLBlockParser(), 900),
 			util.Prioritized(&footnoteDefinitionParser{}, 999),
+			util.Prioritized(newPropertyLineParser(), 999),
 			util.Prioritized(parser.NewParagraphParser(), 1000),
 		),
 		parser.WithInlineParsers(

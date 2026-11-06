@@ -386,4 +386,18 @@ var _ = Describe("Parsing then outputting", func() {
 			FullyEqual("Scheduled with a plain date", "TODO Task\nSCHEDULED: 2024-01-15")
 		})
 	})
+
+	Describe("Block properties after a quote", func() {
+		// Given a quote followed by an id property, When it is written, Then
+		// it is unchanged and the property is not written as part of the quote
+		FullyEqual("Id property after a quote", "- > quoted\n  id:: 65e5a0b2-1c2d-4e3f-9a8b-0c1d2e3f4a5b")
+		FullyEqual("Properties after a quote with a child", "- > quoted\n  id:: 65e5a0b2-1c2d-4e3f-9a8b-0c1d2e3f4a5b\n  collapsed:: true\n\t- child")
+		FullyEqual("Id property after a list with stars", "- * star\n  id:: 65e5a0b2-1c2d-4e3f-9a8b-0c1d2e3f4a5b")
+		FullyEqual("Id property after an ordered list", "- 1. one\n  id:: 65e5a0b2-1c2d-4e3f-9a8b-0c1d2e3f4a5b")
+		FullyEqual("Id property after HTML", "- <div>x</div>\n  id:: 65e5a0b2-1c2d-4e3f-9a8b-0c1d2e3f4a5b")
+		FullyEqual("Properties after a table", "- | a   | b   |\n  | --- | --- |\n  | 1   | 2   |\n  id:: 65e5a0b2-1c2d-4e3f-9a8b-0c1d2e3f4a5b\n  collapsed:: true\n\t- child")
+
+		// A line that is not a property is still a part of the quote
+		Varies("Lazy line after a quote", "- > a\n  b", "- > a\n  > b")
+	})
 })
