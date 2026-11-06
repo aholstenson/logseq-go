@@ -245,6 +245,10 @@ var _ InlineNode = (*Strikethrough)(nil)
 // Highlight is text that Logseq marks out, written as `^^text^^`.
 type Highlight struct {
 	baseNodeWithChildren
+
+	// EqualSigns is whether the highlight is written with `==` markers, such
+	// as `==text==`, instead of `^^` markers. Logseq reads both.
+	EqualSigns bool
 }
 
 func NewHighlight(children ...Node) *Highlight {
@@ -255,10 +259,20 @@ func NewHighlight(children ...Node) *Highlight {
 	return h
 }
 
+// WithEqualSigns sets if the highlight is written with `==` markers. See
+// EqualSigns.
+func (h *Highlight) WithEqualSigns(equalSigns bool) *Highlight {
+	h.EqualSigns = equalSigns
+	return h
+}
+
 func (h *Highlight) isInline() {}
 
 func (h *Highlight) debug(p *debugPrinter) {
 	p.StartType("Highlight")
+	if h.EqualSigns {
+		p.Field("marker", "==")
+	}
 	p.Children(h)
 	p.EndType()
 }

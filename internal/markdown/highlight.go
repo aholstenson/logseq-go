@@ -10,6 +10,10 @@ var highlightKind = ast.NewNodeKind("Highlight")
 
 type highlight struct {
 	ast.BaseInline
+
+	// EqualSigns is whether the highlight is written with `==` markers
+	// instead of `^^` markers.
+	EqualSigns bool
 }
 
 func (*highlight) Kind() ast.NodeKind {
@@ -19,13 +23,16 @@ func (*highlight) Kind() ast.NodeKind {
 func (n *highlight) Dump(src []byte, level int) {
 }
 
-// highlightDelimiterProcessor pairs up the `^^` of a highlight, in the same way
-// Goldmark pairs up the markers of emphasis.
+// highlightDelimiterProcessor pairs up the `^^` or the `==` of a highlight,
+// in the same way Goldmark pairs up the markers of emphasis. Each marker has
+// its own processor, so that the highlight that is made knows which marker it
+// was written with.
 type highlightDelimiterProcessor struct {
+	char byte
 }
 
 func (p *highlightDelimiterProcessor) IsDelimiter(b byte) bool {
-	return b == '^'
+	return b == p.char
 }
 
 func (p *highlightDelimiterProcessor) CanOpenCloser(opener *parser.Delimiter, closer *parser.Delimiter) bool {
@@ -33,24 +40,40 @@ func (p *highlightDelimiterProcessor) CanOpenCloser(opener *parser.Delimiter, cl
 }
 
 func (p *highlightDelimiterProcessor) OnMatch(consumes int) ast.Node {
-	return &highlight{}
+	return &highlight{EqualSigns: p.char == '='}
 }
 
-var defaultHighlightDelimiterProcessor = &highlightDelimiterProcessor{}
+var caretHighlightDelimiterProcessor = &highlightDelimiterProcessor{char: '^'}
+var equalSignsHighlightDelimiterProcessor = &highlightDelimiterProcessor{char: '='}
 
-// highlightParser parses the `^^text^^` highlight of Logseq. A single `^` is
-// left to the other parsers, so that footnote references keep working.
+// highlightDelimiterProcessorFor gets the processor for the marker, which is
+// `^` or `=`.
+func highlightDelimiterProcessorFor(c byte) *highlightDelimiterProcessor {
+	if c == '=' {
+		return equalSignsHighlightDelimiterProcessor
+	}
+
+	return caretHighlightDelimiterProcessor
+}
+
+// highlightParser parses the `^^text^^` and `==text==` highlights of Logseq.
+// A single `^` or `=` is left to the other parsers, so that footnote
+// references keep working.
 type highlightParser struct {
 }
 
 func (s *highlightParser) Trigger() []byte {
-	return []byte{'^'}
+	return []byte{'^', '='}
 }
 
 func (s *highlightParser) Parse(parent ast.Node, block text.Reader, pc parser.Context) ast.Node {
 	before := block.PrecendingCharacter()
 	line, segment := block.PeekLine()
-	node := scanDelimiter(line, before, 2, defaultHighlightDelimiterProcessor)
+	if len(line) == 0 {
+		return nil
+	}
+
+	node := scanDelimiter(line, before, 2, highlightDelimiterProcessorFor(line[0]))
 	if node == nil {
 		return nil
 	}

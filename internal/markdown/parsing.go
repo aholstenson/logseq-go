@@ -967,7 +967,7 @@ func convertStrikethrough(src []byte, node *east.Strikethrough) (*content.Strike
 }
 
 func convertHighlight(src []byte, node *highlight) (*content.Highlight, error) {
-	highlight := content.NewHighlight()
+	highlight := content.NewHighlight().WithEqualSigns(node.EqualSigns)
 	err := convertChildren(src, node, highlight)
 	if err != nil {
 		return nil, err

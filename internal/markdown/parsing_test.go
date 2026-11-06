@@ -3826,6 +3826,52 @@ var _ = Describe("Parsing", func() {
 		})
 	})
 
+	Describe("Highlights with equals signs", func() {
+		It("reads text between double equals signs as a highlight", func() {
+			// Given `==mark==`
+			block, err := markdown.ParseString("==mark==")
+			Expect(err).ToNot(HaveOccurred())
+
+			// When it is parsed
+			// Then it is a highlight with the text mark, the same as Logseq
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewHighlight(content.NewText("mark")).WithEqualSigns(true),
+				),
+			)))
+		})
+
+		It("reads which marker a highlight is written with", func() {
+			// Given a highlight with each marker
+			block, err := markdown.ParseString("==mark== and ^^hi^^")
+			Expect(err).ToNot(HaveOccurred())
+
+			// When it is parsed
+			highlights := block.Children().FilterDeep(content.IsOfType[*content.Highlight]())
+
+			// Then only the first is marked as written with equals signs
+			Expect(highlights).To(HaveLen(2))
+			Expect(highlights[0].(*content.Highlight).EqualSigns).To(BeTrue())
+			Expect(highlights[1].(*content.Highlight).EqualSigns).To(BeFalse())
+		})
+
+		DescribeTable("reads equals signs that are not a highlight as text",
+			func(input string) {
+				// Given equals signs that cannot open and close a highlight
+				block, err := markdown.ParseString(input)
+				Expect(err).ToNot(HaveOccurred())
+
+				// When it is parsed
+				// Then there is no highlight
+				Expect(block.Children().FilterDeep(content.IsOfType[*content.Highlight]())).To(BeEmpty())
+			},
+			Entry("a comparison", "a == b"),
+			Entry("a comparison in code", "if (a==b) then"),
+			Entry("a line of equals signs", "Title\n==="),
+			Entry("an opening pair only", "==x"),
+		)
+	})
+
 	Describe("Image size metadata", func() {
 		It("keeps the size after an image with the image and not as text", func() {
 			// Given an image with the size Logseq writes when it is resized

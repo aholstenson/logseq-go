@@ -57,19 +57,20 @@ const lineEdgeRune = rune(-2)
 // escapeText is EscapePotentialMarkdown for a text with known characters
 // directly before and after it. Either can be unknownRune or lineEdgeRune.
 func escapeText(str string, before rune, after rune) string {
-	return escapeTextIn(str, before, after, false, true)
+	return escapeTextIn(str, before, after, false, true, nil)
 }
 
 // escapeTextIn is escapeText for a text that can be inside formatting, such
 // as emphasis. The text of formatting has no tags when it is read back, so a
 // `#` in it is not escaped. If headings is false, the text is on lines that
 // cannot start a heading when read back, so a `#` at the start of a line is
-// not escaped for that.
-func escapeTextIn(str string, before rune, after rune, inFormatting bool, headings bool) string {
+// not escaped for that. If outside is not nil, it tells if a marker can be
+// in the nodes before or after the text, see markerOutside.
+func escapeTextIn(str string, before rune, after rune, inFormatting bool, headings bool, outside markerOutside) string {
 	escapes := map[int]bool{}
 	mathEscapes(str, escapes)
 	bracketEscapes(str, escapes)
-	delimiterEscapes(str, before, after, escapes)
+	delimiterEscapes(str, before, after, outside, escapes)
 	markupEscapes(str, before, !inFormatting, headings, escapes)
 	backslashEscapes(str, after, escapes)
 
@@ -297,17 +298,20 @@ func startsHTMLOrAutoLink(rest string) bool {
 }
 
 // delimiterEscapes finds the positions in the text that need a backslash so
-// that the runs of `*`, `_`, `~` and `^` in it are read back as text. Every
-// `*` and `_` of a run is escaped. For `~~` and `^^` the first marker is kept,
-// as a single `~` or `^` is not a marker.
+// that the runs of `*`, `_`, `~`, `^` and `=` in it are read back as text.
+// Every `*` and `_` of a run is escaped. For `~~`, `^^` and `==` the first
+// marker is kept, as a single `~`, `^` or `=` is not a marker.
 //
 // A run is escaped if it can open formatting and something can close it, or
 // if it can close formatting and something can open it. A run that only opens
 // is kept as it is when no later run of the text can close it and nothing
-// comes after the text in its paragraph, such as the first `__` of `__a__b`.
+// after the text in its paragraph can, such as the first `__` of `__a__b`.
 // The same applies to a run that only closes, and what comes before it.
-func delimiterEscapes(str string, before rune, after rune, escapes map[int]bool) {
-	if !strings.ContainsAny(str, "*_~^") {
+//
+// Nothing can come after the text when it ends the paragraph, or when outside
+// tells that the marker is not in the nodes after it. Outside can be nil.
+func delimiterEscapes(str string, before rune, after rune, outside markerOutside, escapes map[int]bool) {
+	if !strings.ContainsAny(str, "*_~^=") {
 		return
 	}
 
@@ -356,17 +360,26 @@ func delimiterEscapes(str string, before rune, after rune, escapes map[int]bool)
 		i = end
 	}
 
+	// canBeAfter and canBeBefore tell if the marker can be in what comes
+	// after or before the text.
+	canBeAfter := func(c byte) bool {
+		return after != lineEdgeRune && (outside == nil || outside(c, true))
+	}
+	canBeBefore := func(c byte) bool {
+		return before != lineEdgeRune && (outside == nil || outside(c, false))
+	}
+
 	for _, r := range runs {
 		c := str[r.start]
 		escape := false
 		if r.canOpen {
 			closer, ok := lastCloser[c]
-			escape = after != lineEdgeRune || (ok && closer > r.start)
+			escape = (ok && closer > r.start) || canBeAfter(c)
 		}
 
 		if r.canClose && !escape {
 			opener, ok := firstOpener[c]
-			escape = before != lineEdgeRune || (ok && opener < r.start)
+			escape = (ok && opener < r.start) || canBeBefore(c)
 		}
 
 		if !escape {
@@ -381,6 +394,50 @@ func delimiterEscapes(str string, before rune, after rune, escapes map[int]bool)
 	}
 }
 
+// markerOutside tells if the marker character can be in the nodes after a
+// text, if after is true, or in the nodes before it. It is used to find if a
+// run of markers in the text can pair with a run outside it.
+type markerOutside func(c byte, after bool) bool
+
+// markerOutsideOf gets the markerOutside of a text in a paragraph. The marker
+// can not be on a side if no node on that side has the marker character: in
+// the value of a text, or in the Markdown that another node is written as.
+// Returns nil for a text that is not in a paragraph.
+func (w *Output) markerOutsideOf(node *content.Text) markerOutside {
+	if _, ok := node.Parent().(*content.Paragraph); !ok {
+		return nil
+	}
+
+	return func(c byte, after bool) bool {
+		sibling := node.PreviousSibling()
+		if after {
+			sibling = node.NextSibling()
+		}
+
+		for sibling != nil {
+			value := ""
+			if text, ok := sibling.(*content.Text); ok {
+				value = text.Value
+			} else if value = w.writeIsolated(sibling); value == "" {
+				// The node cannot be written, so what it holds is not known.
+				return true
+			}
+
+			if strings.IndexByte(value, c) >= 0 {
+				return true
+			}
+
+			if after {
+				sibling = sibling.NextSibling()
+			} else {
+				sibling = sibling.PreviousSibling()
+			}
+		}
+
+		return false
+	}
+}
+
 // delimiterProcessorFor gets the processor and the shortest run of markers
 // for the formatting that the character is a marker of.
 func delimiterProcessorFor(c byte) (parser.DelimiterProcessor, int) {
@@ -390,7 +447,9 @@ func delimiterProcessorFor(c byte) (parser.DelimiterProcessor, int) {
 	case '~':
 		return defaultStrikethroughDelimiterProcessor, 2
 	case '^':
-		return defaultHighlightDelimiterProcessor, 2
+		return caretHighlightDelimiterProcessor, 2
+	case '=':
+		return equalSignsHighlightDelimiterProcessor, 2
 	}
 
 	return nil, 0
@@ -1065,11 +1124,13 @@ func (w *Output) writePageRefText(node *content.PageRefText) error {
 
 func (w *Output) writeText(node *content.Text) error {
 	before, after := unknownRune, unknownRune
+	var outside markerOutside
 	if !w.isolated {
 		before, after = w.textSurroundings(node, node.SoftLineBreak || node.HardLineBreak)
+		outside = w.markerOutsideOf(node)
 	}
 
-	value := escapeTextIn(node.Value, before, after, isInFormatting(node), !isInIndentedParagraph(node))
+	value := escapeTextIn(node.Value, before, after, isInFormatting(node), !isInIndentedParagraph(node), outside)
 	if strings.HasSuffix(value, "]") && !strings.HasSuffix(value, `\]`) && (after == '(' || after == '[') {
 		// The next node starts with `(` or `[`, which together with the
 		// closing bracket would be read back as a link.
@@ -1317,7 +1378,12 @@ func (w *Output) writeStrikethrough(node *content.Strikethrough) error {
 }
 
 func (w *Output) writeHighlight(node *content.Highlight) error {
-	err := w.writeRaw("^^")
+	marker := "^^"
+	if node.EqualSigns {
+		marker = "=="
+	}
+
+	err := w.writeRaw(marker)
 	if err != nil {
 		return err
 	}
@@ -1327,7 +1393,7 @@ func (w *Output) writeHighlight(node *content.Highlight) error {
 		return err
 	}
 
-	err = w.writeRaw("^^")
+	err = w.writeRaw(marker)
 	if err != nil {
 		return err
 	}

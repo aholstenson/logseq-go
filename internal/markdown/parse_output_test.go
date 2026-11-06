@@ -3,6 +3,7 @@ package markdown_test
 import (
 	"github.com/aholstenson/logseq-go/content"
 	"github.com/aholstenson/logseq-go/internal/markdown"
+	"github.com/aholstenson/logseq-go/internal/tests"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -383,6 +384,44 @@ var _ = Describe("Parsing then outputting", func() {
 			// Syntax that is not modelled stays as text so nothing is lost.
 			FullyEqual("Scheduled with a time range", "TODO Task\nSCHEDULED: <2024-01-15 Mon 10:00-11:00>")
 			FullyEqual("Scheduled with a plain date", "TODO Task\nSCHEDULED: 2024-01-15")
+		})
+	})
+
+	Describe("Highlights with equals signs", func() {
+		// Given `==mark==`, When it is written, Then the equals signs are kept
+		FullyEqual("Highlight with equals signs", "- ==mark==")
+		FullyEqual("Highlights with both markers", "- ==a ^^b^^ c== and ^^d^^")
+		FullyEqual("Highlight with equals signs around a page link", "- ==[[p]]==")
+		FullyEqual("Highlight with equals signs in a property value", "- a\n  x:: ==y==")
+		FullyEqual("Highlight with equals signs over two lines", "- ==a\n  b==")
+		FullyEqual("Comparison with equals signs", "- a == b and if (a==b) then")
+		FullyEqual("Line of equals signs under a title", "- Title\n  ===")
+		FullyEqual("Line of equals signs under a page link", "- [[p]]\n  ===")
+
+		It("writes a highlight with equals signs from the API", func() {
+			// Given a highlight made with the API with equals signs
+			paragraph := content.NewParagraph(content.NewHighlight(content.NewText("x")).WithEqualSigns(true))
+
+			// When it is written
+			v, err := markdown.AsString(paragraph)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Then it is written with equals signs
+			Expect(v).To(Equal("==x=="))
+		})
+
+		It("escapes text with equals signs that would read back as a highlight", func() {
+			// Given a text with the value `==x==`
+			block := content.NewBlock(content.NewParagraph(content.NewText("==x==")))
+
+			// When it is written and read again
+			v, err := markdown.AsString(block)
+			Expect(err).ToNot(HaveOccurred())
+			again, err := markdown.ParseString(v)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Then it is still the text and not a highlight
+			Expect(again).To(tests.EqualNode(block))
 		})
 	})
 
