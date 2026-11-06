@@ -388,3 +388,24 @@ var _ = Describe("Scheduled dates in forms that Logseq ignores", func() {
 		Expect(scheduledDate(block)).To(Equal("2024-02-01 00:00"))
 	})
 })
+
+var _ = Describe("A task marker glued to markup", func() {
+	DescribeTable("is not a task and does not change on save, the same as Logseq",
+		func(input string) {
+			// Given a marker with no space before the markup that follows
+			root, err := markdown.ParseString(input)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Then Logseq reads no task
+			Expect(root.Blocks()[0].TaskStatus()).To(Equal(content.TaskStatusNone))
+
+			// And no space is added on save
+			v, err := markdown.AsString(root)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(v).To(Equal(input))
+		},
+		Entry("before a link", "- TODO[[x]]"),
+		Entry("before bold text", "- TODO**bold**"),
+		Entry("before code", "- DONE`code`"),
+	)
+})
