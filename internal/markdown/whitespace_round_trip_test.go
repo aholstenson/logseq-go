@@ -39,4 +39,12 @@ var _ = Describe("Parsing then outputting whitespace in blocks", func() {
 	FullyEqual("Directive with trailing spaces", "#+title: x \n\n- a")
 	FullyEqual("Directive with an empty value and a space", "#+title: \n\n- a")
 	FullyEqual("Line that looks like a property and ends with two spaces", "- a\n  #x::  \n  b")
+
+	// Given a quote with a lazy continuation line, When written, Then no
+	// quote marker is added to the second line.
+	FullyEqual("Quote with a lazy continuation line", "- > a\n  b")
+	FullyEqual("Quote with a lazy line and a marked line", "- > a\n  b\n  > c")
+	FullyEqual("Nested quote with a lazy line", "- > > a\n  b")
+	FullyEqual("Quote with a lazy line at the top level", "> a\nb")
+	FullyEqual("Quote with a lazy line before an id", "- > a\n  b\n  id:: 6650a7b2-0000-4000-8000-000000000001")
 })

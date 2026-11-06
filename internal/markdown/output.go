@@ -795,6 +795,10 @@ type Output struct {
 	// at the nodes around it, which also keeps two text nodes from writing
 	// each other without end.
 	isolated bool
+
+	// quoteLevels are the indentation levels of the `>` markers of the quotes
+	// that are being written, from the outermost to the innermost.
+	quoteLevels []int
 }
 
 // NewWriter creates a new Markdown writer.
@@ -1048,6 +1052,12 @@ func (w *Output) writeText(node *content.Text) error {
 		if err != nil {
 			return err
 		}
+	}
+
+	if node.LazyLine && (node.SoftLineBreak || node.HardLineBreak) && len(w.quoteLevels) > 0 {
+		// The next line is a part of the quote, but was written without the
+		// `>` markers of the quotes.
+		w.out.SkipIndentationOnNextLine(w.quoteLevels[0])
 	}
 
 	return nil
@@ -2050,6 +2060,15 @@ func (w *Output) writeBlockquote(node *content.Blockquote) error {
 	if err != nil {
 		return err
 	}
+
+	w.quoteLevels = append(w.quoteLevels, w.out.IndentationLevel()-1)
+	defer func() {
+		w.quoteLevels = w.quoteLevels[:len(w.quoteLevels)-1]
+
+		// A lazy line is only a line of the quote, so no line after the
+		// quote leaves out indentation.
+		w.out.SkipIndentationOnNextLine(-1)
+	}()
 
 	if !w.out.lastWasLineBreak {
 		// This is a hack to make sure that the indicator is written in lists

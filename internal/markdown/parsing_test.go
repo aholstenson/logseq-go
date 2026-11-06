@@ -1468,7 +1468,7 @@ var _ = Describe("Parsing", func() {
 			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewBlockquote(
 					content.NewParagraph(
-						content.NewText("This is a blockquote").WithSoftLineBreak(),
+						content.NewText("This is a blockquote").WithSoftLineBreak().WithLazyLine(),
 						content.NewText("with multiple lines"),
 					),
 				),

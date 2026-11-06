@@ -439,7 +439,20 @@ var _ = Describe("Parsing then outputting", func() {
 		FullyEqual("Properties after a table", "- | a   | b   |\n  | --- | --- |\n  | 1   | 2   |\n  id:: 65e5a0b2-1c2d-4e3f-9a8b-0c1d2e3f4a5b\n  collapsed:: true\n\t- child")
 
 		// A line that is not a property is still a part of the quote
-		Varies("Lazy line after a quote", "- > a\n  b", "- > a\n  > b")
+		FullyEqual("Lazy line after a quote", "- > a\n  b")
+
+		It("reads a lazy line after a quote as a part of the quote", func() {
+			// Given a quote with a line that has no > marker
+			root, err := markdown.ParseString("- > a\n  b")
+			Expect(err).ToNot(HaveOccurred())
+
+			// Then the line is in the quote, and the block has no other content
+			block := root.Blocks()[0]
+			Expect(block.Content()).To(HaveLen(1))
+			quote, ok := block.Content()[0].(*content.Blockquote)
+			Expect(ok).To(BeTrue())
+			Expect(quote.Children().FilterDeep(content.IsOfType[*content.Text]())).To(HaveLen(2))
+		})
 	})
 })
 

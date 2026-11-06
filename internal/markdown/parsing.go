@@ -354,6 +354,7 @@ func convertChildren(src []byte, node ast.Node, target content.HasChildren) erro
 				merged.HardLineBreak = text.HardLineBreak()
 				merged.SoftLineBreak = text.SoftLineBreak()
 				merged.TrailingSpace = trailingSpaceOf(src, text)
+				merged.LazyLine = isLazyLineAfter(src, text)
 				continue
 			}
 
@@ -783,7 +784,36 @@ func convertText(src []byte, node *ast.Text) (*content.Text, error) {
 		text.HardLineBreak = true
 	}
 	text.TrailingSpace = trailingSpaceOf(src, node)
+	text.LazyLine = isLazyLineAfter(src, node)
 	return text, nil
+}
+
+// isLazyLineAfter checks if the line after the line break of a text in a
+// quote is written without the `>` marker, see content.Text.LazyLine.
+func isLazyLineAfter(src []byte, node *ast.Text) bool {
+	if !node.SoftLineBreak() && !node.HardLineBreak() {
+		return false
+	}
+
+	inQuote := false
+	for p := node.Parent(); p != nil; p = p.Parent() {
+		if _, ok := p.(*ast.Blockquote); ok {
+			inQuote = true
+			break
+		}
+	}
+
+	if !inQuote {
+		return false
+	}
+
+	i := bytes.IndexByte(src[node.Segment.Stop:], '\n')
+	if i < 0 {
+		return false
+	}
+
+	next := bytes.TrimLeft(src[node.Segment.Stop+i+1:], " \t")
+	return len(next) > 0 && next[0] != '>'
 }
 
 // trailingSpaceOf returns the spaces and tabs between a text and its line

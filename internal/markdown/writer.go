@@ -14,6 +14,10 @@ type writer struct {
 	didWrite           []bool
 
 	lastWasLineBreak bool
+
+	// lazyLevel is the indentation level of a quote marker that is left out
+	// of the next line, or -1. See SkipIndentationOnNextLine.
+	lazyLevel int
 }
 
 func newWriter(out io.Writer) *writer {
@@ -21,7 +25,15 @@ func newWriter(out io.Writer) *writer {
 		output:           out,
 		lastWasLineBreak: true,
 		didWrite:         []bool{false},
+		lazyLevel:        -1,
 	}
+}
+
+// SkipIndentationOnNextLine leaves the indentation of the given level, and of
+// the levels after it, out of the next line that has text. It is used for a
+// lazy line of a quote, which is written without its `>` marker.
+func (w *writer) SkipIndentationOnNextLine(level int) {
+	w.lazyLevel = level
 }
 
 func (w *writer) OnlyIndent() []byte {
@@ -87,6 +99,23 @@ func (w *writer) WriteString(v string) error {
 	asBytes := []byte(v)
 	lastWrite := 0
 	for i, c := range v {
+		if w.lastWasLineBreak && c != '\n' && w.lazyLevel >= 0 {
+			// The line is written with the indentation before the skipped
+			// level only.
+			level := w.lazyLevel
+			w.lazyLevel = -1
+
+			if level < len(w.indentLengths) {
+				_, err := w.output.Write(w.currentIndent[:w.indentLengths[level]])
+				if err != nil {
+					return err
+				}
+
+				w.lastWasLineBreak = false
+				continue
+			}
+		}
+
 		if w.lastWasLineBreak {
 			// The previous write was a a line break, so we need to write the
 			// indentation.

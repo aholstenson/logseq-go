@@ -20,6 +20,13 @@ type Text struct {
 	// the break. If it is empty, a hard line break is written as a
 	// backslash. It is not used if the text has no line break.
 	TrailingSpace string
+
+	// LazyLine is whether the line after the line break of the text is in a
+	// quote but is written without the `>` marker, as `b` is in "> a\nb".
+	// Logseq and CommonMark read such a line as a part of the quote. It is
+	// written back without the marker, so that saving does not change the
+	// line. It is not used if the text has no line break.
+	LazyLine bool
 }
 
 func NewText(text string) *Text {
@@ -46,6 +53,13 @@ func (t *Text) WithSoftLineBreak() *Text {
 	return t
 }
 
+// WithLazyLine marks the line after the line break of the text as a lazy
+// line of a quote, which is written without the `>` marker. See LazyLine.
+func (t *Text) WithLazyLine() *Text {
+	t.LazyLine = true
+	return t
+}
+
 func (t *Text) WithNoLineBreak() *Text {
 	t.SoftLineBreak = false
 	t.HardLineBreak = false
@@ -61,6 +75,9 @@ func (t *Text) debug(p *debugPrinter) {
 		p.Field("lineBreak", "hard")
 	} else if t.SoftLineBreak {
 		p.Field("lineBreak", "soft")
+	}
+	if t.LazyLine {
+		p.Field("lazyLine", "true")
 	}
 	p.EndType()
 }
