@@ -137,12 +137,14 @@ func parseTaskDate(line string, pattern *regexp.Regexp) *taskDate {
 		}
 	}
 
-	node.Date = time.Date(year, time.Month(month), day, hour, minute, 0, 0, time.Local)
-	if node.Date.Year() != year || node.Date.Month() != time.Month(month) || node.Date.Day() != day {
+	wall := time.Date(year, time.Month(month), day, hour, minute, 0, 0, time.UTC)
+	if wall.Year() != year || wall.Month() != time.Month(month) || wall.Day() != day {
 		// The date does not exist, such as 2024-02-31, so this is not a date
 		// we can represent.
 		return nil
 	}
+
+	node.Date = inLocalZone(wall)
 
 	if matches[7] != "" {
 		repeater := &content.Repeater{}

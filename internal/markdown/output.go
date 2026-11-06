@@ -2731,6 +2731,11 @@ func (w *Output) logbookLayout() string {
 
 // logbookClock formats a clock entry, deriving the duration from the two
 // times so it always matches them.
+//
+// The duration is the difference between the wall clock times as they are
+// written, the same as Logseq computes it. On a day when the clocks change,
+// it is not the time that went by: 01:30 to 03:30 is 02:00 also when the
+// clocks go forward between them.
 func (w *Output) logbookClock(node *content.LogbookEntryClock) (string, error) {
 	layout := w.logbookLayout()
 
@@ -2745,10 +2750,21 @@ func (w *Output) logbookClock(node *content.LogbookEntryClock) (string, error) {
 
 	value += "--[" + node.End.Format(layout) + "] =>  "
 
+	start, end := wallClock(node.Start), wallClock(node.End)
 	if !w.opts.logbookWithSeconds {
 		// The duration is measured between the times as they are written, so
 		// that it adds up for whoever reads the entry.
-		duration := node.End.Truncate(time.Minute).Sub(node.Start.Truncate(time.Minute))
+		start, end = start.Truncate(time.Minute), end.Truncate(time.Minute)
+	}
+
+	duration := end.Sub(start)
+	if duration < 0 {
+		// The clocks went back between the two times, so the end is written
+		// before the start. The time that went by is used instead.
+		duration = node.Duration()
+	}
+
+	if !w.opts.logbookWithSeconds {
 		return value + fmt.Sprintf(
 			"%02d:%02d",
 			int(duration/time.Hour),
@@ -2756,13 +2772,18 @@ func (w *Output) logbookClock(node *content.LogbookEntryClock) (string, error) {
 		), nil
 	}
 
-	duration := node.Duration()
 	return value + fmt.Sprintf(
 		"%02d:%02d:%02d",
 		int(duration/time.Hour),
 		int(duration/time.Minute)%60,
 		int(duration/time.Second)%60,
 	), nil
+}
+
+// wallClock gets the wall clock time of a time, which is its date, hour,
+// minute and second in its own time zone, as a time in UTC.
+func wallClock(t time.Time) time.Time {
+	return time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), t.Nanosecond(), time.UTC)
 }
 
 func (w *Output) logbookStateChange(node *content.LogbookEntryStateChange) (string, error) {

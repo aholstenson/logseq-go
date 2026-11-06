@@ -409,3 +409,67 @@ var _ = Describe("A task marker glued to markup", func() {
 		Entry("before code", "- DONE`code`"),
 	)
 })
+
+var _ = Describe("Task times in a daylight saving gap", func() {
+	// useLocalZone makes the named zone the local time zone for the rest of
+	// the test, and puts the old zone back when the test ends.
+	useLocalZone := func(name string) {
+		location, err := time.LoadLocation(name)
+		if err != nil {
+			Skip("time zone database has no " + name)
+		}
+
+		previous := time.Local
+		time.Local = location
+		DeferCleanup(func() {
+			time.Local = previous
+		})
+	}
+
+	roundTrip := func(input string) string {
+		root, err := markdown.ParseString(input)
+		Expect(err).ToNot(HaveOccurred())
+
+		v, err := markdown.AsString(root)
+		Expect(err).ToNot(HaveOccurred())
+		return v
+	}
+
+	It("keeps a scheduled time that falls in the gap when the clocks go forward", func() {
+		// Given the local zone Europe/Stockholm, where 02:00-03:00 on
+		// 2024-03-31 does not exist
+		useLocalZone("Europe/Stockholm")
+
+		// When a task scheduled at 02:30 that day is read and written
+		input := "- TODO a\n  SCHEDULED: <2024-03-31 Sun 02:30>"
+
+		// Then the time is not moved
+		Expect(roundTrip(input)).To(Equal(input))
+	})
+
+	It("keeps a scheduled time in the gap in America/New_York", func() {
+		useLocalZone("America/New_York")
+
+		input := "- TODO a\n  SCHEDULED: <2024-03-10 Sun 02:30>"
+		Expect(roundTrip(input)).To(Equal(input))
+	})
+
+	It("keeps a clock entry that crosses the gap", func() {
+		// Given the local zone Europe/Stockholm
+		useLocalZone("Europe/Stockholm")
+
+		// When a clock entry from 01:30 to 03:30 on 2024-03-31 is read and
+		// written
+		input := "- DONE a\n  :LOGBOOK:\n  CLOCK: [2024-03-31 Sun 01:30:00]--[2024-03-31 Sun 03:30:00] =>  02:00:00\n  :END:"
+
+		// Then the entry does not change
+		Expect(roundTrip(input)).To(Equal(input))
+	})
+
+	It("keeps a clock start time that falls in the gap", func() {
+		useLocalZone("Europe/Stockholm")
+
+		input := "- DOING a\n  :LOGBOOK:\n  CLOCK: [2024-03-31 Sun 02:30:00]\n  :END:"
+		Expect(roundTrip(input)).To(Equal(input))
+	})
+})

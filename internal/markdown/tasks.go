@@ -47,14 +47,60 @@ func parseLogbookEntry(value string) content.LogbookEntry {
 }
 
 // parseLogbookTime reads a timestamp of a logbook entry. Both precisions are
-// accepted, as a graph without second support leaves the seconds out.
+// accepted, as a graph without second support leaves the seconds out. The
+// time is in the local time zone, see inLocalZone.
 func parseLogbookTime(value string) (time.Time, error) {
-	parsed, err := time.ParseInLocation(logbookTimeLayout, value, time.Local)
-	if err == nil {
-		return parsed, nil
+	parsed, err := time.Parse(logbookTimeLayout, value)
+	if err != nil {
+		parsed, err = time.Parse(logbookTimeLayoutWithoutSeconds, value)
+		if err != nil {
+			return time.Time{}, err
+		}
 	}
 
-	return time.ParseInLocation(logbookTimeLayoutWithoutSeconds, value, time.Local)
+	return inLocalZone(parsed), nil
+}
+
+// inLocalZone gets the time in the local time zone that has the same wall
+// clock time (date, hour, minute and second) as the given time.
+//
+// When the clocks go forward, some wall clock times do not exist in the
+// local zone, such as 02:30 on 2024-03-31 in Europe/Stockholm. time.Date
+// moves such a time by the length of the gap, and the moved time would then
+// be written to the page. Instead, such a time gets a fixed zone with the
+// offset that gives the same instant as time.Date, so that the wall clock
+// time that was written in the page stays the same.
+func inLocalZone(wall time.Time) time.Time {
+	local := time.Date(wall.Year(), wall.Month(), wall.Day(),
+		wall.Hour(), wall.Minute(), wall.Second(), wall.Nanosecond(), time.Local)
+	if sameWallClock(local, wall) {
+		return local
+	}
+
+	wallUTC := time.Date(wall.Year(), wall.Month(), wall.Day(),
+		wall.Hour(), wall.Minute(), wall.Second(), wall.Nanosecond(), time.UTC)
+	offset := int(wallUTC.Sub(local) / time.Second)
+
+	// Use the name of the local zone that has this offset, which is the zone
+	// on one side of the gap.
+	name := ""
+	_, localOffset := local.Zone()
+	gap := time.Duration(offset-localOffset) * time.Second
+	for _, at := range []time.Time{local.Add(gap), local.Add(-gap)} {
+		if zoneName, zoneOffset := at.Zone(); zoneOffset == offset {
+			name = zoneName
+			break
+		}
+	}
+
+	return local.In(time.FixedZone(name, offset))
+}
+
+// sameWallClock checks if two times have the same date, hour, minute and
+// second, in their own time zones.
+func sameWallClock(a time.Time, b time.Time) bool {
+	return a.Year() == b.Year() && a.Month() == b.Month() && a.Day() == b.Day() &&
+		a.Hour() == b.Hour() && a.Minute() == b.Minute() && a.Second() == b.Second()
 }
 
 func parseLogbookClock(line string) content.LogbookEntry {
