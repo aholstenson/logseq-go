@@ -459,6 +459,36 @@ func convertOutline(src []byte, node ast.Node, headingBlocks bool, levels blockL
 			}
 		}
 
+		if heading, ok := child.(*ast.Heading); ok && !isOnBulletLine(src, heading, block) && isATXHeading(src, heading) {
+			if _, isListItem := node.(*ast.ListItem); isListItem {
+				// A heading line after the first line of a block starts a
+				// child block, the same as Logseq. Its level comes from the
+				// indentation of the line, in the same way as for a bullet,
+				// so the heading is a sibling of the bullets at the same
+				// indentation. The content after it goes to the block that
+				// comes last in the file.
+				headingNode, err := convertHeading(src, heading)
+				if err != nil {
+					return nil, err
+				}
+
+				convertTaskMarker(headingNode, src, heading)
+
+				headingBlock := content.NewHeadingBlock(headingNode)
+				if indent, ok := headingIndent(src, heading); ok {
+					levels.set(headingBlock, indent+1)
+				} else if indent, ok := bulletIndent(node); ok {
+					// The heading has no text to find its line from, so it
+					// is read as a child of the block.
+					levels.set(headingBlock, indent+2)
+				}
+
+				block.AddChild(headingBlock)
+				hasParsedBlock = true
+				continue
+			}
+		}
+
 		// Check if the child is a list of blocks.
 		if list, ok := child.(*ast.List); ok && list.Marker == '-' {
 			// This is a list using the block marker, so children are parsed
@@ -527,6 +557,49 @@ func convertOutline(src []byte, node ast.Node, headingBlocks bool, levels blockL
 	}
 
 	return block, nil
+}
+
+// isATXHeading checks if a heading is written with `#` marks, such as
+// `## Section`. Logseq reads only such headings. A setext heading, which is
+// text followed by a line of `=` or `-`, is not a heading in Logseq.
+func isATXHeading(src []byte, heading *ast.Heading) bool {
+	if heading.Lines().Len() == 0 {
+		// An ATX heading can be empty, such as `##`. A setext heading
+		// always has text.
+		return true
+	}
+
+	start := lineStart(src, heading.Lines().At(0).Start)
+	line := bytes.TrimLeft(src[start:], " \t")
+	return len(line) > 0 && line[0] == '#'
+}
+
+// isOnBulletLine checks if a heading is on the line of the bullet of its
+// block, as in `- ## Section`. A heading with no text, such as `##`, is on
+// that line if it is the first thing in the block.
+func isOnBulletLine(src []byte, heading *ast.Heading, block *content.Block) bool {
+	if heading.Lines().Len() == 0 {
+		return block.FirstChild() == nil
+	}
+
+	line := bytes.TrimLeft(src[lineStart(src, heading.Lines().At(0).Start):], " \t")
+	return isBulletLine(line)
+}
+
+// headingIndent gets the number of spaces and tabs before the `#` marks of a
+// heading, from the start of its line. It is not known for a heading with no
+// text.
+func headingIndent(src []byte, heading *ast.Heading) (int, bool) {
+	if heading.Lines().Len() == 0 {
+		return 0, false
+	}
+
+	count := 0
+	for i := lineStart(src, heading.Lines().At(0).Start); i < len(src) && (src[i] == ' ' || src[i] == '\t'); i++ {
+		count++
+	}
+
+	return count, true
 }
 
 // isHeadingBlock checks if a node is a block read from a heading line.

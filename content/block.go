@@ -51,17 +51,22 @@ func (b *Block) SetPreBlock(preBlock bool) {
 	b.preBlock = preBlock
 }
 
-// NewHeadingBlock creates a top-level block that starts with a heading line
-// that is not in a bullet, such as `# Title`. Logseq reads each such line as
-// the start of a block, and the text and properties after it are part of
-// that block:
+// NewHeadingBlock creates a block that starts with a heading line that is
+// not on a bullet line, such as `# Title`. Logseq reads each such line as the
+// start of a block, and the text and properties after it are part of that
+// block:
 //
 //	# Title
 //	type:: book
 //	- The next block
 //
-// The block is written without a bullet marker while it is a top-level block
-// that starts with a heading. Otherwise it is written as a usual block.
+// A heading line after the first line of a block starts a child block of
+// that block. In `- Notes\n  ## Section\n  - Item`, the block `Notes` has two
+// child blocks: the heading block `## Section` and the block `Item`.
+//
+// The block is written without a bullet marker while it starts with a
+// heading, and is a top-level block or a child of a block that is written
+// with a bullet and has content. Otherwise it is written as a usual block.
 func NewHeadingBlock(children ...Node) *Block {
 	block := NewBlock(children...)
 	block.headingBlock = true
@@ -69,7 +74,7 @@ func NewHeadingBlock(children ...Node) *Block {
 }
 
 // IsHeadingBlock returns true if this block was read from a heading line that
-// is not in a bullet. See NewHeadingBlock for details.
+// is not on a bullet line. See NewHeadingBlock for details.
 func (b *Block) IsHeadingBlock() bool {
 	return b.headingBlock
 }

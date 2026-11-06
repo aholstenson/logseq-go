@@ -2274,12 +2274,25 @@ func (w *Output) writeBlock(node *content.Block) error {
 
 // writesWithoutBullet checks if a block is written without a bullet. This is
 // the case in the positions where the bullet-less form parses back into the
-// same structure: a pre-block as the first block of a page, and a heading
-// block as a top-level block that starts with a heading.
+// same structure: a pre-block as the first block of a page, a heading block
+// as a top-level block that starts with a heading, and a heading block that
+// starts with a heading in a block that is written with a bullet and has
+// content of its own.
 func writesWithoutBullet(node *content.Block) bool {
 	parent, ok := node.Parent().(*content.Block)
-	if !ok || parent.Parent() != nil {
+	if !ok {
 		return false
+	}
+
+	if parent.Parent() != nil {
+		// A heading line in a block starts a child block only after the
+		// first line of the block, see convertOutline.
+		if !node.IsHeadingBlock() || writesWithoutBullet(parent) || len(parent.Content()) == 0 {
+			return false
+		}
+
+		_, ok := node.FirstChild().(*content.Heading)
+		return ok
 	}
 
 	if node.IsPreBlock() {

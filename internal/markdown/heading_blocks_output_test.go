@@ -53,3 +53,61 @@ var _ = Describe("Parsing then outputting heading blocks", func() {
 		Expect(v).To(Equal("- ## x"))
 	})
 })
+
+// Logseq starts a new block at each heading line, also when the line is
+// inside the text of a block. The heading block is a child of the block.
+var _ = Describe("A heading line inside a block", func() {
+	parse := func(input string) *content.Block {
+		root, err := markdown.ParseString(input)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(root.Blocks()).To(HaveLen(1))
+		return root.Blocks()[0]
+	}
+
+	It("starts a child block, the same as Logseq", func() {
+		// Given a block with a heading on its second line
+		block := parse("- x\n  ## y")
+
+		// Then the heading is the first node of a child block
+		Expect(block.Blocks()).To(HaveLen(1))
+		heading, ok := block.Blocks()[0].Content()[0].(*content.Heading)
+		Expect(ok).To(BeTrue(), "first node of the child block is a heading")
+		Expect(heading.Level).To(Equal(2))
+
+		// And the heading is not part of the text of the parent block
+		for _, node := range block.Content() {
+			_, isHeading := node.(*content.Heading)
+			Expect(isHeading).To(BeFalse(), "parent block has no heading")
+		}
+	})
+
+	It("reads the task marker of the heading as a task of the child block", func() {
+		// Given a block with a heading task on its second line
+		block := parse("- x\n  ## TODO y")
+
+		// Then the parent block is not a task
+		Expect(block.TaskStatus()).To(Equal(content.TaskStatusNone))
+
+		// And its child block is a TODO task
+		Expect(block.Blocks()).ToNot(BeEmpty())
+		Expect(block.Blocks()[0].TaskStatus()).To(Equal(content.TaskStatusTodo))
+	})
+
+	It("makes the heading a sibling of the child blocks that follow it", func() {
+		// Given a heading line and then a child bullet at the same indentation
+		block := parse("- x\n  ## TODO y\n  - child")
+
+		// Then the parent block has two child blocks: the heading and the bullet
+		Expect(block.Blocks()).To(HaveLen(2))
+		Expect(block.Blocks()[0].TaskStatus()).To(Equal(content.TaskStatusTodo))
+	})
+
+	It("does not add a blank line before the heading when written", func() {
+		// Given a block with a heading on its second line
+		// When it is parsed and written
+		v := parseAndOutput("- x\n  ## y")
+
+		// Then no blank line is added between the text and the heading
+		Expect(v).ToNot(ContainSubstring("\n\n"))
+	})
+})
