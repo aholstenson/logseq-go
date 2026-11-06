@@ -194,10 +194,13 @@ func parseWithOptions(src []byte, options *parseOptions) (*content.Block, error)
 	context.Set(parseOptionsKey, options)
 
 	doc := markdownParser.Parse(text.NewReader(src), parser.WithContext(context))
-	block, err := convertOutline(src, doc, options.page)
+	levels := blockLevels{}
+	block, err := convertOutline(src, doc, options.page, levels)
 	if err != nil {
 		return nil, fmt.Errorf("Could not parse Markdown: %w", err)
 	}
+
+	nestByLevels(block, levels)
 
 	return block, nil
 }
@@ -343,13 +346,14 @@ func canMergeTextNodes(a *ast.Text, b *ast.Text) bool {
 // convertToBlock implements the Logseq outlining, where lists using `-` are
 // converted into sub-blocks.
 func convertToBlock(src []byte, node ast.Node) (*content.Block, error) {
-	return convertOutline(src, node, false)
+	return convertOutline(src, node, false, nil)
 }
 
 // convertOutline converts a page, a block or indented bullets into a block.
 // If headingBlocks is true, the node is a page and its heading lines start
-// top-level blocks, see AsPage.
-func convertOutline(src []byte, node ast.Node, headingBlocks bool) (*content.Block, error) {
+// top-level blocks, see AsPage. If levels is not nil, it gets the level of
+// each block, see nestByLevels.
+func convertOutline(src []byte, node ast.Node, headingBlocks bool, levels blockLevels) (*content.Block, error) {
 	block := content.NewBlock()
 
 	// target is the block that content before the first list of blocks goes
@@ -360,7 +364,7 @@ func convertOutline(src []byte, node ast.Node, headingBlocks bool) (*content.Blo
 	hasParsedBlock := false
 	for child := node.FirstChild(); child != nil; child = child.NextSibling() {
 		if indented, ok := child.(*indentedBlocks); ok {
-			nested, err := convertToBlock(src, indented)
+			nested, err := convertOutline(src, indented, false, levels)
 			if err != nil {
 				return nil, err
 			}
@@ -406,6 +410,7 @@ func convertOutline(src []byte, node ast.Node, headingBlocks bool) (*content.Blo
 				convertTaskMarker(headingNode, src, heading)
 
 				headingBlock := content.NewHeadingBlock(headingNode)
+				levels.set(headingBlock, 1)
 				if heading.HasBlankPreviousLines() && block.FirstChild() != nil {
 					headingBlock.SetPreviousLineType(content.PreviousLineTypeBlank)
 				}
@@ -421,9 +426,13 @@ func convertOutline(src []byte, node ast.Node, headingBlocks bool) (*content.Blo
 			// This is a list using the block marker, so children are parsed
 			// as blocks.
 			for listItem := list.FirstChild(); listItem != nil; listItem = listItem.NextSibling() {
-				listItemBlock, err := convertToBlock(src, listItem)
+				listItemBlock, err := convertOutline(src, listItem, false, levels)
 				if err != nil {
 					return nil, err
+				}
+
+				if indent, ok := bulletIndent(listItem); ok {
+					levels.set(listItemBlock, indent+1)
 				}
 
 				_, isDocument := node.(*ast.Document)

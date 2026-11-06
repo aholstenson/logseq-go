@@ -1,6 +1,8 @@
 package markdown
 
 import (
+	"bytes"
+
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/text"
@@ -26,6 +28,8 @@ func newBlockListParser() *blockListParser {
 }
 
 func (p *blockListParser) Open(parent ast.Node, reader text.Reader, pc parser.Context) (ast.Node, parser.State) {
+	expandTabsBeforeBlockMarker(reader)
+
 	if _, ok := indentedUnderHeading(parent, reader, pc); ok {
 		// The bullets are children of the heading, see indentedBlocksParser.
 		return nil, parser.NoChildren
@@ -47,6 +51,10 @@ func (p *blockListParser) Continue(node ast.Node, reader text.Reader, pc parser.
 		return parser.Close
 	}
 
+	if isBlockList(node) {
+		expandTabsBeforeBlockMarker(reader)
+	}
+
 	state := p.BlockParser.Continue(node, reader, pc)
 	if state&parser.Close == 0 || !isBlockList(node) {
 		return state
@@ -66,6 +74,27 @@ func (p *blockListParser) Continue(node ast.Node, reader text.Reader, pc parser.
 	}
 
 	return state
+}
+
+// expandTabsBeforeBlockMarker moves the reader past the spaces and tabs
+// before a bullet "- ", and keeps their width as padding. The list parsers
+// of Goldmark do not read a bullet after a tab, so "\t- b" in the text of a
+// block, such as the second line of "- a\n  \t- b", is read as text without
+// this. Logseq reads such a line as a block. The width in columns is kept, so
+// Goldmark nests the bullet in the same way as with spaces.
+func expandTabsBeforeBlockMarker(reader text.Reader) {
+	line, _ := reader.PeekLine()
+	indent, pos := util.IndentWidth(line, reader.LineOffset())
+	if indent >= 4 || pos >= len(line) || !isBlockMarker(line[pos:]) {
+		return
+	}
+
+	if bytes.IndexByte(line[:pos], '\t') < 0 {
+		return
+	}
+
+	reader.Advance(pos)
+	reader.SetPadding(indent)
 }
 
 // inBlockContent returns true if the node is in the content of a page or of
@@ -168,7 +197,8 @@ func isBlockList(node ast.Node) bool {
 }
 
 // blockListItemParser parses list items in the same way as the list item
-// parser of Goldmark, with one difference that Logseq has: a block without
+// parser of Goldmark. It keeps the indentation of each bullet, see
+// bulletIndent, and it has one difference that Logseq has: a block without
 // text keeps the lines that are indented at least as far as its text would
 // start. Thus "c" is a child of the empty block in
 //
@@ -183,6 +213,55 @@ type blockListItemParser struct {
 
 func newBlockListItemParser() *blockListItemParser {
 	return &blockListItemParser{BlockParser: parser.NewListItemParser()}
+}
+
+func (p *blockListItemParser) Open(parent ast.Node, reader text.Reader, pc parser.Context) (ast.Node, parser.State) {
+	indent := lineIndentCharacters(reader)
+	expandTabsBeforeBlockMarker(reader)
+	node, state := p.BlockParser.Open(parent, reader, pc)
+	if node != nil {
+		node.SetAttribute(bulletIndentAttribute, indent)
+	}
+
+	return node, state
+}
+
+// bulletIndentAttribute is the attribute of a list item that holds the
+// number of spaces and tabs before its bullet marker, from the start of the
+// line. See lineIndentCharacters.
+var bulletIndentAttribute = []byte("logseq-bullet-indent")
+
+// bulletIndent gets the number of spaces and tabs before the bullet marker of
+// a list item, as kept by blockListItemParser.
+func bulletIndent(item ast.Node) (int, bool) {
+	value, ok := item.Attribute(bulletIndentAttribute)
+	if !ok {
+		return 0, false
+	}
+
+	indent, ok := value.(int)
+	return indent, ok
+}
+
+// lineIndentCharacters counts the spaces and tabs at the start of the line
+// that the reader is on, from the start of the line and not from the position
+// of the reader. Logseq gives each bullet a level from this count, where a tab
+// and a space each count as one character.
+func lineIndentCharacters(reader text.Reader) int {
+	source := reader.Source()
+	_, segment := reader.Position()
+
+	start := segment.Start
+	for start > 0 && source[start-1] != '\n' && source[start-1] != '\r' {
+		start--
+	}
+
+	count := 0
+	for i := start; i < len(source) && (source[i] == ' ' || source[i] == '\t'); i++ {
+		count++
+	}
+
+	return count
 }
 
 func (p *blockListItemParser) Continue(node ast.Node, reader text.Reader, pc parser.Context) parser.State {
