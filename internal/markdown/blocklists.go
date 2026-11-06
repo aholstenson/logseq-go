@@ -364,8 +364,19 @@ func (p *blockThematicBreakParser) Open(parent ast.Node, reader text.Reader, pc 
 		return nil, parser.NoChildren
 	}
 
-	return p.BlockParser.Open(parent, reader, pc)
+	line, _ := reader.PeekLine()
+	marker := string(bytes.TrimRight(bytes.TrimLeft(line, " \t"), "\r\n"))
+	node, state := p.BlockParser.Open(parent, reader, pc)
+	if node != nil {
+		node.SetAttributeString(thematicBreakMarkerAttribute, marker)
+	}
+
+	return node, state
 }
+
+// thematicBreakMarkerAttribute is the name of the attribute that holds the
+// text of a thematic break, such as `***`, as it is in the file.
+const thematicBreakMarkerAttribute = "logseq-marker"
 
 // startsDividerBlock returns true if the line is a bullet followed by a
 // thematic break, such as "- ---" or "- ***".

@@ -291,6 +291,9 @@ func convert(src []byte, in ast.Node) (content.Node, error) {
 		return convertImage(src, node)
 	case *ast.ThematicBreak:
 		thematicBreak := content.NewThematicBreak()
+		if marker, ok := node.AttributeString(thematicBreakMarkerAttribute); ok && marker != "---" {
+			thematicBreak.Marker = marker.(string)
+		}
 		updatePreviousLine(node, thematicBreak)
 		return thematicBreak, nil
 	case *beginEnd:
@@ -932,11 +935,13 @@ func macroNodeOf(node *macro) content.Node {
 }
 
 func convertEmphasis(src []byte, node *ast.Emphasis) (content.HasChildren, error) {
+	_, underscore := node.AttributeString(emphasisUnderscoreAttribute)
+
 	var result content.HasChildren
 	if node.Level == 1 {
-		result = content.NewEmphasis()
+		result = content.NewEmphasis().WithUnderscore(underscore)
 	} else if node.Level == 2 {
-		result = content.NewStrong()
+		result = content.NewStrong().WithUnderscore(underscore)
 	} else {
 		return nil, fmt.Errorf("Unsupported emphasis level: %d", node.Level)
 	}

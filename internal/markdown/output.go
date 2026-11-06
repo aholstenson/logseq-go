@@ -334,7 +334,7 @@ func delimiterEscapes(str string, before rune, after rune, escapes map[int]bool)
 func delimiterProcessorFor(c byte) (parser.DelimiterProcessor, int) {
 	switch c {
 	case '*', '_':
-		return defaultEmphasisDelimiterProcessor, 1
+		return emphasisDelimiterProcessorFor(c), 1
 	case '~':
 		return defaultStrikethroughDelimiterProcessor, 2
 	case '^':
@@ -1166,7 +1166,8 @@ func (w *Output) writeEmphasis(node *content.Emphasis) error {
 		}
 	}
 
-	err := w.writeRaw("*")
+	marker := string(emphasisMarker(node, node.Underscore))
+	err := w.writeRaw(marker)
 	if err != nil {
 		return err
 	}
@@ -1176,7 +1177,7 @@ func (w *Output) writeEmphasis(node *content.Emphasis) error {
 		return err
 	}
 
-	err = w.writeRaw("*")
+	err = w.writeRaw(marker)
 	if err != nil {
 		return err
 	}
@@ -1194,7 +1195,8 @@ func (w *Output) writeStrong(node *content.Strong) error {
 		}
 	}
 
-	err := w.writeRaw("**")
+	marker := strings.Repeat(string(emphasisMarker(node, node.Underscore)), 2)
+	err := w.writeRaw(marker)
 	if err != nil {
 		return err
 	}
@@ -1204,12 +1206,42 @@ func (w *Output) writeStrong(node *content.Strong) error {
 		return err
 	}
 
-	err = w.writeRaw("**")
+	err = w.writeRaw(marker)
 	if err != nil {
 		return err
 	}
 
 	return nil
+}
+
+// emphasisMarker gets the marker that emphasis or strong text is written
+// with. If underscore is true, `_` is used where it is read back as the same
+// formatting: a `_` that opens must not come directly after a letter or a
+// digit, and a `_` that closes must not come directly before one. Elsewhere
+// `*` is used.
+//
+// Only the text next to the node is looked at. The other nodes that can be
+// next to it, such as links and code, start and end with punctuation.
+func emphasisMarker(node content.Node, underscore bool) byte {
+	if !underscore {
+		return '*'
+	}
+
+	if text, ok := node.PreviousSibling().(*content.Text); ok && !text.SoftLineBreak && !text.HardLineBreak && text.Value != "" {
+		r, _ := utf8.DecodeLastRuneInString(text.Value)
+		if !util.IsSpaceRune(r) && !util.IsPunctRune(r) {
+			return '*'
+		}
+	}
+
+	if text, ok := node.NextSibling().(*content.Text); ok && text.Value != "" {
+		r, _ := utf8.DecodeRuneInString(text.Value)
+		if !util.IsSpaceRune(r) && !util.IsPunctRune(r) {
+			return '*'
+		}
+	}
+
+	return '_'
 }
 
 func (w *Output) writeStrikethrough(node *content.Strikethrough) error {
@@ -2168,7 +2200,12 @@ func (w *Output) writeThematicBreak(node *content.ThematicBreak) error {
 		return err
 	}
 
-	err = w.writeRaw("---")
+	marker := "---"
+	if isThematicBreak([]byte(node.Marker)) {
+		marker = node.Marker
+	}
+
+	err = w.writeRaw(marker)
 	if err != nil {
 		return err
 	}

@@ -25,13 +25,16 @@ func scanDelimiter(line []byte, before rune, min int, processor parser.Delimiter
 	return node
 }
 
-// emphasisDelimiterProcessor pairs up the `*` and `_` markers of emphasis and
-// strong text, in the same way as the emphasis parser of Goldmark.
+// emphasisDelimiterProcessor pairs up the `*` or the `_` markers of emphasis
+// and strong text, in the same way as the emphasis parser of Goldmark. Each
+// marker has its own processor, so that the emphasis that is made knows which
+// marker it was written with.
 type emphasisDelimiterProcessor struct {
+	char byte
 }
 
 func (p *emphasisDelimiterProcessor) IsDelimiter(b byte) bool {
-	return b == '*' || b == '_'
+	return b == p.char
 }
 
 func (p *emphasisDelimiterProcessor) CanOpenCloser(opener *parser.Delimiter, closer *parser.Delimiter) bool {
@@ -39,10 +42,30 @@ func (p *emphasisDelimiterProcessor) CanOpenCloser(opener *parser.Delimiter, clo
 }
 
 func (p *emphasisDelimiterProcessor) OnMatch(consumes int) ast.Node {
-	return ast.NewEmphasis(consumes)
+	node := ast.NewEmphasis(consumes)
+	if p.char == '_' {
+		node.SetAttributeString(emphasisUnderscoreAttribute, true)
+	}
+
+	return node
 }
 
-var defaultEmphasisDelimiterProcessor = &emphasisDelimiterProcessor{}
+// emphasisUnderscoreAttribute is the name of the attribute that is set on
+// emphasis that is written with `_` markers.
+const emphasisUnderscoreAttribute = "logseq-underscore"
+
+var asteriskEmphasisDelimiterProcessor = &emphasisDelimiterProcessor{char: '*'}
+var underscoreEmphasisDelimiterProcessor = &emphasisDelimiterProcessor{char: '_'}
+
+// emphasisDelimiterProcessorFor gets the processor for the marker, which is
+// `*` or `_`.
+func emphasisDelimiterProcessorFor(c byte) *emphasisDelimiterProcessor {
+	if c == '_' {
+		return underscoreEmphasisDelimiterProcessor
+	}
+
+	return asteriskEmphasisDelimiterProcessor
+}
 
 // emphasisParser parses emphasis and strong text, with the markers that
 // scanDelimiter accepts.
@@ -56,7 +79,11 @@ func (s *emphasisParser) Trigger() []byte {
 func (s *emphasisParser) Parse(parent ast.Node, block text.Reader, pc parser.Context) ast.Node {
 	before := block.PrecendingCharacter()
 	line, segment := block.PeekLine()
-	node := scanDelimiter(line, before, 1, defaultEmphasisDelimiterProcessor)
+	if len(line) == 0 {
+		return nil
+	}
+
+	node := scanDelimiter(line, before, 1, emphasisDelimiterProcessorFor(line[0]))
 	if node == nil {
 		return nil
 	}

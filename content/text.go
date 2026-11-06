@@ -135,6 +135,11 @@ var _ InlineNode = (*CodeSpan)(nil)
 
 type Emphasis struct {
 	baseNodeWithChildren
+
+	// Underscore is whether the emphasis is written with `_` markers, such
+	// as `_text_`, instead of `*` markers. The `*` markers are used where `_`
+	// would not be read back as emphasis, such as directly after a letter.
+	Underscore bool
 }
 
 func NewEmphasis(children ...Node) *Emphasis {
@@ -145,10 +150,20 @@ func NewEmphasis(children ...Node) *Emphasis {
 	return e
 }
 
+// WithUnderscore sets if the emphasis is written with `_` markers. See
+// Underscore.
+func (e *Emphasis) WithUnderscore(underscore bool) *Emphasis {
+	e.Underscore = underscore
+	return e
+}
+
 func (e *Emphasis) isInline() {}
 
 func (e *Emphasis) debug(p *debugPrinter) {
 	p.StartType("Emphasis")
+	if e.Underscore {
+		p.Field("marker", "_")
+	}
 	p.Children(e)
 	p.EndType()
 }
@@ -157,6 +172,12 @@ var _ InlineNode = (*Emphasis)(nil)
 
 type Strong struct {
 	baseNodeWithChildren
+
+	// Underscore is whether the strong text is written with `__` markers,
+	// such as `__text__`, instead of `**` markers. The `**` markers are used
+	// where `__` would not be read back as strong text, such as directly
+	// after a letter.
+	Underscore bool
 }
 
 func NewStrong(children ...Node) *Strong {
@@ -167,10 +188,20 @@ func NewStrong(children ...Node) *Strong {
 	return s
 }
 
+// WithUnderscore sets if the strong text is written with `__` markers. See
+// Underscore.
+func (s *Strong) WithUnderscore(underscore bool) *Strong {
+	s.Underscore = underscore
+	return s
+}
+
 func (s *Strong) isInline() {}
 
 func (s *Strong) debug(p *debugPrinter) {
 	p.StartType("Strong")
+	if s.Underscore {
+		p.Field("marker", "__")
+	}
 	p.Children(s)
 	p.EndType()
 }
@@ -329,6 +360,11 @@ var _ BlockNode = (*Heading)(nil)
 type ThematicBreak struct {
 	baseNode
 	previousLineAwareImpl
+
+	// Marker is the text of the thematic break as it is in the file, such
+	// as `***`, `___` or `* * *`. It is written back as it is. It is empty
+	// for `---`. If it is empty or is not a thematic break, `---` is written.
+	Marker string
 }
 
 func NewThematicBreak() *ThematicBreak {
@@ -342,8 +378,17 @@ func (t *ThematicBreak) WithPreviousLineType(lineType PreviousLineType) *Themati
 	return t
 }
 
+// WithMarker sets the text of the thematic break, such as `***`. See Marker.
+func (t *ThematicBreak) WithMarker(marker string) *ThematicBreak {
+	t.Marker = marker
+	return t
+}
+
 func (t *ThematicBreak) debug(p *debugPrinter) {
 	p.StartType("ThematicBreak")
+	if t.Marker != "" {
+		p.Field("marker", t.Marker)
+	}
 	debugPreviousLineAware(p, t)
 	p.EndType()
 }

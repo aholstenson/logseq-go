@@ -181,8 +181,8 @@ var _ = Describe("Parsing", func() {
 				)))
 			},
 			Entry("italic with *", "*a *", content.NewEmphasis(content.NewText("a "))),
-			Entry("italic with _", "_a _", content.NewEmphasis(content.NewText("a "))),
-			Entry("strong with __", "__a __", content.NewStrong(content.NewText("a "))),
+			Entry("italic with _", "_a _", content.NewEmphasis(content.NewText("a ")).WithUnderscore(true)),
+			Entry("strong with __", "__a __", content.NewStrong(content.NewText("a ")).WithUnderscore(true)),
 			Entry("strikethrough", "~~a ~~", content.NewStrikethrough(content.NewText("a "))),
 			Entry("highlight", "^^a ^^", content.NewHighlight(content.NewText("a "))),
 		)
