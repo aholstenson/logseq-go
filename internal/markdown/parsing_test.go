@@ -2298,7 +2298,7 @@ var _ = Describe("Parsing", func() {
 							content.NewParagraph(
 								content.NewText("Child 1"),
 							),
-						),
+						).WithPreviousLineType(content.PreviousLineTypeBlank),
 						content.NewBlock(
 							content.NewParagraph(
 								content.NewText("Child 2"),
@@ -2354,7 +2354,7 @@ var _ = Describe("Parsing", func() {
 							content.NewParagraph(
 								content.NewText("Child"),
 							),
-						),
+						).WithPreviousLineType(content.PreviousLineTypeBlank),
 					),
 				)))
 			})
@@ -2423,7 +2423,7 @@ var _ = Describe("Parsing", func() {
 							content.NewParagraph(
 								content.NewText("Child"),
 							),
-						),
+						).WithPreviousLineType(content.PreviousLineTypeBlank),
 					),
 				)))
 			})

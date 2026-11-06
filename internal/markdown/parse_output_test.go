@@ -270,10 +270,7 @@ var _ = Describe("Parsing then outputting", func() {
 		FullyEqual("Paragraph with indented children", "Paragraph\n\t- Child 1\n\t\t- Grandchild\n- Item")
 		FullyEqual("Properties with indented children", "key:: value\nParagraph\n\t- Child\n- Item")
 		FullyEqual("Properties with indented children followed by a blank line", "key:: value\n\t- Child\n\n- Item")
-		Varies("Paragraph with indented children after a blank line",
-			"Paragraph\n\n\t- Child\n- Item",
-			"Paragraph\n\t- Child\n- Item",
-		)
+		FullyEqual("Paragraph with indented children after a blank line", "Paragraph\n\n\t- Child\n- Item")
 	})
 
 	Describe("Tasks", func() {

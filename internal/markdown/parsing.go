@@ -511,6 +511,10 @@ func convertOutline(src []byte, node ast.Node, headingBlocks bool, levels blockL
 					// first bullet of a page, such as page properties, and
 					// the first bullet.
 					listItemBlock.SetPreviousLineType(content.PreviousLineTypeBlank)
+				} else if hasBlankLineBeforeBullet(src, listItem) {
+					// Keep the blank line between this block and the block or
+					// content before it.
+					listItemBlock.SetPreviousLineType(content.PreviousLineTypeBlank)
 				}
 
 				block.AddChild(listItemBlock)

@@ -217,13 +217,38 @@ func newBlockListItemParser() *blockListItemParser {
 
 func (p *blockListItemParser) Open(parent ast.Node, reader text.Reader, pc parser.Context) (ast.Node, parser.State) {
 	indent := lineIndentCharacters(reader)
+	start := readerLineStart(reader)
 	expandTabsBeforeBlockMarker(reader)
 	node, state := p.BlockParser.Open(parent, reader, pc)
 	if node != nil {
 		node.SetAttribute(bulletIndentAttribute, indent)
+		node.SetAttribute(bulletLineStartAttribute, start)
 	}
 
 	return node, state
+}
+
+// bulletLineStartAttribute is the attribute of a list item that holds the
+// offset into the source where the line of its bullet starts.
+var bulletLineStartAttribute = []byte("logseq-bullet-line-start")
+
+// hasBlankLineBeforeBullet checks if the line before the bullet of a list
+// item is blank, so that the blank line can be kept when the block is
+// written. Goldmark does not tell this for each item, as it marks the items
+// of a list with blank lines between them in another way.
+func hasBlankLineBeforeBullet(src []byte, item ast.Node) bool {
+	value, ok := item.Attribute(bulletLineStartAttribute)
+	if !ok {
+		return false
+	}
+
+	start, ok := value.(int)
+	if !ok || start == 0 {
+		return false
+	}
+
+	previous := src[lineStart(src, start-1) : start-1]
+	return len(bytes.Trim(previous, " \t\r")) == 0
 }
 
 // bulletIndentAttribute is the attribute of a list item that holds the
@@ -249,12 +274,7 @@ func bulletIndent(item ast.Node) (int, bool) {
 // and a space each count as one character.
 func lineIndentCharacters(reader text.Reader) int {
 	source := reader.Source()
-	_, segment := reader.Position()
-
-	start := segment.Start
-	for start > 0 && source[start-1] != '\n' && source[start-1] != '\r' {
-		start--
-	}
+	start := readerLineStart(reader)
 
 	count := 0
 	for i := start; i < len(source) && (source[i] == ' ' || source[i] == '\t'); i++ {
@@ -262,6 +282,20 @@ func lineIndentCharacters(reader text.Reader) int {
 	}
 
 	return count
+}
+
+// readerLineStart gets the offset into the source where the line that the
+// reader is on starts.
+func readerLineStart(reader text.Reader) int {
+	source := reader.Source()
+	_, segment := reader.Position()
+
+	start := segment.Start
+	for start > 0 && source[start-1] != '\n' && source[start-1] != '\r' {
+		start--
+	}
+
+	return start
 }
 
 func (p *blockListItemParser) Continue(node ast.Node, reader text.Reader, pc parser.Context) parser.State {
