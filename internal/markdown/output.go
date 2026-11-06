@@ -2069,6 +2069,10 @@ func writesWithoutBullet(node *content.Block) bool {
 }
 
 func (w *Output) writeProperties(node *content.Properties) error {
+	if node.Drawer {
+		return w.writePropertyDrawer(node)
+	}
+
 	err := w.startBlockWithAutomaticBehavior(node, "", false)
 	if err != nil {
 		return err
@@ -2101,6 +2105,62 @@ func (w *Output) writeProperties(node *content.Properties) error {
 				return err
 			}
 		}
+	}
+
+	w.endBlock()
+	return nil
+}
+
+// writePropertyDrawer writes properties in a `:PROPERTIES:` drawer, with one
+// `:name: value` line for each property.
+func (w *Output) writePropertyDrawer(node *content.Properties) error {
+	err := w.startBlockWithAutomaticBehavior(node, "", false)
+	if err != nil {
+		return err
+	}
+
+	opening, closing := ":PROPERTIES:", ":END:"
+	if node.DrawerLowerCase {
+		opening, closing = ":properties:", ":end:"
+	}
+
+	err = w.writeRaw(opening + "\n")
+	if err != nil {
+		return err
+	}
+
+	for child := node.FirstChild(); child != nil; child = child.NextSibling() {
+		property, ok := child.(*content.Property)
+		if !ok {
+			return fmt.Errorf("unsupported properties child: %T", child)
+		}
+
+		err = w.writeRaw(":" + property.Name + ":")
+		if err != nil {
+			return err
+		}
+
+		if property.FirstChild() != nil {
+			err = w.writeRaw(" ")
+			if err != nil {
+				return err
+			}
+
+			err = w.writeChildren(property)
+			if err != nil {
+				return err
+			}
+		}
+
+		err = w.writeRaw("\n")
+		if err != nil {
+			return err
+		}
+	}
+
+	err = w.writeRaw(closing)
+	if err != nil {
+		return err
 	}
 
 	w.endBlock()

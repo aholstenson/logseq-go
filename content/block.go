@@ -69,10 +69,13 @@ func (b *Block) ID() string {
 		return ""
 	}
 
-	id := p.GetAsNode("id")
-	if id != nil {
-		if child, ok := id.FirstChild().(*Text); ok {
-			return child.Value
+	// Logseq takes the id from `custom-id` or `custom_id` before `id`.
+	for _, name := range []string{"custom-id", "id"} {
+		id := p.GetAsNode(name)
+		if id != nil {
+			if child, ok := id.FirstChild().(*Text); ok {
+				return child.Value
+			}
 		}
 	}
 
@@ -82,6 +85,10 @@ func (b *Block) ID() string {
 // WithID ensures that the block has an ID. If the block already has an ID this
 // will do nothing.
 func (b *Block) WithID() *Block {
+	if b.ID() != "" {
+		return b
+	}
+
 	p := b.Properties()
 	id := p.GetAsNode("id")
 	if id != nil {

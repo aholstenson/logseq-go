@@ -81,6 +81,11 @@ var propertiesKind = ast.NewNodeKind("Properties")
 
 type properties struct {
 	ast.BaseBlock
+
+	// drawer is whether the properties are written in a `:PROPERTIES:`
+	// drawer, and drawerLowerCase whether its markers are in lower case.
+	drawer          bool
+	drawerLowerCase bool
 }
 
 func (*properties) Kind() ast.NodeKind {

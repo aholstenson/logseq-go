@@ -6,6 +6,19 @@ import "strings"
 type Properties struct {
 	baseNodeWithChildren
 	previousLineAwareImpl
+
+	// Drawer is whether the properties are written in a property drawer,
+	// which is the form Logseq used before `name:: value` lines and still
+	// reads:
+	//
+	//	:PROPERTIES:
+	//	:name: value
+	//	:END:
+	Drawer bool
+
+	// DrawerLowerCase is whether the markers of the drawer are written in
+	// lower case, as `:properties:` and `:end:`.
+	DrawerLowerCase bool
 }
 
 // NewProperties creates a new Properties node with the given Property children.
@@ -16,6 +29,12 @@ func NewProperties(children ...*Property) *Properties {
 	for _, child := range children {
 		p.AddChild(child)
 	}
+	return p
+}
+
+// WithDrawer sets whether the properties are written in a property drawer.
+func (p *Properties) WithDrawer(drawer bool) *Properties {
+	p.Drawer = drawer
 	return p
 }
 
@@ -70,6 +89,9 @@ func (p *Properties) Remove(key string) {
 
 func (p *Properties) debug(p2 *debugPrinter) {
 	p2.StartType("Properties")
+	if p.Drawer {
+		p2.Field("Drawer", "true")
+	}
 	debugPreviousLineAware(p2, p)
 	p2.Children(p)
 	p2.EndType()

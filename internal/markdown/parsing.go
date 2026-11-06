@@ -36,6 +36,7 @@ func init() {
 			util.Prioritized(&latexEnvironmentParser{}, 896),
 			util.Prioritized(&taskDateParser{}, 897),
 			util.Prioritized(&logbookParser{}, 898),
+			util.Prioritized(&propertyDrawerParser{}, 898),
 			util.Prioritized(&beginEndParser{}, 899),
 			util.Prioritized(newHTMLBlockParser(), 900),
 			util.Prioritized(&footnoteDefinitionParser{}, 999),
@@ -950,7 +951,8 @@ func convertImage(src []byte, node *ast.Image) (*content.Image, error) {
 }
 
 func convertProperties(src []byte, node *properties) (*content.Properties, error) {
-	properties := content.NewProperties()
+	properties := content.NewProperties().WithDrawer(node.drawer)
+	properties.DrawerLowerCase = node.drawerLowerCase
 	for child := node.FirstChild(); child != nil; child = child.NextSibling() {
 		p, ok := child.(*property)
 		if !ok {

@@ -269,3 +269,34 @@ var _ = Describe("Aliases with quotes", func() {
 		Expect(len(page.Aliases())).To(BeNumerically("<=", 1))
 	})
 })
+
+var _ = Describe("Aliases in a property drawer", func() {
+	var (
+		graph *logseq.Graph
+		dir   string
+	)
+
+	BeforeEach(func() {
+		dir = setupGraph()
+	})
+
+	AfterEach(func() {
+		if graph != nil {
+			graph.Close()
+			graph = nil
+		}
+	})
+
+	It("reads the alias of a page from a property drawer at the start of the page", func() {
+		// Given a page that starts with a :PROPERTIES: drawer
+		graph = openGraphWithPages(dir, map[string]string{
+			"target.md": ":PROPERTIES:\n:alias: x\n:END:\n\n- a\n",
+		})
+
+		page, err := graph.OpenPage("target")
+		Expect(err).ToNot(HaveOccurred())
+
+		// Then the page has the alias x, the same as Logseq
+		Expect(page.Aliases()).To(Equal([]string{"x"}))
+	})
+})

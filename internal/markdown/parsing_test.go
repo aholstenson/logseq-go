@@ -4252,3 +4252,28 @@ var _ = Describe("References in quoted property values", func() {
 		Expect(refTargets(input)).To(ConsistOf("x", "\"y", "z\""))
 	})
 })
+
+var _ = Describe("Property drawers", func() {
+	It("reads the id of a block from a property drawer", func() {
+		// Given a block with its id in a :PROPERTIES: drawer
+		input := "- a\n  :PROPERTIES:\n  :id: 6500e8a3-0000-4000-8000-000000000000\n  :END:"
+
+		root, err := markdown.ParseString(input)
+		Expect(err).ToNot(HaveOccurred())
+
+		// Then the block has that id, the same as Logseq
+		Expect(root.Blocks()[0].ID()).To(Equal("6500e8a3-0000-4000-8000-000000000000"))
+
+		// And the text does not change on save
+		Expect(parseAndOutput(input)).To(Equal(input))
+	})
+
+	It("reads custom_id in a property drawer as the id of the block", func() {
+		// Given a drawer with custom_id, which Logseq maps to id
+		root, err := markdown.ParseString("- a\n  :PROPERTIES:\n  :custom_id: 6500e8a3-0000-4000-8000-000000000000\n  :END:")
+		Expect(err).ToNot(HaveOccurred())
+
+		// Then the block has that id
+		Expect(root.Blocks()[0].ID()).To(Equal("6500e8a3-0000-4000-8000-000000000000"))
+	})
+})
