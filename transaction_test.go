@@ -294,6 +294,22 @@ var _ = Describe("Transaction", func() {
 			tx := graph.NewTransaction()
 			Expect(tx.RenamePage(ctx, "old", "new")).ToNot(Succeed())
 		})
+		It("points page links inside a note block at the new title", func() {
+			// Given page r with a NOTE block that links to old
+			graph = openGraphWithPages(dir, map[string]string{
+				"old.md": "- content of old\n",
+				"r.md":   "- n\n  #+BEGIN_NOTE\n  see [[old]]\n  #+END_NOTE\n",
+			})
+
+			// When old is renamed to new
+			tx := graph.NewTransaction()
+			Expect(tx.RenamePage(ctx, "old", "new")).To(Succeed())
+			Expect(tx.Save()).To(Succeed())
+
+			// Then the link inside the NOTE block points at new
+			Expect(readPage("r.md")).To(ContainSubstring("see [[new]]"))
+			Expect(readPage("r.md")).ToNot(ContainSubstring("[[old]]"))
+		})
 		It("changes only the reference in a page that references the page", func() {
 			// Given page r with a link to old and other blocks that do not
 			// reference old

@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/aholstenson/logseq-go/content"
+	"github.com/aholstenson/logseq-go/internal/textmerge"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/text"
@@ -2096,7 +2097,82 @@ func frontMatterPropertiesChanged(node *content.FrontMatter) (bool, error) {
 }
 
 func (w *Output) writeAdvancedCommand(node *content.AdvancedCommand) error {
-	return w.writeBeginEnd(node, node.Type, node.Value)
+	if node.FirstChild() == nil {
+		return w.writeBeginEnd(node, node.Type, node.Value)
+	}
+
+	body, err := w.commandBody(node)
+	if err != nil {
+		return err
+	}
+
+	return w.writeBeginEnd(node, node.Type, body)
+}
+
+// commandBody returns the text to write between the BEGIN and END lines of a
+// command with children. The text that was read is used while the children
+// give the same text as it, so that a command that was not changed is written
+// as it was read.
+//
+// When the children were changed, only the lines that changed are taken from
+// the children, and the other lines are kept as they were read. The writer
+// does not always give back the exact text it read, such as `- b` that is
+// written as `* b`, and those lines did not change. If the result does not
+// read back as the children, the text is written from the children.
+func (w *Output) commandBody(node *content.AdvancedCommand) (string, error) {
+	current, err := w.writeNodes(node)
+	if err != nil {
+		return "", err
+	}
+
+	read, err := parseCommandBody(node.Value, nil)
+	if err != nil {
+		return "", err
+	}
+
+	original, err := w.writeNodes(content.NewAdvancedCommand(node.Type, node.Value, read...))
+	if err != nil {
+		return "", err
+	}
+
+	if current == original {
+		return node.Value, nil
+	}
+
+	changed := current + "\n"
+	merged, ok := textmerge.Merge(original+"\n", node.Value, changed)
+	if !ok {
+		return changed, nil
+	}
+
+	check, err := parseCommandBody(merged, nil)
+	if err != nil {
+		return changed, nil
+	}
+
+	checked, err := w.writeNodes(content.NewAdvancedCommand(node.Type, merged, check...))
+	if err != nil || checked != current {
+		return changed, nil
+	}
+
+	return merged, nil
+}
+
+// writeNodes writes the children of a node on their own, with the settings of
+// this writer.
+func (w *Output) writeNodes(node content.HasChildren) (string, error) {
+	var out strings.Builder
+	nested := &Output{
+		out:  newWriter(&out),
+		opts: w.opts,
+	}
+
+	err := nested.writeChildren(node)
+	if err != nil {
+		return "", err
+	}
+
+	return out.String(), nil
 }
 
 func (w *Output) writeBeginEnd(node content.BlockNode, variant string, value string) error {

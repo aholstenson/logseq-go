@@ -41,26 +41,7 @@ func init() {
 			util.Prioritized(newPropertyLineParser(), 999),
 			util.Prioritized(parser.NewParagraphParser(), 1000),
 		),
-		parser.WithInlineParsers(
-			util.Prioritized(parser.NewCodeSpanParser(), 100),
-			util.Prioritized(&footnoteRefParser{}, 194),
-			util.Prioritized(&mathParser{}, 195),
-			util.Prioritized(&priorityParser{}, 196),
-			util.Prioritized(&macroParser{}, 197),
-			util.Prioritized(&blockRefParser{}, 198),
-			util.Prioritized(&pageLinkParser{}, 199),
-			util.Prioritized(&tagParser{}, 999),
-			util.Prioritized(newLabelledRefLinkParser(), 200),
-			util.Prioritized(parser.NewAutoLinkParser(), 300),
-			util.Prioritized(parser.NewRawHTMLParser(), 400),
-			util.Prioritized(&emphasisParser{}, 500),
-			util.Prioritized(&strikethroughParser{}, 501),
-			util.Prioritized(&highlightParser{}, 502),
-			util.Prioritized(extension.NewLinkifyParser(
-				extension.WithLinkifyEmailRegexp(neverMatch),
-				extension.WithLinkifyWWWRegexp(neverMatch),
-			), 998),
-		),
+		parser.WithInlineParsers(inlineParsers()...),
 		// Logseq has no link reference definitions, so a line such as
 		// `[1]: https://example.com` is text. Goldmark's paragraph transformer
 		// for them is not used.
@@ -73,6 +54,31 @@ func init() {
 			util.Prioritized(defaultPropertiesASTTransformer, 200),
 		),
 	)
+}
+
+// inlineParsers are the parsers for the text inside a block, which are the
+// same for all text that Logseq reads as Markdown.
+func inlineParsers() []util.PrioritizedValue {
+	return []util.PrioritizedValue{
+		util.Prioritized(parser.NewCodeSpanParser(), 100),
+		util.Prioritized(&footnoteRefParser{}, 194),
+		util.Prioritized(&mathParser{}, 195),
+		util.Prioritized(&priorityParser{}, 196),
+		util.Prioritized(&macroParser{}, 197),
+		util.Prioritized(&blockRefParser{}, 198),
+		util.Prioritized(&pageLinkParser{}, 199),
+		util.Prioritized(&tagParser{}, 999),
+		util.Prioritized(newLabelledRefLinkParser(), 200),
+		util.Prioritized(parser.NewAutoLinkParser(), 300),
+		util.Prioritized(parser.NewRawHTMLParser(), 400),
+		util.Prioritized(&emphasisParser{}, 500),
+		util.Prioritized(&strikethroughParser{}, 501),
+		util.Prioritized(&highlightParser{}, 502),
+		util.Prioritized(extension.NewLinkifyParser(
+			extension.WithLinkifyEmailRegexp(neverMatch),
+			extension.WithLinkifyWWWRegexp(neverMatch),
+		), 998),
+	}
 }
 
 // ParseOption changes how Markdown is read for the parts of the syntax that a
@@ -936,7 +942,17 @@ func convertBeginEnd(src []byte, node *beginEnd) (content.Node, error) {
 		updatePreviousLine(node, query)
 		return query, nil
 	default:
-		command := content.NewAdvancedCommand(node.Variant, codeBuf.String())
+		value := codeBuf.String()
+		var children []content.Node
+		if isMarkdownCommand(node.Variant) {
+			var err error
+			children, err = parseCommandBody(value, node.options)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		command := content.NewAdvancedCommand(node.Variant, value, children...)
 		updatePreviousLine(node, command)
 		return command, nil
 	}

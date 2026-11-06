@@ -3099,7 +3099,9 @@ var _ = Describe("Parsing", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			Expect(block).To(tests.EqualNode(content.NewBlock(
-				content.NewAdvancedCommand("ABCDEF", "raw text\n"),
+				content.NewAdvancedCommand("ABCDEF", "raw text\n",
+					content.NewParagraph(content.NewText("raw text")),
+				),
 			)))
 		})
 
@@ -3108,7 +3110,9 @@ var _ = Describe("Parsing", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			Expect(block).To(tests.EqualNode(content.NewBlock(
-				content.NewAdvancedCommand("ABCDEF", "  raw text\n"),
+				content.NewAdvancedCommand("ABCDEF", "  raw text\n",
+					content.NewParagraph(content.NewText("raw text")),
+				),
 			)))
 		})
 
@@ -3117,7 +3121,12 @@ var _ = Describe("Parsing", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			Expect(block).To(tests.EqualNode(content.NewBlock(
-				content.NewAdvancedCommand("ABCDEF", "raw text\nmore raw text\n"),
+				content.NewAdvancedCommand("ABCDEF", "raw text\nmore raw text\n",
+					content.NewParagraph(
+						content.NewText("raw text").WithSoftLineBreak(),
+						content.NewText("more raw text"),
+					),
+				),
 			)))
 		})
 
@@ -3126,7 +3135,12 @@ var _ = Describe("Parsing", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			Expect(block).To(tests.EqualNode(content.NewBlock(
-				content.NewAdvancedCommand("ABCDEF", "  raw text\n  more raw text\n"),
+				content.NewAdvancedCommand("ABCDEF", "  raw text\n  more raw text\n",
+					content.NewParagraph(
+						content.NewText("raw text").WithSoftLineBreak(),
+						content.NewText("more raw text"),
+					),
+				),
 			)))
 		})
 
@@ -3135,7 +3149,10 @@ var _ = Describe("Parsing", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			Expect(block).To(tests.EqualNode(content.NewBlock(
-				content.NewAdvancedCommand("ABCDEF", "  raw text\n\n  more raw text\n"),
+				content.NewAdvancedCommand("ABCDEF", "  raw text\n\n  more raw text\n",
+					content.NewParagraph(content.NewText("raw text")),
+					content.NewParagraph(content.NewText("more raw text")),
+				),
 			)))
 		})
 
@@ -3144,7 +3161,12 @@ var _ = Describe("Parsing", func() {
 			Expect(err).ToNot(HaveOccurred())
 
 			Expect(block).To(tests.EqualNode(content.NewBlock(
-				content.NewAdvancedCommand("ABCDEF", "  raw text\n  more raw text\n\n"),
+				content.NewAdvancedCommand("ABCDEF", "  raw text\n  more raw text\n\n",
+					content.NewParagraph(
+						content.NewText("raw text").WithSoftLineBreak(),
+						content.NewText("more raw text"),
+					),
+				),
 			)))
 		})
 
@@ -3159,7 +3181,12 @@ var _ = Describe("Parsing", func() {
 						content.NewParagraph(
 							content.NewText("Item"),
 						),
-						content.NewAdvancedCommand("ABCDEF", "raw text\n  raw text\n").
+						content.NewAdvancedCommand("ABCDEF", "raw text\n  raw text\n",
+							content.NewParagraph(
+								content.NewText("raw text").WithSoftLineBreak(),
+								content.NewText("raw text"),
+							),
+						).
 							WithPreviousLineType(content.PreviousLineTypeNonBlank),
 					),
 				),
@@ -3177,7 +3204,12 @@ var _ = Describe("Parsing", func() {
 						content.NewParagraph(
 							content.NewText("Item"),
 						),
-						content.NewAdvancedCommand("ABCDEF", "raw text\n  raw text\n").
+						content.NewAdvancedCommand("ABCDEF", "raw text\n  raw text\n",
+							content.NewParagraph(
+								content.NewText("raw text").WithSoftLineBreak(),
+								content.NewText("raw text"),
+							),
+						).
 							WithPreviousLineType(content.PreviousLineTypeNonBlank),
 					),
 					content.NewListItem(
@@ -3247,7 +3279,9 @@ var _ = Describe("Parsing", func() {
 				Expect(err).ToNot(HaveOccurred())
 
 				Expect(block).To(tests.EqualNode(content.NewBlock(
-					content.NewAdvancedCommand("QUOTE", "raw text\n"),
+					content.NewAdvancedCommand("QUOTE", "raw text\n",
+						content.NewParagraph(content.NewText("raw text")),
+					),
 				)))
 			})
 
@@ -3256,7 +3290,12 @@ var _ = Describe("Parsing", func() {
 				Expect(err).ToNot(HaveOccurred())
 
 				Expect(block).To(tests.EqualNode(content.NewBlock(
-					content.NewAdvancedCommand("QUOTE", "raw text\nraw text\n"),
+					content.NewAdvancedCommand("QUOTE", "raw text\nraw text\n",
+						content.NewParagraph(
+							content.NewText("raw text").WithSoftLineBreak(),
+							content.NewText("raw text"),
+						),
+					),
 				)))
 			})
 		})
@@ -3779,6 +3818,66 @@ var _ = Describe("Parsing", func() {
 				)))
 			})
 		})
+	})
+
+	Describe("References inside quote and admonition blocks", func() {
+		// pageRefTitles returns the title of every page the parsed text refers to.
+		pageRefTitles := func(input string) []string {
+			block, err := markdown.ParseString(input)
+			Expect(err).ToNot(HaveOccurred())
+
+			titles := make([]string, 0)
+			for _, ref := range block.Children().PageReferences() {
+				titles = append(titles, ref.(content.PageRef).GetTo())
+			}
+			return titles
+		}
+
+		It("finds page and block references inside a quote block", func() {
+			// Given a quote block with a page link, a tag and a block reference
+			input := "- q\n  #+BEGIN_QUOTE\n  a [[page]] #tag ((6571b1a6-1111-4111-8111-111111111111))\n  #+END_QUOTE"
+
+			// When it is parsed
+			block, err := markdown.ParseString(input)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Then the block refers to both pages and to the block, the same as Logseq
+			Expect(pageRefTitles(input)).To(ConsistOf("page", "tag"))
+
+			ids := make([]string, 0)
+			for _, node := range block.Children().FilterDeep(content.IsOfType[*content.BlockRef]()) {
+				ids = append(ids, node.(*content.BlockRef).ID)
+			}
+			Expect(ids).To(ConsistOf("6571b1a6-1111-4111-8111-111111111111"))
+		})
+
+		// Given an admonition block with a page link, When it is parsed, Then
+		// the block refers to the page, the same as Logseq.
+		DescribeTable("finds page references inside an admonition block",
+			func(kind string) {
+				input := "- n\n  #+BEGIN_" + kind + "\n  hello [[p]]\n  #+END_" + kind
+				Expect(pageRefTitles(input)).To(ConsistOf("p"))
+			},
+			Entry("in a NOTE block", "NOTE"),
+			Entry("in a TIP block", "TIP"),
+			Entry("in a WARNING block", "WARNING"),
+			Entry("in an IMPORTANT block", "IMPORTANT"),
+			Entry("in a CAUTION block", "CAUTION"),
+			Entry("in a PINNED block", "PINNED"),
+			Entry("in a CENTER block", "CENTER"),
+			Entry("in a VERSE block", "VERSE"),
+		)
+
+		// Given a verbatim block with a page link, When it is parsed, Then it
+		// refers to no page, the same as Logseq.
+		DescribeTable("makes no page references inside a verbatim block",
+			func(kind string) {
+				input := "- n\n  #+BEGIN_" + kind + "\n  [[p]]\n  #+END_" + kind
+				Expect(pageRefTitles(input)).To(BeEmpty())
+			},
+			Entry("in a COMMENT block", "COMMENT"),
+			Entry("in a SRC block", "SRC"),
+		)
 	})
 
 	Describe("Nested page links", func() {

@@ -15,6 +15,10 @@ type beginEnd struct {
 	ast.BaseBlock
 
 	Variant string
+
+	// options are the parse options of the page, which are used to read the
+	// text of a command that Logseq reads as Markdown.
+	options *parseOptions
 }
 
 func (n *beginEnd) Kind() ast.NodeKind {
@@ -70,8 +74,10 @@ func (b *beginEndParser) Open(parent ast.Node, reader text.Reader, pc parser.Con
 		return nil, parser.NoChildren
 	}
 
+	options, _ := pc.Get(parseOptionsKey).(*parseOptions)
 	node := &beginEnd{
 		Variant: blockType,
+		options: options,
 	}
 	pc.Set(beginEndInfoKey, &beginEndBlockData{
 		indent:  indent,

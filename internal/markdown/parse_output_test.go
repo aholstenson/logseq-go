@@ -478,3 +478,39 @@ var _ = Describe("YAML front matter", func() {
 		Expect(block.FindProperties()).To(BeNil())
 	})
 })
+
+var _ = Describe("Text of commands that is read as Markdown", func() {
+	// Given a command whose text is not changed, When written, Then the text
+	// is the same, also for lines that the writer writes in another way.
+	FullyEqual("keeps a line that starts with a dash in a note", "- n\n  #+BEGIN_NOTE\n  see [[a]]\n  - b\n  #+END_NOTE")
+	FullyEqual("keeps a line that starts with a hash in a note", "- n\n  #+BEGIN_NOTE\n  # not a heading\n  #+END_NOTE")
+	FullyEqual("keeps a table in a quote as it is", "- n\n  #+BEGIN_QUOTE\n  | a | b |\n  | - | - |\n  | 1 | 2 |\n  #+END_QUOTE")
+	FullyEqual("keeps a quote inside a note", "- n\n  #+BEGIN_NOTE\n  #+BEGIN_QUOTE\n  inner [[a]]\n  #+END_QUOTE\n  #+END_NOTE")
+
+	It("changes only the line with the link when a page link in a note is changed", func() {
+		// Given a note with a page link and a line that starts with a dash
+		block, err := markdown.ParseString("- n\n  #+BEGIN_NOTE\n  see [[old]]\n  - b\n  #+END_NOTE")
+		Expect(err).ToNot(HaveOccurred())
+
+		// When the page link is pointed at another page
+		refs := block.Children().PageReferences()
+		Expect(refs).To(HaveLen(1))
+		refs[0].(content.PageRef).SetTo("new")
+
+		// Then only the line with the link changes
+		out, err := markdown.AsString(block)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(out).To(Equal("- n\n  #+BEGIN_NOTE\n  see [[new]]\n  - b\n  #+END_NOTE"))
+	})
+
+	It("reads no Markdown in an example", func() {
+		// Given an example with a page link
+		block, err := markdown.ParseString("- n\n  #+BEGIN_EXAMPLE\n  [[p]]\n  #+END_EXAMPLE")
+		Expect(err).ToNot(HaveOccurred())
+
+		// Then the example has no children and no references
+		command := block.Children().FindDeep(content.IsOfType[*content.AdvancedCommand]()).(*content.AdvancedCommand)
+		Expect(command.FirstChild()).To(BeNil())
+		Expect(block.Children().PageReferences()).To(BeEmpty())
+	})
+})
