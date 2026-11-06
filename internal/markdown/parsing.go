@@ -103,6 +103,29 @@ var parseOptionsKey = parser.NewContextKey()
 // graph configures.
 var builtInPropertiesSeparatedByCommas = []string{"alias", "aliases", "tags"}
 
+// builtInPropertiesWithoutPageReferences are the properties that Logseq uses
+// itself and whose value it never reads as references to pages: the built-in
+// properties that the user can edit, except alias, aliases and tags, and the
+// built-in properties that Logseq hides. A link in the value of one of them,
+// such as `template:: [[x]]`, is only text.
+var builtInPropertiesWithoutPageReferences = []string{
+	// The built-in properties that the user can edit.
+	"title", "icon", "template", "template-including-parent", "public",
+	"filters", "exclude-from-graph-view", "logseq.query/nlp-date", "macro",
+	"filetags",
+
+	// The built-in properties that Logseq hides.
+	"id", "custom-id", "background-color", "heading", "collapsed",
+	"created-at", "updated-at", "last-modified-at", "query-table",
+	"query-properties", "query-sort-by", "query-sort-desc", "ls-type",
+	"hl-type", "hl-page", "hl-stamp", "hl-color", "logseq.macro-name",
+	"logseq.macro-arguments", "logseq.order-list-type", "logseq.tldraw.page",
+	"logseq.tldraw.shape", "logseq.color",
+
+	// The task markers, which Logseq also hides as properties.
+	"todo", "doing", "now", "later", "done",
+}
+
 // parseOptions are the settings that parsing takes from the graph. The zero
 // value is not usable, use defaultParseOptions to get the defaults of Logseq.
 type parseOptions struct {
@@ -134,6 +157,10 @@ func defaultParseOptions() parseOptions {
 		options.propertiesSeparatedByCommas[name] = struct{}{}
 	}
 
+	for _, name := range builtInPropertiesWithoutPageReferences {
+		options.ignoredPageReferences[normalizePropertyName(name)] = struct{}{}
+	}
+
 	return options
 }
 
@@ -149,7 +176,9 @@ func WithPropertiesSeparatedByCommas(names ...string) ParseOption {
 }
 
 // WithIgnoredPageReferences adds properties whose value does not point at a
-// page, which is `:ignored-page-references-keywords`.
+// page, which is `:ignored-page-references-keywords`. The built-in properties
+// whose value Logseq never reads as pages are included without being listed,
+// see builtInPropertiesWithoutPageReferences.
 func WithIgnoredPageReferences(names ...string) ParseOption {
 	return func(o *parseOptions) {
 		for _, name := range names {

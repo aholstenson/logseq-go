@@ -2487,15 +2487,15 @@ var _ = Describe("Parsing", func() {
 
 				Expect(block).To(tests.EqualNode(content.NewBlock(
 					content.NewProperties(
-						content.NewProperty("title", content.NewText("X")),
+						content.NewProperty("title", content.NewText("X")).WithPageRefsIgnored(true),
 					),
 					content.NewBlock(
 						content.NewParagraph(
 							content.NewText("Block"),
 						),
 						content.NewProperties(
-							content.NewProperty("id", content.NewText("123")),
-							content.NewProperty("collapsed", content.NewText("true")),
+							content.NewProperty("id", content.NewText("123")).WithPageRefsIgnored(true),
+							content.NewProperty("collapsed", content.NewText("true")).WithPageRefsIgnored(true),
 						).WithPreviousLineType(content.PreviousLineTypeNonBlank),
 					).WithPreviousLineType(content.PreviousLineTypeBlank),
 					content.NewBlock(
@@ -2518,7 +2518,7 @@ var _ = Describe("Parsing", func() {
 						content.NewText("item"),
 					),
 					content.NewProperties(
-						content.NewProperty("logseq.order-list-type", content.NewText("number")),
+						content.NewProperty("logseq.order-list-type", content.NewText("number")).WithPageRefsIgnored(true),
 					).WithPreviousLineType(content.PreviousLineTypeNonBlank),
 				)))
 			})
@@ -4581,5 +4581,100 @@ var _ = Describe("Property drawers", func() {
 
 		// Then the block has that id
 		Expect(root.Blocks()[0].ID()).To(Equal("6500e8a3-0000-4000-8000-000000000000"))
+	})
+})
+
+var _ = Describe("References in values of built-in properties", func() {
+	// refTargets parses the input and returns the targets of all page
+	// references in the first block.
+	refTargets := func(input string) []string {
+		root, err := markdown.ParseString(input)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(root.Blocks()).ToNot(BeEmpty())
+
+		targets := make([]string, 0)
+		for _, ref := range root.Blocks()[0].Children().PageReferences() {
+			targets = append(targets, ref.(content.PageRef).GetTo())
+		}
+		return targets
+	}
+
+	It("makes no reference from the value of template", func() {
+		// Given a template property with a link
+		// Then Logseq reads the value as text
+		Expect(refTargets("- a\n  template:: [[x]]")).To(BeEmpty())
+	})
+
+	It("makes no reference from the value of title", func() {
+		Expect(refTargets("- a\n  title:: [[x]]")).To(BeEmpty())
+	})
+
+	It("makes no reference from the value of collapsed", func() {
+		Expect(refTargets("- a\n  collapsed:: [[x]]")).To(BeEmpty())
+	})
+
+	It("makes no reference from the values of icon, id and filters", func() {
+		Expect(refTargets("- a\n  icon:: [[x]]")).To(BeEmpty())
+		Expect(refTargets("- a\n  id:: [[x]]")).To(BeEmpty())
+		Expect(refTargets("- a\n  filters:: [[x]]")).To(BeEmpty())
+	})
+
+	It("makes a reference from the value of tags", func() {
+		// Given tags, which Logseq links
+		// Then the block refs x
+		Expect(refTargets("- a\n  tags:: [[x]]")).To(ConsistOf("x"))
+	})
+
+	DescribeTable("makes no reference from the value of other built-in properties",
+		func(input string) {
+			// Given a built-in property with a link in its value
+			// When its references are read
+			// Then there are none, as Logseq reads the value as text
+			Expect(refTargets(input)).To(BeEmpty())
+		},
+		Entry("heading", "- a\n  heading:: [[x]]"),
+		Entry("background-color", "- a\n  background-color:: [[x]]"),
+		Entry("an underscore in the name", "- a\n  background_color:: [[x]]"),
+		Entry("upper case letters in the name", "- a\n  Template:: [[x]]"),
+		Entry("a dot in the name", "- a\n  logseq.order-list-type:: [[x]]"),
+		Entry("a tag", "- a\n  icon:: #x"),
+		Entry("a task marker", "- a\n  later:: [[x]]"),
+	)
+
+	DescribeTable("makes a reference from the value of linkable and other properties",
+		func(input string) {
+			// Given a property that Logseq links, or that is not built in
+			// When its references are read
+			// Then the value refs x
+			Expect(refTargets(input)).To(ConsistOf("x"))
+		},
+		Entry("alias", "- a\n  alias:: [[x]]"),
+		Entry("aliases", "- a\n  aliases:: [[x]]"),
+		Entry("a property that is not built in", "- a\n  related:: [[x]]"),
+	)
+
+	It("makes no reference from the title of a page", func() {
+		// Given a page with a title property that has a link
+		root, err := markdown.ParseString("title:: [[x]]\nalias:: [[y]]\n\n- a", markdown.AsPage())
+		Expect(err).ToNot(HaveOccurred())
+
+		// When the references of the page are read
+		targets := make([]string, 0)
+		for _, ref := range root.Children().PageReferences() {
+			targets = append(targets, ref.(content.PageRef).GetTo())
+		}
+
+		// Then only the alias is a reference
+		Expect(targets).To(ConsistOf("y"))
+	})
+
+	It("still adds the properties that the graph ignores references of", func() {
+		// Given a graph that ignores the references of a property
+		root, err := markdown.ParseString("- a\n  related:: [[x]]\n  template:: [[y]]", markdown.WithIgnoredPageReferences("related"))
+		Expect(err).ToNot(HaveOccurred())
+
+		// When the references are read
+		// Then neither property makes a reference
+		Expect(root.Blocks()[0].Children().PageReferences()).To(BeEmpty())
 	})
 })
