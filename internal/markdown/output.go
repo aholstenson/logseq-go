@@ -1279,47 +1279,34 @@ func (w *Output) writeLabelStart(node content.HasChildren) error {
 	return w.writeRaw("](")
 }
 
-// writeHashtag writes *content.PageLink as `#to` or `#[[to]]`. The extended
-// syntax is used if the target contains whitespace.
+// writeHashtag writes *content.Hashtag as `#to` or `#[[to]]`. The form with
+// brackets is used if the tag has it, or if `#to` would not be read back as a
+// tag with the same title.
 func (w *Output) writeHashtag(node *content.Hashtag) error {
-	err := w.writeRaw("#")
+	if !node.Bracketed && isBareTagName(node.To) {
+		return w.writeRaw("#" + node.To)
+	}
+
+	err := w.writeRaw("#[[")
 	if err != nil {
 		return err
 	}
 
-	writeExtended := false
-	for _, r := range node.To {
-		if unicode.IsSpace(r) {
-			writeExtended = true
-			break
-		}
-	}
-
-	if writeExtended {
-		err = w.writeRaw("[[")
-		if err != nil {
-			return err
-		}
-	}
-
-	escape := EscapeWikiLink
-	if writeExtended {
-		escape = EscapePageLinkTitle
-	}
-
-	err = w.write(node.To, escape)
+	err = w.write(node.To, EscapePageLinkTitle)
 	if err != nil {
 		return err
 	}
 
-	if writeExtended {
-		err = w.writeRaw("]]")
-		if err != nil {
-			return err
-		}
-	}
+	return w.writeRaw("]]")
+}
 
-	return nil
+// isBareTagName returns true if `#name` is read back as a tag with the whole
+// name. A space or a tag delimiter such as `,` ends the name early, and a
+// bracket can start a link, so such names need the form `#[[name]]`.
+func isBareTagName(name string) bool {
+	return name != "" &&
+		tagNameLength([]byte(name)) == len(name) &&
+		!strings.ContainsAny(name, "[]")
 }
 
 // writeBlockRef writes *content.BlockRef as `((id))`, or as `[label](((id)))`

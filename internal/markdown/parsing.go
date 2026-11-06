@@ -216,7 +216,7 @@ func convert(src []byte, in ast.Node) (content.Node, error) {
 	case *ast.AutoLink:
 		return content.NewAutoLink(string(node.URL(src))), nil
 	case *tag:
-		return content.NewHashtag(node.Page), nil
+		return content.NewHashtag(node.Page).WithBracketed(node.Extended), nil
 	case *pageLink:
 		return content.NewPageLink(node.Page), nil
 	case *pageRefText:

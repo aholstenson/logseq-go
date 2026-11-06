@@ -216,11 +216,18 @@ func (l *PageRefText) isPageRef() {}
 var _ InlineNode = (*PageRefText)(nil)
 var _ PageRef = (*PageRefText)(nil)
 
+// Hashtag is a tag, written as `#To` or as `#[[To]]`. Logseq reads both forms
+// as a reference to the page.
 type Hashtag struct {
 	baseNode
 
-	// Page is the target of the link.
+	// To is the title of the page the tag points to.
 	To string
+
+	// Bracketed is true if the tag is written as `#[[To]]`. A tag that cannot
+	// be written as `#To` and read back with the same title, such as a title
+	// with a space or a comma, is always written as `#[[To]]`.
+	Bracketed bool
 }
 
 func NewHashtag(target string) *Hashtag {
@@ -239,6 +246,12 @@ func (l *Hashtag) SetTo(target string) {
 
 func (l *Hashtag) WithTo(target string) *Hashtag {
 	l.To = target
+	return l
+}
+
+// WithBracketed sets if the tag is written as `#[[To]]`.
+func (l *Hashtag) WithBracketed(bracketed bool) *Hashtag {
+	l.Bracketed = bracketed
 	return l
 }
 
