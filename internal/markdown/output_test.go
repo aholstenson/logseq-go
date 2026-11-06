@@ -77,10 +77,17 @@ var _ = Describe("Output", func() {
 			Expect(buf.String()).To(Equal("abc [#A\\](def) ghi"))
 		})
 
-		// Text with brackets that looks like other syntax must be read back as
-		// the same text, and must not contain `\[`, which Logseq reads as the
-		// start of a math formula.
-		DescribeTable("reads back text with brackets as the same text",
+		It("escapes only the markers that can be read back as formatting", func() {
+			err := writer.Write(content.NewText("a * b, snake_case and *c*"))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal("a * b, snake_case and \\*c\\*"))
+		})
+
+		// Text that looks like other syntax must be read back as the same
+		// text, and must not contain `\[`, which Logseq reads as the start of
+		// a math formula.
+		DescribeTable("reads back text that looks like other syntax as the same text",
 			func(nodes []content.Node) {
 				// Given a paragraph with the nodes
 				paragraph := content.NewParagraph(nodes...)
@@ -112,6 +119,21 @@ var _ = Describe("Output", func() {
 			Entry("a closing bracket before text in parentheses", []content.Node{
 				content.NewText("[a]"),
 				content.NewText("(https://example.com)"),
+			}),
+			Entry("emphasis", []content.Node{content.NewText("*x* and _y_")}),
+			Entry("strong text", []content.Node{content.NewText("a **b** c")}),
+			Entry("emphasis inside a word", []content.Node{content.NewText("snake*case*")}),
+			Entry("strikethrough", []content.Node{content.NewText("~~x~~")}),
+			Entry("a highlight", []content.Node{content.NewText("^^x^^")}),
+			Entry("a marker that closes at the end of the line", []content.Node{content.NewText("*a **")}),
+			Entry("emphasis around a page link", []content.Node{
+				content.NewText("a *"),
+				content.NewPageLink("b"),
+				content.NewText("* c"),
+			}),
+			Entry("emphasis split over text nodes", []content.Node{
+				content.NewText("a *b"),
+				content.NewText("c* d"),
 			}),
 		)
 

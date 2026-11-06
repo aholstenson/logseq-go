@@ -32,22 +32,120 @@ func EscapeNone(str string) string {
 // to a later `\]` as a display math formula, so `[` is never escaped. Where a
 // bracket must be escaped, the escape goes on the `]` or on the `^` of a
 // footnote instead.
+//
+// The markers of emphasis, strikethrough and highlights are only escaped
+// where they could open or close formatting, so that text such as
+// `snake_case` or `2 * 3` is written as it is.
 func EscapePotentialMarkdown(str string) string {
+	return escapeText(str, unknownRune, unknownRune)
+}
+
+// unknownRune stands for a character next to a text that is not known.
+const unknownRune = rune(-1)
+
+// escapeText is EscapePotentialMarkdown for a text with known characters
+// directly before and after it. Either can be unknownRune.
+func escapeText(str string, before rune, after rune) string {
 	str = escapeMath(str)
 	brackets := bracketEscapes(str)
+	delimiters := delimiterEscapes(str, before, after)
 
 	out := strings.Builder{}
-	p := rune(0)
 	for i, r := range str {
-		if brackets[i] || escapePotentialMarkdownRune(p, r) {
+		if brackets[i] || delimiters[i] {
 			out.WriteRune('\\')
 		}
 
 		out.WriteRune(r)
-		p = r
 	}
 
 	return out.String()
+}
+
+// delimiterEscapes finds the byte positions in the text that need a backslash
+// so that the runs of `*`, `_`, `~` and `^` in it are read back as text. Every
+// `*` and `_` of a run is escaped. For `~~` and `^^` the first marker is kept,
+// as a single `~` or `^` is not a marker.
+func delimiterEscapes(str string, before rune, after rune) map[int]bool {
+	if !strings.ContainsAny(str, "*_~^") {
+		return nil
+	}
+
+	escapes := map[int]bool{}
+	for i := 0; i < len(str); {
+		processor, min := delimiterProcessorFor(str[i])
+		if processor == nil {
+			i++
+			continue
+		}
+
+		end := i
+		for end < len(str) && str[end] == str[i] {
+			end++
+		}
+
+		if end-i >= min && canFormat(str, i, end, min, processor, before, after) {
+			for k := i; k < end; k++ {
+				if min == 1 || k > i {
+					escapes[k] = true
+				}
+			}
+		}
+
+		i = end
+	}
+
+	return escapes
+}
+
+// delimiterProcessorFor gets the processor and the shortest run of markers
+// for the formatting that the character is a marker of.
+func delimiterProcessorFor(c byte) (parser.DelimiterProcessor, int) {
+	switch c {
+	case '*', '_':
+		return defaultEmphasisDelimiterProcessor, 1
+	case '~':
+		return defaultStrikethroughDelimiterProcessor, 2
+	case '^':
+		return defaultHighlightDelimiterProcessor, 2
+	}
+
+	return nil, 0
+}
+
+// canFormat returns true if the run of markers between start and end can
+// open or close formatting when it is read back. A run at the start or the
+// end of the text uses the given character before or after the text. When
+// that character is not known, each kind of character that changes the result
+// is tried there.
+func canFormat(str string, start int, end int, min int, processor parser.DelimiterProcessor, before rune, after rune) bool {
+	befores := []rune{' ', 'a', '.'}
+	if start > 0 {
+		previous, _ := utf8.DecodeLastRuneInString(str[:start])
+		befores = []rune{previous}
+	} else if before != unknownRune {
+		befores = []rune{before}
+	}
+
+	afters := []string{""}
+	if end == len(str) {
+		if after != unknownRune {
+			afters = []string{string(after)}
+		} else {
+			afters = []string{"", "a", "."}
+		}
+	}
+
+	for _, before := range befores {
+		for _, after := range afters {
+			node := scanDelimiter([]byte(str[start:]+after), before, min, processor)
+			if node != nil && (node.CanOpen || node.CanClose) {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 // bracketEscapes finds the byte positions in the text that need a backslash
@@ -186,22 +284,6 @@ func escapeMath(str string) string {
 	return out.String()
 }
 
-func escapePotentialMarkdownRune(prev rune, r rune) bool {
-	if r == '*' || r == '_' {
-		return true
-	}
-
-	if prev == '~' && r == '~' {
-		return true
-	}
-
-	if prev == '^' && r == '^' {
-		return true
-	}
-
-	return false
-}
-
 func EscapeLinkURL(str string) string {
 	return escapeRunes(str, func(prev rune, r rune) bool {
 		return r == '(' || r == ')'
@@ -308,6 +390,12 @@ func WithLogbookSeconds(withSeconds bool) Option {
 type Output struct {
 	out  *writer
 	opts outputOptions
+
+	// isolated is set when a node is written on its own, to find the
+	// characters around another node. Text is then escaped without looking
+	// at the nodes around it, which also keeps two text nodes from writing
+	// each other without end.
+	isolated bool
 }
 
 // NewWriter creates a new Markdown writer.
@@ -491,9 +579,13 @@ func (w *Output) writeChildren(node content.HasChildren) error {
 }
 
 func (w *Output) writeText(node *content.Text) error {
-	value := EscapePotentialMarkdown(node.Value)
-	if strings.HasSuffix(value, "]") && !strings.HasSuffix(value, `\]`) &&
-		!node.SoftLineBreak && !node.HardLineBreak && w.startsLinkContinuation(node.NextSibling()) {
+	before, after := unknownRune, unknownRune
+	if !w.isolated {
+		before, after = w.textSurroundings(node)
+	}
+
+	value := escapeText(node.Value, before, after)
+	if strings.HasSuffix(value, "]") && !strings.HasSuffix(value, `\]`) && (after == '(' || after == '[') {
 		// The next node starts with `(` or `[`, which together with the
 		// closing bracket would be read back as a link.
 		value = value[:len(value)-1] + `\]`
@@ -519,22 +611,62 @@ func (w *Output) writeText(node *content.Text) error {
 	return nil
 }
 
-// startsLinkContinuation returns true if the node is written with `(` or `[`
-// first, so that a `]` directly before it can end the text of a link.
-func (w *Output) startsLinkContinuation(node content.Node) bool {
-	if node == nil {
-		return false
+// textSurroundings finds the characters that are written directly before
+// and after a text node, as these decide if the markers in the text can be
+// read back as formatting. Returns unknownRune for a side that is not known.
+func (w *Output) textSurroundings(node *content.Text) (rune, rune) {
+	edge := edgeRuneOf(node.Parent())
+
+	before := edge
+	if prev := node.PreviousSibling(); prev != nil {
+		before = unknownRune
+		if text, ok := prev.(*content.Text); ok && (text.SoftLineBreak || text.HardLineBreak) {
+			before = '\n'
+		} else if written := w.writeIsolated(prev); written != "" {
+			before, _ = utf8.DecodeLastRuneInString(written)
+		}
 	}
 
+	after := edge
+	if node.SoftLineBreak || node.HardLineBreak {
+		after = '\n'
+	} else if next := node.NextSibling(); next != nil {
+		after = unknownRune
+		if written := w.writeIsolated(next); written != "" {
+			after, _ = utf8.DecodeRuneInString(written)
+		}
+	}
+
+	return before, after
+}
+
+// edgeRuneOf gets a character that is like the one written directly before
+// the first child and after the last child of the node. Returns unknownRune
+// if the node is not one of the known kinds.
+func edgeRuneOf(node content.HasChildren) rune {
+	switch node.(type) {
+	case *content.Paragraph, *content.Heading:
+		// The start or the end of a line.
+		return ' '
+	case *content.Emphasis, *content.Strong, *content.Strikethrough, *content.Highlight,
+		*content.Link, *content.PageLink, *content.BlockRef:
+		// The markers around formatting and the brackets around a label.
+		return '.'
+	}
+
+	return unknownRune
+}
+
+// writeIsolated writes a node on its own, to find the characters at its
+// start and end. Returns an empty string if the node cannot be written.
+func (w *Output) writeIsolated(node content.Node) string {
 	out := strings.Builder{}
-	sibling := &Output{out: newWriter(&out), opts: w.opts}
-	if err := sibling.Write(node); err != nil {
-		// Escaping is the safe choice when the node cannot be written here.
-		return true
+	isolated := &Output{out: newWriter(&out), opts: w.opts, isolated: true}
+	if err := isolated.Write(node); err != nil {
+		return ""
 	}
 
-	written := out.String()
-	return strings.HasPrefix(written, "(") || strings.HasPrefix(written, "[")
+	return out.String()
 }
 
 func (w *Output) writeEmphasis(node *content.Emphasis) error {
