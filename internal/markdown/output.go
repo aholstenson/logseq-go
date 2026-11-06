@@ -300,10 +300,31 @@ func startsHTMLOrAutoLink(rest string) bool {
 // that the runs of `*`, `_`, `~` and `^` in it are read back as text. Every
 // `*` and `_` of a run is escaped. For `~~` and `^^` the first marker is kept,
 // as a single `~` or `^` is not a marker.
+//
+// A run is escaped if it can open formatting and something can close it, or
+// if it can close formatting and something can open it. A run that only opens
+// is kept as it is when no later run of the text can close it and nothing
+// comes after the text in its paragraph, such as the first `__` of `__a__b`.
+// The same applies to a run that only closes, and what comes before it.
 func delimiterEscapes(str string, before rune, after rune, escapes map[int]bool) {
 	if !strings.ContainsAny(str, "*_~^") {
 		return
 	}
+
+	type run struct {
+		start    int
+		end      int
+		min      int
+		canOpen  bool
+		canClose bool
+	}
+
+	runs := []run{}
+
+	// Where the first run that can open and the last run that can close
+	// start, for each marker character.
+	firstOpener := map[byte]int{}
+	lastCloser := map[byte]int{}
 
 	for i := 0; i < len(str); {
 		processor, min := delimiterProcessorFor(str[i])
@@ -317,15 +338,46 @@ func delimiterEscapes(str string, before rune, after rune, escapes map[int]bool)
 			end++
 		}
 
-		if end-i >= min && canFormat(str, i, end, min, processor, before, after) {
-			for k := i; k < end; k++ {
-				if min == 1 || k > i {
-					escapes[k] = true
-				}
+		if end-i >= min {
+			canOpen, canClose := delimiterSides(str, i, end, min, processor, before, after)
+			if canOpen || canClose {
+				runs = append(runs, run{start: i, end: end, min: min, canOpen: canOpen, canClose: canClose})
+			}
+
+			if _, ok := firstOpener[str[i]]; canOpen && !ok {
+				firstOpener[str[i]] = i
+			}
+
+			if canClose {
+				lastCloser[str[i]] = i
 			}
 		}
 
 		i = end
+	}
+
+	for _, r := range runs {
+		c := str[r.start]
+		escape := false
+		if r.canOpen {
+			closer, ok := lastCloser[c]
+			escape = after != lineEdgeRune || (ok && closer > r.start)
+		}
+
+		if r.canClose && !escape {
+			opener, ok := firstOpener[c]
+			escape = before != lineEdgeRune || (ok && opener < r.start)
+		}
+
+		if !escape {
+			continue
+		}
+
+		for k := r.start; k < r.end; k++ {
+			if r.min == 1 || k > r.start {
+				escapes[k] = true
+			}
+		}
 	}
 }
 
@@ -344,12 +396,12 @@ func delimiterProcessorFor(c byte) (parser.DelimiterProcessor, int) {
 	return nil, 0
 }
 
-// canFormat returns true if the run of markers between start and end can
-// open or close formatting when it is read back. A run at the start or the
-// end of the text uses the given character before or after the text. When
-// that character is not known, each kind of character that changes the result
-// is tried there.
-func canFormat(str string, start int, end int, min int, processor parser.DelimiterProcessor, before rune, after rune) bool {
+// delimiterSides finds if the run of markers between start and end can open
+// and if it can close formatting when it is read back. A run at the start or
+// the end of the text uses the given character before or after the text. When
+// that character is not known, each kind of character that changes the
+// result is tried there.
+func delimiterSides(str string, start int, end int, min int, processor parser.DelimiterProcessor, before rune, after rune) (canOpen bool, canClose bool) {
 	befores := []rune{' ', 'a', '.'}
 	if start > 0 {
 		previous, _ := utf8.DecodeLastRuneInString(str[:start])
@@ -372,13 +424,14 @@ func canFormat(str string, start int, end int, min int, processor parser.Delimit
 	for _, before := range befores {
 		for _, after := range afters {
 			node := scanDelimiter([]byte(str[start:]+after), before, min, processor)
-			if node != nil && (node.CanOpen || node.CanClose) {
-				return true
+			if node != nil {
+				canOpen = canOpen || node.CanOpen
+				canClose = canClose || node.CanClose
 			}
 		}
 	}
 
-	return false
+	return canOpen, canClose
 }
 
 // bracketEscapes finds the positions in the text that need a backslash so
