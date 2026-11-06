@@ -18,6 +18,9 @@ type writer struct {
 	// lazyLevel is the indentation level of a quote marker that is left out
 	// of the next line, or -1. See SkipIndentationOnNextLine.
 	lazyLevel int
+
+	// lineEnding is written for each line break, or "\n" if it is empty.
+	lineEnding string
 }
 
 func newWriter(out io.Writer) *writer {
@@ -128,7 +131,15 @@ func (w *writer) WriteString(v string) error {
 		if c == '\n' {
 			// TODO: Do we need to keep track of list bullets here and write them in some cases?
 
-			_, err := w.output.Write(asBytes[lastWrite : i+1])
+			var err error
+			if w.lineEnding == "" {
+				_, err = w.output.Write(asBytes[lastWrite : i+1])
+			} else {
+				_, err = w.output.Write(asBytes[lastWrite:i])
+				if err == nil {
+					_, err = io.WriteString(w.output, w.lineEnding)
+				}
+			}
 			if err != nil {
 				return err
 			}

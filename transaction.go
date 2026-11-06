@@ -656,9 +656,15 @@ func (t *Transaction) pageText(root *content.Block) (string, error) {
 
 	// Pages are line based, so make sure the file ends with a newline the
 	// same way Logseq and most editors write them. AsString is left alone
-	// so that it stays usable for fragments that should not gain one.
-	if data != "" && !strings.HasSuffix(data, "\n") {
-		data += "\n"
+	// so that it stays usable for fragments that should not gain one. The
+	// newline is the line break of the file.
+	lineEnding := root.LineEnding()
+	if lineEnding == "" {
+		lineEnding = "\n"
+	}
+
+	if data != "" && !strings.HasSuffix(data, lineEnding) {
+		data += lineEnding
 	}
 
 	return data, nil

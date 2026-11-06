@@ -210,7 +210,18 @@ func Parse(src []byte, opts ...ParseOption) (*content.Block, error) {
 }
 
 // parseWithOptions parses Markdown with options that are already set up.
+//
+// A text with Windows line endings (CRLF), or with a lone carriage return
+// (CR) as a line break, is read as a text with "\n" line breaks. Logseq reads
+// a lone CR as a line break too. The line break of most lines is kept on the
+// returned block, see content.Block.LineEnding.
 func parseWithOptions(src []byte, options *parseOptions) (*content.Block, error) {
+	lineEnding := ""
+	if bytes.IndexByte(src, '\r') >= 0 {
+		lineEnding = lineEndingOf(src)
+		src = normalizeLineEndings(src)
+	}
+
 	context := parser.NewContext()
 	context.Set(parseOptionsKey, options)
 
@@ -223,7 +234,60 @@ func parseWithOptions(src []byte, options *parseOptions) (*content.Block, error)
 
 	nestByLevels(block, levels)
 
+	if lineEnding != "\n" {
+		block.WithLineEnding(lineEnding)
+	}
+
 	return block, nil
+}
+
+// lineEndingOf finds the line break that most lines of the text end with:
+// "\r\n", "\r" or "\n". If two are as common, "\n" comes before "\r\n", and
+// "\r\n" before "\r".
+func lineEndingOf(src []byte) string {
+	crlf, cr, lf := 0, 0, 0
+	for i := 0; i < len(src); i++ {
+		switch src[i] {
+		case '\r':
+			if i+1 < len(src) && src[i+1] == '\n' {
+				crlf++
+				i++
+			} else {
+				cr++
+			}
+		case '\n':
+			lf++
+		}
+	}
+
+	if lf >= crlf && lf >= cr {
+		return "\n"
+	}
+
+	if crlf >= cr {
+		return "\r\n"
+	}
+
+	return "\r"
+}
+
+// normalizeLineEndings changes each "\r\n" and each lone "\r" in the text to
+// "\n".
+func normalizeLineEndings(src []byte) []byte {
+	out := make([]byte, 0, len(src))
+	for i := 0; i < len(src); i++ {
+		if src[i] != '\r' {
+			out = append(out, src[i])
+			continue
+		}
+
+		out = append(out, '\n')
+		if i+1 < len(src) && src[i+1] == '\n' {
+			i++
+		}
+	}
+
+	return out
 }
 
 func ParseString(src string, opts ...ParseOption) (*content.Block, error) {

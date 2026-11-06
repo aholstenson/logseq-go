@@ -18,6 +18,8 @@ type Block struct {
 
 	emptyFirstLine      bool
 	emptyFirstLineSpace string
+
+	lineEnding string
 }
 
 func NewBlock(children ...Node) *Block {
@@ -235,6 +237,21 @@ func (b *Block) WithPreviousLineType(t PreviousLineType) *Block {
 // after the bullet, so `TODO` on that line is text. If empty is false, the
 // content starts on the line of the bullet, which is how a new block is
 // written.
+// LineEnding gets the line break that the text of the block was read with,
+// such as "\r\n" for a file with Windows line endings. It is only set on the
+// block that a whole text is read into, and is empty for "\n". When the block
+// is written, every line ends with this line break.
+func (b *Block) LineEnding() string {
+	return b.lineEnding
+}
+
+// WithLineEnding sets the line break that the block is written with, see
+// LineEnding.
+func (b *Block) WithLineEnding(lineEnding string) *Block {
+	b.lineEnding = lineEnding
+	return b
+}
+
 func (b *Block) WithEmptyFirstLine(empty bool, space string) *Block {
 	b.emptyFirstLine = empty
 	b.emptyFirstLineSpace = ""

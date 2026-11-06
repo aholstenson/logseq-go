@@ -942,6 +942,15 @@ func Write(n content.Node, out io.Writer, opts ...Option) error {
 }
 
 func (w *Output) Write(n content.Node) error {
+	if block, ok := n.(*content.Block); ok && block.LineEnding() != "" && w.out.lineEnding == "" && !w.isolated {
+		// The block was read from a text with other line breaks, so all of
+		// its lines are written with them.
+		w.out.lineEnding = block.LineEnding()
+		defer func() {
+			w.out.lineEnding = ""
+		}()
+	}
+
 	if aware, ok := n.(content.MacroSourceAware); ok {
 		if source := aware.MacroSource(); source != "" && readsBackAsMacro(source, n) {
 			// The macro is not changed, so its text is written as it is.
