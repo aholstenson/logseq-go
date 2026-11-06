@@ -294,6 +294,22 @@ var _ = Describe("Transaction", func() {
 			tx := graph.NewTransaction()
 			Expect(tx.RenamePage(ctx, "old", "new")).ToNot(Succeed())
 		})
+		It("changes only the reference in a page that references the page", func() {
+			// Given page r with a link to old and other blocks that do not
+			// reference old
+			graph = openGraphWithPages(dir, map[string]string{
+				"old.md": "- content of old\n",
+				"r.md":   "- see [[old]]\n- *see #x*\n- [1] note\n",
+			})
+
+			// When old is renamed to new
+			tx := graph.NewTransaction()
+			Expect(tx.RenamePage(ctx, "old", "new")).To(Succeed())
+			Expect(tx.Save()).To(Succeed())
+
+			// Then only the link changes and the other blocks keep their text
+			Expect(readPage("r.md")).To(Equal("- see [[new]]\n- *see #x*\n- [1] note\n"))
+		})
 	})
 
 	Describe("RenamePage with namespace children", func() {
@@ -490,6 +506,85 @@ var _ = Describe("Transaction", func() {
 			Expect(tx.Save()).To(Succeed())
 
 			Expect(filepath.Join(dir, "journals", "2025_06_15.md")).ToNot(BeAnExistingFile())
+		})
+	})
+
+	Describe("Save", func() {
+		It("leaves a page that was opened but not changed untouched", func() {
+			// Given a page with a heading block and a table block
+			original := "- ## H\n- | a |\n  |---|\n"
+			graph = openGraphWithPages(dir, map[string]string{
+				"p.md": original,
+			})
+
+			before, err := os.Stat(filepath.Join(dir, "pages", "p.md"))
+			Expect(err).ToNot(HaveOccurred())
+
+			// When it is opened in a transaction and saved without changes
+			tx := graph.NewTransaction()
+			_, err = tx.OpenPage("p")
+			Expect(err).ToNot(HaveOccurred())
+			Expect(tx.Save()).To(Succeed())
+
+			// Then the file has the same bytes and modification time
+			Expect(readPage("p.md")).To(Equal(original))
+
+			after, err := os.Stat(filepath.Join(dir, "pages", "p.md"))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(after.ModTime()).To(Equal(before.ModTime()))
+		})
+
+		It("keeps the text of the blocks that were not changed", func() {
+			// Given a page where the writer would change the text of the
+			// first two blocks
+			graph = openGraphWithPages(dir, map[string]string{
+				"p.md": "- *see #x*\n- | a |\n  |---|\n",
+			})
+
+			// When a block is added and the page is saved
+			tx := graph.NewTransaction()
+			page, err := tx.OpenPage("p")
+			Expect(err).ToNot(HaveOccurred())
+			page.AddBlock(textBlock("added"))
+			Expect(tx.Save()).To(Succeed())
+
+			// Then only the new block is added to the file
+			Expect(readPage("p.md")).To(Equal("- *see #x*\n- | a |\n  |---|\n- added\n"))
+		})
+
+		It("keeps the text of the blocks that were not changed when saved again", func() {
+			// Given a page that was changed and saved once
+			graph = openGraphWithPages(dir, map[string]string{
+				"p.md": "- *see #x*\n",
+			})
+
+			tx := graph.NewTransaction()
+			page, err := tx.OpenPage("p")
+			Expect(err).ToNot(HaveOccurred())
+			page.AddBlock(textBlock("first"))
+			Expect(tx.Save()).To(Succeed())
+
+			// When it is changed and saved again in the same transaction
+			page.AddBlock(textBlock("second"))
+			Expect(tx.Save()).To(Succeed())
+
+			// Then the first block still has its text
+			Expect(readPage("p.md")).To(Equal("- *see #x*\n- first\n- second\n"))
+		})
+
+		It("keeps the text of the renamed page in its new file", func() {
+			// Given a page with a block that the writer would change
+			graph = openGraphWithPages(dir, map[string]string{
+				"old.md": "- *see #x*\n- see [[old]]\n",
+			})
+
+			// When the page is renamed
+			tx := graph.NewTransaction()
+			Expect(tx.RenamePage(ctx, "old", "new")).To(Succeed())
+			Expect(tx.Save()).To(Succeed())
+
+			// Then only the link to itself changes
+			Expect(readPage("new.md")).To(Equal("- *see #x*\n- see [[new]]\n"))
 		})
 	})
 })

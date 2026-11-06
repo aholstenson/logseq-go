@@ -127,6 +127,11 @@ type pageImpl struct {
 	lastModified time.Time
 	revision     string
 
+	// original is the text of the file when the page was read or last saved,
+	// or nil if the page has no file. Saving keeps the lines of it that are
+	// not changed, see Transaction.Save.
+	original []byte
+
 	pageType PageType
 	title    string
 	date     time.Time
@@ -139,6 +144,7 @@ func openOrCreatePage(source pageSource, path string, pageType PageType, title s
 	info, err := os.Stat(path)
 	var root *content.Block
 	var revision string
+	var original []byte
 	if os.IsNotExist(err) {
 		// This page does not exist, start with an empty page
 		root = content.NewBlock()
@@ -147,10 +153,12 @@ func openOrCreatePage(source pageSource, path string, pageType PageType, title s
 		return nil, err
 	} else {
 		// This page exists, load it
-		root, revision, err = loadRootBlock(path, parseOptions...)
+		root, original, err = loadRootBlock(path, parseOptions...)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load page: %w", err)
 		}
+
+		revision = revisionOf(original)
 	}
 
 	lastModified := time.Now()
@@ -165,6 +173,7 @@ func openOrCreatePage(source pageSource, path string, pageType PageType, title s
 		isNew:        info == nil,
 		lastModified: lastModified,
 		revision:     revision,
+		original:     original,
 
 		pageType: pageType,
 		title:    title,
@@ -344,18 +353,28 @@ func (p *pageImpl) InsertBlockBefore(block *content.Block, before *content.Block
 	p.root.InsertChildBefore(block, before)
 }
 
-// loadRootBlock reads and parses the file at the given path. The revision of
-// the file is calculated from the same data that is parsed, so it always
-// matches the content of the returned block.
-func loadRootBlock(path string, parseOptions ...markdown.ParseOption) (*content.Block, string, error) {
+// loadRootBlock reads and parses the file at the given path. It also returns
+// the text of the file, which is the same data that is parsed, so that the
+// revision of the text always matches the content of the returned block.
+func loadRootBlock(path string, parseOptions ...markdown.ParseOption) (*content.Block, []byte, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, "", err
+		return nil, nil, err
 	}
 
+	block, err := parseRootBlock(data, parseOptions...)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return block, data, nil
+}
+
+// parseRootBlock parses the text of a page into its root block.
+func parseRootBlock(data []byte, parseOptions ...markdown.ParseOption) (*content.Block, error) {
 	block, err := markdown.Parse(data, parseOptions...)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to parse markdown: %w", err)
+		return nil, fmt.Errorf("failed to parse markdown: %w", err)
 	}
 
 	// Content that appears before the first bullet becomes the pre-block of the
@@ -380,5 +399,5 @@ func loadRootBlock(path string, parseOptions ...markdown.ParseOption) (*content.
 		block.PrependChild(preBlock)
 	}
 
-	return block, revisionOf(data), nil
+	return block, nil
 }

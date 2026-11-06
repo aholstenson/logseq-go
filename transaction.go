@@ -11,6 +11,7 @@ import (
 
 	"github.com/aholstenson/logseq-go/content"
 	"github.com/aholstenson/logseq-go/internal/markdown"
+	"github.com/aholstenson/logseq-go/internal/textmerge"
 )
 
 type Transaction struct {
@@ -283,6 +284,10 @@ func (t *Transaction) renamePage(ctx context.Context, from string, to string) er
 		}
 
 		renamed.root = current.root
+
+		// The text of the old file is kept as the original, so that the lines
+		// that the rename does not change keep their text in the new file.
+		renamed.original = current.original
 
 		t.deletePath(fromPath)
 	} else {
@@ -557,7 +562,7 @@ func (t *Transaction) Save(opts ...SaveOption) error {
 	for _, page := range pages {
 		path := page.path
 
-		data, err := markdown.AsString(page.root, t.graph.markdownOptions()...)
+		data, err := t.pageText(page.root)
 		if err != nil {
 			if page.Type() == PageTypeJournal {
 				return fmt.Errorf("failed to convert journal %s: %w", page.Date().Format("2006-01-02"), err)
@@ -566,11 +571,16 @@ func (t *Transaction) Save(opts ...SaveOption) error {
 			}
 		}
 
-		// Pages are line based, so make sure the file ends with a newline the
-		// same way Logseq and most editors write them. AsString is left alone
-		// so that it stays usable for fragments that should not gain one.
-		if data != "" && !strings.HasSuffix(data, "\n") {
-			data += "\n"
+		data = t.keepUnchangedLines(page, data)
+		if !page.isNew && page.original != nil && data == string(page.original) {
+			// The file already has this text, so it is not written again. This
+			// keeps the time the file was changed. The file still holds the
+			// page, so it is kept in written to stop a removal of it.
+			if info, err := os.Stat(path); err == nil {
+				written = append(written, info)
+			}
+
+			continue
 		}
 
 		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
@@ -588,6 +598,7 @@ func (t *Transaction) Save(opts ...SaveOption) error {
 		// The page now matches its file, so the transaction can be changed and
 		// saved again without a conflict with its own write.
 		page.revision = revision
+		page.original = []byte(data)
 		page.isNew = false
 
 		if info, err := os.Stat(path); err == nil {
@@ -619,6 +630,72 @@ func (t *Transaction) Save(opts ...SaveOption) error {
 
 	t.removedPaths = nil
 	return nil
+}
+
+// pageText writes the root block of a page as the text of its file.
+func (t *Transaction) pageText(root *content.Block) (string, error) {
+	data, err := markdown.AsString(root, t.graph.markdownOptions()...)
+	if err != nil {
+		return "", err
+	}
+
+	// Pages are line based, so make sure the file ends with a newline the
+	// same way Logseq and most editors write them. AsString is left alone
+	// so that it stays usable for fragments that should not gain one.
+	if data != "" && !strings.HasSuffix(data, "\n") {
+		data += "\n"
+	}
+
+	return data, nil
+}
+
+// keepUnchangedLines makes the text to save for a page from the text of its
+// file and the text that the writer gives for the page now. The writer does
+// not always give back the exact text that it read, so only the lines that
+// changed since the page was read are taken from the writer:
+//
+//   - The original text of the file is read and written again, which gives
+//     the base text.
+//   - The changes from the base text to the new text are merged into the
+//     original text.
+//   - The merged text must be read back as the same page as the new text, or
+//     the new text is used as it is.
+func (t *Transaction) keepUnchangedLines(page *pageImpl, data string) string {
+	if page.original == nil {
+		return data
+	}
+
+	originalRoot, err := parseRootBlock(page.original, t.graph.markdownParseOptions()...)
+	if err != nil {
+		return data
+	}
+
+	base, err := t.pageText(originalRoot)
+	if err != nil {
+		return data
+	}
+
+	if base == data {
+		// Nothing changed since the page was read.
+		return string(page.original)
+	}
+
+	merged, ok := textmerge.Merge(base, string(page.original), data)
+	if !ok {
+		return data
+	}
+
+	mergedRoot, err := parseRootBlock([]byte(merged), t.graph.markdownParseOptions()...)
+	if err != nil {
+		return data
+	}
+
+	check, err := t.pageText(mergedRoot)
+	if err != nil || check != data {
+		return data
+	}
+
+	return merged
 }
 
 func wasWritten(written []os.FileInfo, info os.FileInfo) bool {
