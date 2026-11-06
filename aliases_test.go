@@ -236,3 +236,36 @@ var _ = Describe("Aliases", func() {
 		})
 	})
 })
+
+var _ = Describe("Aliases with quotes", func() {
+	var (
+		graph *logseq.Graph
+		dir   string
+	)
+
+	BeforeEach(func() {
+		dir = setupGraph()
+	})
+
+	AfterEach(func() {
+		if graph != nil {
+			graph.Close()
+			graph = nil
+		}
+	})
+
+	It("does not split an alias value that is wrapped in quotes", func() {
+		// Given page properties with a quoted alias that holds a comma
+		graph = openGraphWithPages(dir, map[string]string{
+			"target.md": "alias:: \"x, y\"\n\n- a\n",
+		})
+
+		page, err := graph.OpenPage("target")
+		Expect(err).ToNot(HaveOccurred())
+
+		// Then the page does not get the aliases `"x` and `y"`
+		Expect(page.Aliases()).ToNot(ContainElement("\"x"))
+		Expect(page.Aliases()).ToNot(ContainElement("y\""))
+		Expect(len(page.Aliases())).To(BeNumerically("<=", 1))
+	})
+})

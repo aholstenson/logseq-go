@@ -4203,3 +4203,52 @@ var _ = Describe("Parsing", func() {
 		})
 	})
 })
+
+var _ = Describe("References in quoted property values", func() {
+	// refTargets parses the input and returns the targets of all page
+	// references in the first block.
+	refTargets := func(input string) []string {
+		root, err := markdown.ParseString(input)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(root.Blocks()).ToNot(BeEmpty())
+
+		targets := make([]string, 0)
+		for _, ref := range root.Blocks()[0].Children().PageReferences() {
+			targets = append(targets, ref.(content.PageRef).GetTo())
+		}
+		return targets
+	}
+
+	It("makes no references from a value that is wrapped in quotes", func() {
+		// Given a quoted alias value with a comma
+		input := "- a\n  alias:: \"x, y\""
+
+		// Then the value is text, the same as Logseq, and is not split
+		Expect(refTargets(input)).To(BeEmpty())
+		Expect(parseAndOutput(input)).To(Equal(input))
+	})
+
+	It("makes no reference from a link inside a quoted value", func() {
+		// Given a link wrapped in quotes
+		input := "- a\n  foo:: \"[[x]]\""
+
+		// Then the block has no reference to x
+		Expect(refTargets(input)).To(BeEmpty())
+	})
+
+	It("makes no tag from a quoted tags value", func() {
+		// Given a quoted tags value
+		input := "- a\n  tags:: \"x\""
+
+		// Then the block has no reference
+		Expect(refTargets(input)).To(BeEmpty())
+	})
+
+	It("still splits a value where only a part is quoted", func() {
+		// Given tags where only the last part is quoted
+		input := "- a\n  tags:: x, \"y, z\""
+
+		// Then Logseq splits on every comma, quotes do not protect a part
+		Expect(refTargets(input)).To(ConsistOf("x", "\"y", "z\""))
+	})
+})

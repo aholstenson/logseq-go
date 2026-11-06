@@ -100,6 +100,10 @@ type property struct {
 	// PageRefsIgnored is whether the pages named in the value are read as text
 	// instead of as references, as set by `:ignored-page-references-keywords`.
 	PageRefsIgnored bool
+
+	// Quoted is whether the value is wrapped in double quotes, which Logseq
+	// reads as text.
+	Quoted bool
 }
 
 func (*property) Kind() ast.NodeKind {
@@ -187,6 +191,13 @@ func applyOptionsToProperties(node *properties, reader text.Reader, options *par
 			continue
 		}
 
+		if isQuotedPropertyValue(property, reader.Source()) {
+			// Logseq reads a value in quotes as text, which also keeps the
+			// commas in it from splitting it.
+			property.Quoted = true
+			continue
+		}
+
 		if options.ignoresPageReferences(property.Name) {
 			// The value of this property is only text, so it is left as it was
 			// parsed and marked as not pointing at any page.
@@ -198,6 +209,30 @@ func applyOptionsToProperties(node *properties, reader text.Reader, options *par
 			splitValueIntoPageRefs(property, reader)
 		}
 	}
+}
+
+// isQuotedPropertyValue checks if the value of a property is wrapped in
+// double quotes, in the same way as Logseq: the value starts and ends with a
+// quote. A quote that is escaped with a backslash does not count.
+func isQuotedPropertyValue(node *property, source []byte) bool {
+	first, ok := node.FirstChild().(*ast.Text)
+	if !ok {
+		return false
+	}
+
+	last, ok := node.LastChild().(*ast.Text)
+	if !ok {
+		return false
+	}
+
+	start := bytes.TrimLeft(first.Segment.Value(source), " \t")
+	end := bytes.TrimRight(last.Segment.Value(source), " \t\r\n")
+	if len(start) == 0 || start[0] != '"' || len(end) == 0 || end[len(end)-1] != '"' {
+		return false
+	}
+
+	// A value of a single quote is not wrapped in quotes.
+	return first != last || len(bytes.TrimSpace(start)) >= 2
 }
 
 // subSegment is the part of a segment between two offsets into its text.

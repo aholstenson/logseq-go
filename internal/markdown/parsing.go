@@ -957,7 +957,7 @@ func convertProperties(src []byte, node *properties) (*content.Properties, error
 			return nil, errors.New("Invalid child in properties")
 		}
 
-		prop := content.NewProperty(p.Name).WithPageRefsIgnored(p.PageRefsIgnored)
+		prop := content.NewProperty(p.Name).WithPageRefsIgnored(p.PageRefsIgnored).WithQuoted(p.Quoted)
 		err := convertChildren(src, p, prop)
 		if err != nil {
 			return nil, err

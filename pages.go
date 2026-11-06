@@ -257,9 +257,28 @@ func (p *pageImpl) Aliases() []string {
 // propertyTitles reads the page titles that are the value of a property, such
 // as `alias:: [[Example]], Another`. Page references are taken as they are,
 // while the rest of the value is split on commas, which is how Logseq writes
-// properties that hold several values.
+// properties that hold several values. A value in quotes is one title, with
+// its quotes, as Logseq reads it as text.
 func propertyTitles(property *content.Property) []string {
 	if property == nil {
+		return nil
+	}
+
+	if property.Quoted {
+		var value strings.Builder
+		for _, node := range property.Children() {
+			written, err := markdown.AsString(node)
+			if err != nil {
+				return nil
+			}
+
+			value.WriteString(written)
+		}
+
+		if title := strings.TrimSpace(value.String()); title != "" {
+			return []string{title}
+		}
+
 		return nil
 	}
 

@@ -100,6 +100,11 @@ type Property struct {
 	// `:ignored-page-references-keywords` sets up. A page is not found via the
 	// value of such a property, not even where the value is written as a link.
 	PageRefsIgnored bool
+
+	// Quoted is whether the value of this property is wrapped in double
+	// quotes, such as `alias:: "Smith, John"`. Logseq reads such a value as
+	// text, so it names no pages and is not split on commas.
+	Quoted bool
 }
 
 // NewProperty creates a new Property node with the given name and values.
@@ -124,11 +129,21 @@ func (p *Property) WithPageRefsIgnored(ignored bool) *Property {
 	return p
 }
 
+// WithQuoted sets whether the value of this property is wrapped in double
+// quotes.
+func (p *Property) WithQuoted(quoted bool) *Property {
+	p.Quoted = quoted
+	return p
+}
+
 func (p *Property) debug(p2 *debugPrinter) {
 	p2.StartType("Property")
 	p2.Field("Name", p.Name)
 	if p.PageRefsIgnored {
 		p2.Field("PageRefsIgnored", "true")
+	}
+	if p.Quoted {
+		p2.Field("Quoted", "true")
 	}
 	p2.Children(p)
 	p2.EndType()

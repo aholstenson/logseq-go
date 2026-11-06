@@ -619,3 +619,41 @@ var _ = Describe("Transaction", func() {
 		})
 	})
 })
+
+var _ = Describe("Renaming a page that is named in a quoted property value", func() {
+	var (
+		graph *logseq.Graph
+		dir   string
+		ctx   context.Context
+	)
+
+	BeforeEach(func() {
+		dir = setupGraph()
+		ctx = context.Background()
+	})
+
+	AfterEach(func() {
+		if graph != nil {
+			graph.Close()
+			graph = nil
+		}
+	})
+
+	It("leaves a link inside a quoted property value alone", func() {
+		// Given a page with a link inside a quoted property value
+		graph = openGraphWithPages(dir, map[string]string{
+			"x.md":        "- content of x\n",
+			"referrer.md": "- a\n  foo:: \"[[x]]\"\n",
+		})
+
+		// When the page x is renamed
+		tx := graph.NewTransaction()
+		Expect(tx.RenamePage(ctx, "x", "new")).To(Succeed())
+		Expect(tx.Save()).To(Succeed())
+
+		// Then the quoted value is text for Logseq and does not change
+		data, err := os.ReadFile(filepath.Join(dir, "pages", "referrer.md"))
+		Expect(err).ToNot(HaveOccurred())
+		Expect(string(data)).To(Equal("- a\n  foo:: \"[[x]]\"\n"))
+	})
+})
