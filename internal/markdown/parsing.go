@@ -23,7 +23,7 @@ var neverMatch = regexp.MustCompile(`$.^`)
 func init() {
 	markdownParser = parser.NewParser(
 		parser.WithBlockParsers(
-			util.Prioritized(parser.NewThematicBreakParser(), 200),
+			util.Prioritized(newBlockThematicBreakParser(), 200),
 			util.Prioritized(newBlockListParser(), 300),
 			util.Prioritized(newBlockListItemParser(), 400),
 			util.Prioritized(&indentedBlocksParser{}, 450),

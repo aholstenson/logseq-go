@@ -34,7 +34,17 @@ func (p *blockListParser) Open(parent ast.Node, reader text.Reader, pc parser.Co
 
 func (p *blockListParser) Continue(node ast.Node, reader text.Reader, pc parser.Context) parser.State {
 	state := p.BlockParser.Continue(node, reader, pc)
-	if state&parser.Close != 0 && isBlockList(node) && indentedUnderLastItem(node, reader) {
+	if state&parser.Close == 0 || !isBlockList(node) {
+		return state
+	}
+
+	if startsDividerBlock(reader, pc) {
+		// CommonMark ends the list at a thematic break such as "- ---". In
+		// Logseq the line is the next block of the list.
+		return parser.Continue | parser.HasChildren
+	}
+
+	if indentedUnderLastItem(node, reader) {
 		// CommonMark ends the list at a line after an empty item and a blank
 		// line, also in the lists that hold this list. In Logseq the line
 		// belongs to the last block.
@@ -158,5 +168,68 @@ func keepsLine(item *ast.ListItem, reader text.Reader) bool {
 	return indentedUnderLastItem(item.Parent(), reader)
 }
 
+// blockThematicBreakParser parses thematic breaks in the same way as the
+// thematic break parser of Goldmark, with one difference that Logseq has: in
+// content that holds blocks, "- ---" is a block that holds a thematic break.
+// CommonMark reads the whole line as one thematic break.
+type blockThematicBreakParser struct {
+	parser.BlockParser
+}
+
+func newBlockThematicBreakParser() *blockThematicBreakParser {
+	return &blockThematicBreakParser{BlockParser: parser.NewThematicBreakParser()}
+}
+
+func (p *blockThematicBreakParser) Open(parent ast.Node, reader text.Reader, pc parser.Context) (ast.Node, parser.State) {
+	if (holdsBlocks(parent) || isBlockList(parent)) && startsDividerBlock(reader, pc) {
+		// The list parsers read the line as a block.
+		return nil, parser.NoChildren
+	}
+
+	return p.BlockParser.Open(parent, reader, pc)
+}
+
+// startsDividerBlock returns true if the line is a bullet followed by a
+// thematic break, such as "- ---" or "- ***".
+func startsDividerBlock(reader text.Reader, pc parser.Context) bool {
+	line, _ := reader.PeekLine()
+	pos, indent := blockStart(line, reader, pc)
+	if pos < 0 {
+		indent, pos = util.IndentWidth(line, reader.LineOffset())
+	}
+
+	if pos >= len(line) || indent >= 4 || !isBlockMarker(line[pos:]) || pos+1 >= len(line) {
+		return false
+	}
+
+	return isThematicBreak(line[pos+1:])
+}
+
+// isThematicBreak returns true if the line is a thematic break: three or more
+// of the same character out of "-", "*" and "_", with only spaces and tabs
+// between them.
+func isThematicBreak(line []byte) bool {
+	var marker byte
+	count := 0
+	for _, c := range line {
+		switch c {
+		case ' ', '\t', '\n', '\r':
+			continue
+		case '-', '*', '_':
+			if marker != 0 && c != marker {
+				return false
+			}
+
+			marker = c
+			count++
+		default:
+			return false
+		}
+	}
+
+	return count >= 3
+}
+
 var _ parser.BlockParser = (*blockListParser)(nil)
+var _ parser.BlockParser = (*blockThematicBreakParser)(nil)
 var _ parser.BlockParser = (*blockListItemParser)(nil)
