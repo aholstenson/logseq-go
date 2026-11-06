@@ -216,7 +216,14 @@ func (p *pageImpl) Properties() *content.Properties {
 	// so they are written the way Logseq writes them: as the first lines of the
 	// page, before the first bullet.
 	properties := content.NewProperties()
-	p.preBlock().PrependChild(properties)
+	preBlock := p.preBlock()
+	if frontMatter, ok := preBlock.FirstChild().(*content.FrontMatter); ok {
+		// Front matter must stay on the first line of the file to be read as
+		// front matter, so the properties go after it.
+		preBlock.InsertChildAfter(properties, frontMatter)
+	} else {
+		preBlock.PrependChild(properties)
+	}
 	return properties
 }
 

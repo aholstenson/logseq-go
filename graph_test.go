@@ -950,3 +950,124 @@ var _ = Describe("Graph", func() {
 		})
 	})
 })
+
+var _ = Describe("Pages with YAML front matter", func() {
+	var (
+		graph *logseq.Graph
+		dir   string
+	)
+
+	BeforeEach(func() {
+		dir = setupGraph()
+	})
+
+	AfterEach(func() {
+		if graph != nil {
+			graph.Close()
+			graph = nil
+		}
+	})
+
+	openPage := func(title string) logseq.Page {
+		page, err := graph.OpenPage(title)
+		Expect(err).ToNot(HaveOccurred())
+		return page
+	}
+
+	// propertyText returns the value of a page property as written, or an
+	// empty string when the page does not have the property.
+	propertyText := func(page logseq.Page, name string) string {
+		property := page.Properties().GetAsNode(name)
+		if property == nil {
+			return ""
+		}
+		v, err := logseq.AsString(content.NewParagraph(property.Children()...))
+		Expect(err).ToNot(HaveOccurred())
+		return v
+	}
+
+	It("reads the title in front matter as a page property, the same as Logseq", func() {
+		// Given a page that starts with YAML front matter
+		graph = openGraphWithPages(dir, map[string]string{
+			"front.md": "---\ntitle: Front\ntags: [a, b]\n---\n\n- b\n",
+		})
+
+		// Then the page property title is Front
+		Expect(propertyText(openPage("front"), "title")).To(Equal("Front"))
+	})
+
+	It("reads the alias in front matter as an alias of the page", func() {
+		// Given front matter with a title and an alias
+		graph = openGraphWithPages(dir, map[string]string{
+			"front.md": "---\ntitle: X\nalias: Y\n---\n\n- a\n",
+		})
+
+		page := openPage("front")
+
+		// Then the page has the title X and the alias Y
+		Expect(propertyText(page, "title")).To(Equal("X"))
+		Expect(page.Aliases()).To(Equal([]string{"Y"}))
+	})
+
+	It("does not make blocks from a YAML list in front matter", func() {
+		// Given front matter with a YAML list
+		graph = openGraphWithPages(dir, map[string]string{
+			"front.md": "---\ntags:\n  - a\n  - b\n---\n\n- a\n",
+		})
+
+		// Then the page has exactly one block below the front matter
+		blocks := openPage("front").Blocks().Filter(func(block *content.Block) bool {
+			return !block.IsPreBlock()
+		})
+		Expect(blocks).To(HaveLen(1))
+	})
+
+	It("does not read a thematic break after the first block as front matter", func() {
+		// Given a thematic break between two blocks
+		graph = openGraphWithPages(dir, map[string]string{
+			"breaks.md": "- a\n---\n- b\n",
+		})
+
+		// Then the page has no pre-block
+		Expect(openPage("breaks").Blocks()[0].IsPreBlock()).To(BeFalse())
+	})
+
+	It("keeps the front matter when a block on the page is changed", func() {
+		// Given a page with front matter
+		input := "---\ntitle: X\ntags: [a, b]\n---\n\n- a\n"
+		graph = openGraphWithPages(dir, map[string]string{
+			"front.md": input,
+		})
+
+		// When a block is added and the page is saved
+		tx := graph.NewTransaction()
+		page, err := tx.OpenPage("front")
+		Expect(err).ToNot(HaveOccurred())
+		page.AddBlock(content.NewBlock(content.NewParagraph(content.NewText("b"))))
+		Expect(tx.Save()).To(Succeed())
+
+		// Then the front matter text does not change
+		data, err := os.ReadFile(filepath.Join(dir, "pages", "front.md"))
+		Expect(err).ToNot(HaveOccurred())
+		Expect(string(data)).To(HavePrefix("---\ntitle: X\ntags: [a, b]\n---\n"))
+	})
+
+	It("adds a page property after front matter that has no properties", func() {
+		// Given a page with front matter that Logseq reads no properties from
+		graph = openGraphWithPages(dir, map[string]string{
+			"front.md": "---\ntags:\n  - a\n---\n\n- a\n",
+		})
+
+		// When a page property is set and the page is saved
+		tx := graph.NewTransaction()
+		page, err := tx.OpenPage("front")
+		Expect(err).ToNot(HaveOccurred())
+		page.Properties().Set("icon", content.NewText("x"))
+		Expect(tx.Save()).To(Succeed())
+
+		// Then the property is written after the front matter
+		data, err := os.ReadFile(filepath.Join(dir, "pages", "front.md"))
+		Expect(err).ToNot(HaveOccurred())
+		Expect(string(data)).To(HavePrefix("---\ntags:\n  - a\n---\nicon:: x\n"))
+	})
+})

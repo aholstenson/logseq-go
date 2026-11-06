@@ -724,6 +724,8 @@ func (w *Output) Write(n content.Node) error {
 		return w.writeBlock(node)
 	case *content.Properties:
 		return w.writeProperties(node)
+	case *content.FrontMatter:
+		return w.writeFrontMatter(node)
 	case *content.AdvancedCommand:
 		return w.writeAdvancedCommand(node)
 	case *content.QueryCommand:
@@ -2002,6 +2004,95 @@ func (w *Output) writeProperties(node *content.Properties) error {
 
 	w.endBlock()
 	return nil
+}
+
+// writeFrontMatter writes YAML front matter. The text is written as it was
+// read, unless the properties in it were changed. Then the front matter is
+// written from the properties, with one `name: value` line for each property.
+func (w *Output) writeFrontMatter(node *content.FrontMatter) error {
+	err := w.startBlock(node, "")
+	if err != nil {
+		return err
+	}
+
+	changed, err := frontMatterPropertiesChanged(node)
+	if err != nil {
+		return err
+	}
+
+	err = w.writeRaw("---\n")
+	if err != nil {
+		return err
+	}
+
+	if !changed {
+		err = w.writeRaw(node.Raw)
+		if err != nil {
+			return err
+		}
+	} else {
+		for child := node.FindProperties().FirstChild(); child != nil; child = child.NextSibling() {
+			property, ok := child.(*content.Property)
+			if !ok {
+				return fmt.Errorf("unsupported properties child: %T", child)
+			}
+
+			err = w.writeRaw(property.Name + ": ")
+			if err != nil {
+				return err
+			}
+
+			err = w.writeChildren(property)
+			if err != nil {
+				return err
+			}
+
+			err = w.writeRaw("\n")
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	err = w.writeRaw("---")
+	if err != nil {
+		return err
+	}
+
+	w.endBlock()
+	return nil
+}
+
+// frontMatterPropertiesChanged checks if the properties of front matter are
+// different from the properties in its text. Front matter without properties
+// can not be changed, as it holds YAML that Logseq does not read.
+func frontMatterPropertiesChanged(node *content.FrontMatter) (bool, error) {
+	properties := node.FindProperties()
+	if properties == nil {
+		return false, nil
+	}
+
+	defaults := defaultParseOptions()
+	original, err := readFrontMatterProperties(node.Raw, &defaults)
+	if err != nil {
+		return false, err
+	}
+
+	if original == nil {
+		return true, nil
+	}
+
+	current, err := AsString(properties)
+	if err != nil {
+		return false, err
+	}
+
+	read, err := AsString(original)
+	if err != nil {
+		return false, err
+	}
+
+	return current != read, nil
 }
 
 func (w *Output) writeAdvancedCommand(node *content.AdvancedCommand) error {

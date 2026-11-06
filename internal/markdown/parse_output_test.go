@@ -436,3 +436,45 @@ var _ = Describe("Blank lines before a paragraph that ends in properties", func(
 	FullyEqual("keeps the blank line before properties that come before text", "- a\n\n  d:: e\n  c")
 	FullyEqual("keeps the blank lines before a paragraph and before its properties", "- a\n\n  c\n\n  d:: e")
 })
+
+var _ = Describe("YAML front matter", func() {
+	FullyEqual("keeps front matter with a title and a list of tags", "---\ntitle: Front\ntags: [a, b]\n---\n\n- b")
+	FullyEqual("keeps front matter with a title and an alias", "---\ntitle: X\nalias: Y\n---\n\n- a")
+	FullyEqual("keeps underscores and stars in a front matter value", "---\ntitle: My_Page *draft*\n---")
+	FullyEqual("keeps a YAML list in front matter", "---\ntags:\n  - a\n  - b\n---\n\n- a")
+	FullyEqual("keeps the indentation of a folded YAML value", "---\ndescription: >\n  long\n  text\n---\n\n- a")
+
+	It("does not escape the brackets of a YAML list in front matter", func() {
+		// Given front matter with a YAML flow list and no blank line after it
+		out := parseAndOutput("---\ntags: [a, b]\n---\n- a\n")
+
+		// Then the brackets are not escaped on save
+		Expect(out).ToNot(ContainSubstring("\\["))
+	})
+
+	FullyEqual("keeps empty front matter", "---\n---\n- a")
+	FullyEqual("keeps a first line of --- without an end line as a thematic break", "---\ntitle: X\n- a")
+
+	It("writes the front matter from the properties when a property is changed", func() {
+		// Given front matter with a title and an alias
+		block, err := markdown.ParseString("---\ntitle: X\nalias: Y\n---\n\n- a")
+		Expect(err).ToNot(HaveOccurred())
+
+		// When the title is changed
+		block.FindProperties().Set("title", content.NewText("Z"))
+
+		// Then the front matter has the new title and keeps the alias
+		out, err := markdown.AsString(block)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(out).To(Equal("---\ntitle: Z\nalias: Y\n---\n\n- a"))
+	})
+
+	It("reads no properties from front matter with a YAML list", func() {
+		// Given front matter where a line is not a name and a value
+		block, err := markdown.ParseString("---\ntitle: X\ntags:\n  - a\n---\n\n- a")
+		Expect(err).ToNot(HaveOccurred())
+
+		// Then the page has no properties, the same as in Logseq
+		Expect(block.FindProperties()).To(BeNil())
+	})
+})

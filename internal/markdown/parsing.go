@@ -23,6 +23,7 @@ var neverMatch = regexp.MustCompile(`$.^`)
 func init() {
 	markdownParser = parser.NewParser(
 		parser.WithBlockParsers(
+			util.Prioritized(&frontMatterParser{}, 100),
 			util.Prioritized(newBlockThematicBreakParser(), 200),
 			util.Prioritized(newBlockListParser(), 300),
 			util.Prioritized(newBlockListItemParser(), 400),
@@ -162,8 +163,13 @@ func Parse(src []byte, opts ...ParseOption) (*content.Block, error) {
 		opt(&options)
 	}
 
+	return parseWithOptions(src, &options)
+}
+
+// parseWithOptions parses Markdown with options that are already set up.
+func parseWithOptions(src []byte, options *parseOptions) (*content.Block, error) {
 	context := parser.NewContext()
-	context.Set(parseOptionsKey, &options)
+	context.Set(parseOptionsKey, options)
 
 	doc := markdownParser.Parse(text.NewReader(src), parser.WithContext(context))
 	node, err := convert(src, doc)
@@ -253,6 +259,8 @@ func convert(src []byte, in ast.Node) (content.Node, error) {
 		return convertLogbook(src, node)
 	case *taskDate:
 		return convertTaskDate(node)
+	case *frontMatter:
+		return convertFrontMatter(src, node)
 	}
 
 	return nil, fmt.Errorf("Could not convert node: %T", in)

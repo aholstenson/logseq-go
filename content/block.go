@@ -136,6 +136,13 @@ func (b *Block) FindProperties() *Properties {
 		switch n := node.(type) {
 		case *Properties:
 			return n
+		case *FrontMatter:
+			// Logseq reads front matter as the properties of the page. Front
+			// matter without properties is skipped, so that properties after
+			// it are found.
+			if properties := n.FindProperties(); properties != nil {
+				return properties
+			}
 		case *Block:
 			// Anything after a sub block belongs to that part of the outline
 			// and not to this block.
