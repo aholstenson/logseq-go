@@ -1,6 +1,8 @@
 package markdown_test
 
 import (
+	"time"
+
 	"github.com/aholstenson/logseq-go/content"
 	"github.com/aholstenson/logseq-go/internal/markdown"
 	"github.com/aholstenson/logseq-go/internal/tests"
@@ -329,25 +331,17 @@ var _ = Describe("Parsing then outputting", func() {
 			FullyEqual("State change without a previous status", "TODO Task\n:LOGBOOK:\n* State \"DONE\" [2023-06-26 Mon 17:25:56]\n:END:")
 			FullyEqual("State change followed by a clock", "TODO Task\n:LOGBOOK:\n* State \"DONE\" from \"TODO\" [2023-06-26 Mon 17:25:56]\nCLOCK: [2023-06-26 Mon 17:25:56]--[2023-06-26 Mon 17:25:58] =>  00:00:02\n:END:")
 
-			// The day name is regenerated from the date, so a wrong one is
-			// corrected on the way out.
-			Varies(
-				"Clock with the wrong day name",
-				"TODO Task\n:LOGBOOK:\nCLOCK: [2023-06-26 Fri 17:25:56]\n:END:",
-				"TODO Task\n:LOGBOOK:\nCLOCK: [2023-06-26 Mon 17:25:56]\n:END:",
-			)
+			// Logseq reads the date and not the day name, so a wrong day name
+			// is kept as it is when the entry is not changed.
+			FullyEqual("Clock with the wrong day name", "TODO Task\n:LOGBOOK:\nCLOCK: [2023-06-26 Fri 17:25:56]\n:END:")
 
 			// Entries that are not modelled are kept as they were found.
 			FullyEqual("Unknown entry", "TODO Task\n:LOGBOOK:\nsomething else\n:END:")
 			FullyEqual("State change with an unknown status", "TODO Task\n:LOGBOOK:\n* State \"SOMEDAY\" [2023-06-26 Mon 17:25:56]\n:END:")
 
-			// Entries are written with the precision the graph is set up for,
-			// so one written with the other precision is converted.
-			Varies(
-				"Clock without seconds",
-				"TODO Task\n:LOGBOOK:\nCLOCK: [2023-06-26 Mon 17:25]--[2023-06-26 Mon 17:27] =>  00:02\n:END:",
-				"TODO Task\n:LOGBOOK:\nCLOCK: [2023-06-26 Mon 17:25:00]--[2023-06-26 Mon 17:27:00] =>  00:02:00\n:END:",
-			)
+			// Logseq reads both precisions, so an entry that is not changed
+			// keeps the precision it was written with.
+			FullyEqual("Clock without seconds", "TODO Task\n:LOGBOOK:\nCLOCK: [2023-06-26 Mon 17:25]--[2023-06-26 Mon 17:27] =>  00:02\n:END:")
 		})
 
 		Describe("Logbooks without second support", func() {
@@ -358,12 +352,7 @@ var _ = Describe("Parsing then outputting", func() {
 			FullyEqual("Clock spanning more than a day", "TODO Task\n:LOGBOOK:\nCLOCK: [2023-06-26 Mon 09:00]--[2023-06-27 Tue 11:30] =>  26:30\n:END:", withoutSeconds)
 			FullyEqual("State change", "TODO Task\n:LOGBOOK:\n* State \"DONE\" from \"TODO\" [2023-06-26 Mon 17:25]\n:END:", withoutSeconds)
 
-			Varies(
-				"Clock with seconds",
-				"TODO Task\n:LOGBOOK:\nCLOCK: [2023-06-26 Mon 17:25:56]--[2023-06-26 Mon 17:27:58] =>  00:02:02\n:END:",
-				"TODO Task\n:LOGBOOK:\nCLOCK: [2023-06-26 Mon 17:25]--[2023-06-26 Mon 17:27] =>  00:02\n:END:",
-				withoutSeconds,
-			)
+			FullyEqual("Clock with seconds", "TODO Task\n:LOGBOOK:\nCLOCK: [2023-06-26 Mon 17:25:56]--[2023-06-26 Mon 17:27:58] =>  00:02:02\n:END:", withoutSeconds)
 		})
 
 		Describe("Scheduled and deadline", func() {
@@ -672,5 +661,48 @@ var _ = Describe("Task dates that are not changed", func() {
 
 		// Then it is written as a deadline
 		Expect(written).To(Equal("- TODO a\n  DEADLINE: <2024-01-01 Mon 09:00 +1d>"))
+	})
+})
+
+var _ = Describe("Logbook entries that are not changed", func() {
+	FullyEqual("keeps the written duration of a clock entry", "- DONE a\n  :LOGBOOK:\n  CLOCK: [2024-01-01 Mon 10:00:00]--[2024-01-01 Mon 11:00:00] =>  02:00:00\n  :END:")
+	FullyEqual("keeps one space before the duration of a clock entry", "- DONE a\n  :LOGBOOK:\n  CLOCK: [2024-01-01 Mon 10:00:00]--[2024-01-01 Mon 11:00:00] => 01:00:00\n  :END:")
+	FullyEqual("keeps text after the start of the logbook", "- DONE a\n  :LOGBOOK: x\n  :END:")
+	FullyEqual("keeps a clock entry without seconds in a graph that writes seconds", "- DONE a\n  :LOGBOOK:\n  CLOCK: [2024-01-01 Mon 10:00]--[2024-01-01 Mon 11:00] =>  01:00\n  :END:", markdown.WithLogbookSeconds(true))
+	FullyEqual("keeps a state change without seconds", "- DONE a\n  :LOGBOOK:\n  * State \"DONE\" from \"TODO\" [2024-01-01 Mon 10:00]\n  :END:")
+	FullyEqual("keeps a weekday that does not match the date of a clock entry", "- DOING a\n  :LOGBOOK:\n  CLOCK: [2024-01-01 Tue 10:00:00]\n  :END:")
+	FullyEqual("keeps fractions of a second in a clock entry", "- DOING a\n  :LOGBOOK:\n  CLOCK: [2024-01-01 Mon 10:00:00.5]\n  :END:")
+	FullyEqual("does not escape a clock entry in a lower case logbook", "- DOING a\n  :logbook:\n  CLOCK: [2024-01-01 Mon 10:00:00]\n  :end:")
+	FullyEqual("keeps spaces after the start of the logbook", "- DONE a\n  :LOGBOOK:  \n  * State \"DONE\" from \"TODO\" [2024-01-01 Mon 10:00:00]\n  :END:")
+	FullyEqual("keeps an entry that is not changed next to an unknown entry", "- DONE a\n  :LOGBOOK:\n  something else\n  CLOCK: [2024-01-01 Tue 10:00]--[2024-01-01 Tue 11:00] => 01:00\n  :END:")
+
+	It("writes a clock entry that is stopped in the form of the graph", func() {
+		// Given a running clock entry with a wrong weekday and no seconds
+		block, err := markdown.ParseString("- DOING a\n  :LOGBOOK:\n  CLOCK: [2024-01-01 Tue 10:00]\n  :END:")
+		Expect(err).ToNot(HaveOccurred())
+		clock := block.Children().FindDeep(content.IsOfType[*content.LogbookEntryClock]()).(*content.LogbookEntryClock)
+
+		// When the clock is stopped and it is written
+		clock.WithEnd(clock.Start.Add(time.Hour))
+		written, err := markdown.AsString(block)
+		Expect(err).ToNot(HaveOccurred())
+
+		// Then the entry is written in the form that Logseq writes
+		Expect(written).To(Equal("- DOING a\n  :LOGBOOK:\n  CLOCK: [2024-01-01 Mon 10:00:00]--[2024-01-01 Mon 11:00:00] =>  01:00:00\n  :END:"))
+	})
+
+	It("writes a state change with a changed status in the form of the graph", func() {
+		// Given a state change without seconds
+		block, err := markdown.ParseString("- DONE a\n  :LOGBOOK:\n  * State \"DONE\" from \"TODO\" [2024-01-01 Mon 10:00]\n  :END:")
+		Expect(err).ToNot(HaveOccurred())
+		change := block.Children().FindDeep(content.IsOfType[*content.LogbookEntryStateChange]()).(*content.LogbookEntryStateChange)
+
+		// When its status is changed and it is written
+		change.WithFrom(content.TaskStatusDoing)
+		written, err := markdown.AsString(block, markdown.WithLogbookSeconds(false))
+		Expect(err).ToNot(HaveOccurred())
+
+		// Then the entry is written with the new status
+		Expect(written).To(Equal("- DONE a\n  :LOGBOOK:\n  * State \"DONE\" from \"DOING\" [2024-01-01 Mon 10:00]\n  :END:"))
 	})
 })

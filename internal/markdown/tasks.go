@@ -35,15 +35,40 @@ var stateChangeRegexp = regexp.MustCompile(`^\* State "([^"]+)"(?: +from "([^"]+
 func parseLogbookEntry(value string) content.LogbookEntry {
 	line := strings.TrimRight(value, " \t\r")
 
-	if entry := parseLogbookClock(line); entry != nil {
-		return entry
+	entry := parseLogbookClock(line)
+	if entry == nil {
+		entry = parseLogbookStateChange(line)
 	}
 
-	if entry := parseLogbookStateChange(line); entry != nil {
+	if entry != nil {
+		if aware, ok := entry.(content.LogbookEntrySourceAware); ok {
+			aware.SetEntrySource(strings.TrimSuffix(value, "\r"))
+		}
+
 		return entry
 	}
 
 	return content.NewLogbookEntryRaw(value)
+}
+
+// logbookEntryReadsBack returns true if the text of a logbook entry is read
+// as the same entry: a clock entry with the same start and end, or a state
+// change with the same statuses and time.
+func logbookEntryReadsBack(source string, entry content.LogbookEntry) bool {
+	if strings.ContainsAny(source, "\r\n") {
+		return false
+	}
+
+	switch e := entry.(type) {
+	case *content.LogbookEntryClock:
+		other, ok := parseLogbookEntry(source).(*content.LogbookEntryClock)
+		return ok && other.Start.Equal(e.Start) && other.End.Equal(e.End)
+	case *content.LogbookEntryStateChange:
+		other, ok := parseLogbookEntry(source).(*content.LogbookEntryStateChange)
+		return ok && other.From == e.From && other.To == e.To && other.Time.Equal(e.Time)
+	}
+
+	return false
 }
 
 // parseLogbookTime reads a timestamp of a logbook entry. Both precisions are
@@ -161,6 +186,10 @@ var logbookKind = ast.NewNodeKind("Logbook")
 
 type logbook struct {
 	ast.BaseBlock
+
+	// StartLineText is the text after `:LOGBOOK:` on its line, without the
+	// line break.
+	StartLineText string
 }
 
 func (n *logbook) Kind() ast.NodeKind {
@@ -207,7 +236,8 @@ func (b *logbookParser) Open(parent ast.Node, reader text.Reader, pc parser.Cont
 	}
 
 	// Create the block
-	block := &logbook{}
+	rest := line[pos+len(":LOGBOOK:"):]
+	block := &logbook{StartLineText: strings.TrimRight(string(rest), "\r\n")}
 
 	// Store the block in the context
 	pc.Set(logbookInfoKey, &logbookBlockData{

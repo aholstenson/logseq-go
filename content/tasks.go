@@ -928,6 +928,10 @@ loop:
 type Logbook struct {
 	baseNodeWithChildren
 	previousLineAwareImpl
+
+	// StartLineText is the text after `:LOGBOOK:` on its line, as it is in
+	// the file, such as spaces. It is written back after `:LOGBOOK:`.
+	StartLineText string
 }
 
 func NewLogbook(entries ...LogbookEntry) *Logbook {
@@ -947,6 +951,9 @@ func (l *Logbook) WithPreviousLineType(t PreviousLineType) *Logbook {
 
 func (l *Logbook) debug(p *debugPrinter) {
 	p.StartType("TaskLogbook")
+	if l.StartLineText != "" {
+		p.Field("startLineText", l.StartLineText)
+	}
 	debugPreviousLineAware(p, l)
 	p.Children(l)
 	p.EndType()
@@ -955,6 +962,32 @@ func (l *Logbook) debug(p *debugPrinter) {
 func (l *Logbook) isBlock() {}
 
 var _ BlockNode = (*Logbook)(nil)
+
+// LogbookEntrySourceAware is implemented by the logbook entries that are read
+// from a line in a known form, such as LogbookEntryClock and
+// LogbookEntryStateChange. They keep the text of the line as it is in the
+// file. An entry whose text reads back as the same entry is written with this
+// text, so that its weekdays, seconds and duration do not change.
+type LogbookEntrySourceAware interface {
+	// EntrySource gets the text of the line. It is empty for an entry that
+	// was not read from a file.
+	EntrySource() string
+
+	// SetEntrySource sets the text of the line.
+	SetEntrySource(source string)
+}
+
+type entrySourceImpl struct {
+	entrySource string
+}
+
+func (e *entrySourceImpl) EntrySource() string {
+	return e.entrySource
+}
+
+func (e *entrySourceImpl) SetEntrySource(source string) {
+	e.entrySource = source
+}
 
 // LogbookEntry represents a single entry in a logbook.
 type LogbookEntry interface {
@@ -995,13 +1028,16 @@ func (t *LogbookEntryRaw) isLogbookEntry() {}
 //	CLOCK: [2023-06-26 Mon 17:25:56]--[2023-06-26 Mon 17:25:58] =>  00:00:02
 //
 // The duration at the end is derived from Start and End when the entry is
-// written, so it can never drift from the times it sums up.
+// written, so it can never drift from the times it sums up. An entry that is
+// read from a file and not changed is written as it was, see
+// LogbookEntrySourceAware.
 //
 // The times are kept with second precision no matter how they were written. A
 // graph where `:logbook/settings :with-second-support?` is off writes them,
 // and the duration, without the seconds.
 type LogbookEntryClock struct {
 	baseNode
+	entrySourceImpl
 
 	// Start is when the clock was started.
 	Start time.Time
@@ -1058,11 +1094,14 @@ func (t *LogbookEntryClock) debug(p *debugPrinter) {
 
 func (t *LogbookEntryClock) isLogbookEntry() {}
 
+var _ LogbookEntrySourceAware = (*LogbookEntryClock)(nil)
+
 // LogbookEntryStateChange records that a task changed status, which Logseq
 // writes when a repeating task is completed. The entry is written as
 // `* State "DONE" from "TODO" [2023-06-26 Mon 17:25:56]`.
 type LogbookEntryStateChange struct {
 	baseNode
+	entrySourceImpl
 
 	// From is the status the task had. TaskStatusNone leaves the `from` part
 	// out of the entry.
@@ -1112,6 +1151,8 @@ func (t *LogbookEntryStateChange) debug(p *debugPrinter) {
 }
 
 func (t *LogbookEntryStateChange) isLogbookEntry() {}
+
+var _ LogbookEntrySourceAware = (*LogbookEntryStateChange)(nil)
 
 func truncateToSecond(at time.Time) time.Time {
 	if at.IsZero() {

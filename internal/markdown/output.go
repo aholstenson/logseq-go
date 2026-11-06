@@ -3081,20 +3081,31 @@ func (w *Output) writeLogbook(node *content.Logbook) error {
 		return err
 	}
 
-	err = w.writeRaw(":LOGBOOK:\n")
+	err = w.writeRaw(":LOGBOOK:" + node.StartLineText + "\n")
 	if err != nil {
 		return err
 	}
 
 	for _, entry := range node.Children() {
 		var value string
+		if aware, ok := entry.(content.LogbookEntrySourceAware); ok {
+			if source := aware.EntrySource(); source != "" && logbookEntryReadsBack(source, entry.(content.LogbookEntry)) {
+				// The entry is not changed, so its text is written as it is.
+				value = source
+			}
+		}
+
 		switch e := entry.(type) {
 		case *content.LogbookEntryRaw:
 			value = e.Value
 		case *content.LogbookEntryClock:
-			value, err = w.logbookClock(e)
+			if value == "" {
+				value, err = w.logbookClock(e)
+			}
 		case *content.LogbookEntryStateChange:
-			value, err = w.logbookStateChange(e)
+			if value == "" {
+				value, err = w.logbookStateChange(e)
+			}
 		default:
 			return fmt.Errorf("unsupported logbook entry: %T", entry)
 		}
