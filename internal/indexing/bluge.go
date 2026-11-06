@@ -32,7 +32,7 @@ func (i idTerm) Term() []byte {
 // Increase it when the way pages or blocks are indexed changes, so that an
 // index stored on disk is built again with the new fields. Without that the
 // pages that did not change since they were indexed keep their old documents.
-const indexVersion = 15
+const indexVersion = 16
 
 // versionDocID is the id of the document that stores the version of the
 // index. It does not have a type, so searches for pages and blocks never
@@ -57,9 +57,13 @@ type BlugeIndex struct {
 	// propertyPages decides which property names link a block to the page
 	// with the same name.
 	propertyPages propertyPages
+
+	// taskPagesDisabled is whether the task marker and the priority of a
+	// block do not link to pages, see WithTaskPages.
+	taskPagesDisabled bool
 }
 
-func NewBlugeIndex(graphConfig *utils.GraphConfig, indexDirectory string) (*BlugeIndex, error) {
+func NewBlugeIndex(graphConfig *utils.GraphConfig, indexDirectory string, opts ...Option) (*BlugeIndex, error) {
 	idx, err := newBlugeIndex(indexDirectory, indexVersion)
 	if err != nil {
 		return nil, err
@@ -70,6 +74,10 @@ func NewBlugeIndex(graphConfig *utils.GraphConfig, indexDirectory string) (*Blug
 	}
 
 	idx.propertyPages = newPropertyPages(graphConfig)
+	for _, opt := range opts {
+		opt(idx)
+	}
+
 	return idx, nil
 }
 
@@ -619,8 +627,11 @@ func (i *BlugeIndex) pathRefsOf(parentPathRefs []string, block *content.Block) [
 		}
 	}
 
-	// The names of the properties of the block are refs of the block too.
-	for _, title := range i.propertyPages.titlesOf(block.FindProperties()) {
+	// The names of the properties of the block, its task marker and its
+	// priority are refs of the block too.
+	titles := i.propertyPages.titlesOf(block.FindProperties())
+	titles = append(titles, i.taskPageTitles(block)...)
+	for _, title := range titles {
 		if !containsString(refs, title) {
 			refs = append(refs, title)
 		}
@@ -698,6 +709,9 @@ func (i *BlugeIndex) blockToDocument(page *Page, id string, block *content.Block
 	// PathReferences matches on the refs of the parents as well.
 	i.transferRefs(blugeDoc, "pages", block.Content())
 	i.transferPropertyPageRefs(blugeDoc, "pages", block.FindProperties())
+	for _, title := range i.taskPageTitles(block) {
+		blugeDoc.AddField(bluge.NewKeywordField("pages:ref", title))
+	}
 	i.transferLinks(blugeDoc, block.Content())
 	transferTask(blugeDoc, block)
 

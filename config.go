@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/aholstenson/logseq-go/content"
+	"github.com/aholstenson/logseq-go/internal/indexing"
 	"github.com/aholstenson/logseq-go/internal/utils"
 	"github.com/aholstenson/logseq-go/query"
 )
@@ -244,6 +245,12 @@ type Config struct {
 	// page, also when PropertyPages is on. It replaces
 	// `:property-pages/excludelist`.
 	PropertyPagesExcluded []string
+
+	// TaskPages is whether the task marker and the priority of a block point
+	// at the pages with the same name, so that a block with `TODO [#A] x` is
+	// a linked reference of the pages `TODO` and `A`. Logseq always does
+	// this, and has no setting for it in `config.edn`. Use Bool to set it.
+	TaskPages *bool
 }
 
 // Bool returns a pointer to the value, for the fields of Config that are not
@@ -270,6 +277,10 @@ func (c Config) merge(other Config) Config {
 		c.PropertyPagesExcluded = other.PropertyPagesExcluded
 	}
 
+	if other.TaskPages != nil {
+		c.TaskPages = other.TaskPages
+	}
+
 	return c
 }
 
@@ -292,6 +303,17 @@ func (c Config) applyTo(config *utils.GraphConfig) {
 	if c.PropertyPagesExcluded != nil {
 		config.PropertyPagesExcludelist = copyStrings(c.PropertyPagesExcluded)
 	}
+}
+
+// indexOptions are the options of the index for the fields that the config of
+// the graph does not have.
+func (c Config) indexOptions() []indexing.Option {
+	opts := make([]indexing.Option, 0, 1)
+	if c.TaskPages != nil {
+		opts = append(opts, indexing.WithTaskPages(*c.TaskPages))
+	}
+
+	return opts
 }
 
 // copyStrings copies a list, so that a change to the list of the caller does

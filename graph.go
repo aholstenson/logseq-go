@@ -95,7 +95,7 @@ func Open(ctx context.Context, directory string, opts ...Option) (*Graph, error)
 
 	var index indexing.Index
 	if options.index {
-		index, err = indexing.NewBlugeIndex(config, options.indexDirectory)
+		index, err = indexing.NewBlugeIndex(config, options.indexDirectory, options.config.indexOptions()...)
 		if err != nil {
 			return nil, fmt.Errorf("failed to open index: %w", err)
 		}

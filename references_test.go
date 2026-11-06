@@ -414,3 +414,96 @@ var _ = Describe("Linked references of property pages", func() {
 		Expect(results.Size()).To(Equal(2))
 	})
 })
+
+var _ = Describe("Linked references of task markers and priorities", func() {
+	var (
+		graph *logseq.Graph
+		dir   string
+		ctx   context.Context
+	)
+
+	BeforeEach(func() {
+		dir = setupGraph()
+		ctx = context.Background()
+	})
+
+	AfterEach(func() {
+		if graph != nil {
+			graph.Close()
+			graph = nil
+		}
+	})
+
+	referenceCount := func(title string) int {
+		page, err := graph.OpenPage(title)
+		Expect(err).ToNot(HaveOccurred())
+
+		results, err := page.LinkedReferences(ctx)
+		Expect(err).ToNot(HaveOccurred())
+		return results.Size()
+	}
+
+	It("links a task to the page of its marker, the same as Logseq", func() {
+		// Given a TODO task
+		graph = openGraphWithPages(dir, map[string]string{
+			"referrer.md": "- TODO buy milk\n",
+		})
+
+		// Then the task is a linked reference of the page TODO
+		Expect(referenceCount("TODO")).To(Equal(1))
+	})
+
+	It("links a task to the pages of its marker and its priority", func() {
+		// Given a DONE task with priority B
+		graph = openGraphWithPages(dir, map[string]string{
+			"referrer.md": "- DONE [#B] x\n",
+		})
+
+		// Then the task is a linked reference of the pages DONE and B
+		Expect(referenceCount("DONE")).To(Equal(1))
+		Expect(referenceCount("B")).To(Equal(1))
+	})
+
+	It("links a task with marker and priority A to both pages", func() {
+		// Given a TODO task with priority A
+		graph = openGraphWithPages(dir, map[string]string{
+			"referrer.md": "- TODO [#A] task\n",
+		})
+
+		// Then the task is a linked reference of the pages TODO and A
+		Expect(referenceCount("TODO")).To(Equal(1))
+		Expect(referenceCount("A")).To(Equal(1))
+	})
+
+	It("does not link to the page TODO when the word is not at the start", func() {
+		// Given a block with TODO in the middle of its text
+		graph = openGraphWithPages(dir, map[string]string{
+			"referrer.md": "- buy TODO milk\n",
+		})
+
+		// Then the block is not a linked reference of the page TODO
+		Expect(referenceCount("TODO")).To(Equal(0))
+	})
+
+	It("links a block with a priority and no marker to the page of the priority", func() {
+		// Given a block that starts with a priority
+		graph = openGraphWithPages(dir, map[string]string{
+			"referrer.md": "- [#C] x\n",
+		})
+
+		// Then the block is a linked reference of the page C
+		Expect(referenceCount("C")).To(Equal(1))
+	})
+
+	It("puts the task marker in the path refs of child blocks", func() {
+		// Given a child block below a task
+		graph = openGraphWithPages(dir, map[string]string{
+			"referrer.md": "- TODO x\n\t- child\n",
+		})
+
+		// Then both blocks have the page TODO in their path refs
+		results, err := graph.SearchBlocks(ctx, logseq.WithQuery(logseq.PathReferences("TODO")))
+		Expect(err).ToNot(HaveOccurred())
+		Expect(results.Size()).To(Equal(2))
+	})
+})

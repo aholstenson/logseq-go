@@ -510,6 +510,36 @@ var _ = Describe("Config", func() {
 			Expect(block.FindProperties().Get("author").PageReferences()).To(HaveLen(2))
 		})
 
+		It("turns task pages off", func() {
+			// Given a task with a priority
+			writePage("referrer.md", "- TODO [#A] x\n")
+
+			// When the program turns task pages off
+			graph := openWithConfig(`{}`,
+				logseq.WithInMemoryIndex(),
+				logseq.WithConfig(logseq.Config{TaskPages: logseq.Bool(false)}),
+			)
+
+			// Then the marker and the priority are not references
+			Expect(referencesTo(graph, "TODO")).To(Equal(0))
+			Expect(referencesTo(graph, "A")).To(Equal(0))
+		})
+
+		It("keeps task pages on when the program does not set them", func() {
+			// Given a task with a priority
+			writePage("referrer.md", "- TODO [#A] x\n")
+
+			// When the program sets another field only
+			graph := openWithConfig(`{}`,
+				logseq.WithInMemoryIndex(),
+				logseq.WithConfig(logseq.Config{PropertyPages: logseq.Bool(false)}),
+			)
+
+			// Then the marker and the priority are references
+			Expect(referencesTo(graph, "TODO")).To(Equal(1))
+			Expect(referencesTo(graph, "A")).To(Equal(1))
+		})
+
 		It("keeps the settings of an earlier use that a later use does not set", func() {
 			// Given a graph with type excluded from property pages
 			writePage("referrer.md", "- a\n  type:: book\n  status:: open\n")
