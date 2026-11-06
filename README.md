@@ -85,8 +85,12 @@ has no setting in `config.edn` to turn this off.
 
 A `SCHEDULED:` or `DEADLINE:` line is a date of the task where Logseq reads it:
 directly after the first line of the block, or after properties or code. The
-date must have an English weekday, such as `<2024-01-01 Mon>`. A date after
-more text or after a blank line, and a date such as `<2024-01-01>`, is text.
+date must have a weekday of English letters, such as `<2024-01-01 Mon>`. The
+other forms that Logseq reads are dates too: a keyword in lower case, a date
+in `[` and `]`, a time such as `10:00-11:00` or `10:00am` (read as 10:00), and
+text after the date on the same line. Text after the date is kept, but its
+links are not references, the same as in Logseq. A date after more text or
+after a blank line, and a date such as `<2024-01-01>`, is text.
 Turn on `RelaxedTaskDates` to read such lines as dates in graphs that are not
 opened in Logseq.
 

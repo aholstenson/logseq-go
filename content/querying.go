@@ -98,9 +98,10 @@ func IsPageReference() NodePredicate {
 // goes for a value that is wrapped in quotes, and for a group of properties
 // that ignores references, see Properties.PageRefsIgnored.
 //
-// The text after a SCHEDULED or DEADLINE line is left out too, until a node
-// that is not text. Logseq reads that text and the date as one paragraph that
-// starts with a date, and it does not take references from such a paragraph.
+// The content after a SCHEDULED or DEADLINE date is left out too: the children
+// of the date, and the text on the lines after it, until a node that is not
+// text. Logseq reads that content and the date as one paragraph that starts
+// with a date, and it does not take references from such a paragraph.
 func (n NodeList) PageReferences() NodeList {
 	refs := make(NodeList, 0)
 	afterTaskDate := false
@@ -116,6 +117,7 @@ func (n NodeList) PageReferences() NodeList {
 		switch node.(type) {
 		case *TaskDate:
 			afterTaskDate = true
+			continue
 		case *Paragraph:
 			if afterTaskDate {
 				continue

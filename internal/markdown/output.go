@@ -2968,6 +2968,11 @@ func (w *Output) writeTaskDate(node *content.TaskDate) error {
 		return err
 	}
 
+	err = w.writeChildren(node)
+	if err != nil {
+		return err
+	}
+
 	w.endBlock()
 	return nil
 }

@@ -3656,16 +3656,17 @@ var _ = Describe("Parsing", func() {
 				)))
 			})
 
-			It("keeps a date with an unsupported time range as text", func() {
+			It("reads the start of a time range, the same as Logseq", func() {
 				block, err := markdown.ParseString("TODO Task\nSCHEDULED: <2024-01-15 Mon 10:00-11:00>")
 				Expect(err).ToNot(HaveOccurred())
 
 				Expect(block).To(tests.EqualNode(content.NewBlock(
 					content.NewParagraph(
 						content.NewTaskMarker(content.TaskStatusTodo),
-						content.NewText("Task").WithSoftLineBreak(),
-						content.NewText("SCHEDULED: <2024-01-15 Mon 10:00-11:00>"),
+						content.NewText("Task"),
 					),
+					content.NewScheduledWithTime(time.Date(2024, time.January, 15, 10, 0, 0, 0, time.Local)).
+						WithPreviousLineType(content.PreviousLineTypeNonBlank),
 				)))
 			})
 

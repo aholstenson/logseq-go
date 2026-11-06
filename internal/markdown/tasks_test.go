@@ -316,6 +316,11 @@ var _ = Describe("Scheduled dates in forms that Logseq ignores", func() {
 		Entry("a date without a weekday", "- TODO a\n  SCHEDULED: <2024-01-01>"),
 		Entry("a weekday that is not English", "- TODO a\n  SCHEDULED: <2024-01-01 Mån>"),
 		Entry("two spaces before the weekday", "- TODO a\n  SCHEDULED: <2024-01-01  Mon>"),
+		Entry("no space after the keyword", "- TODO a\n  SCHEDULED:<2024-01-01 Mon>"),
+		Entry("a space before the closing bracket", "- TODO a\n  SCHEDULED: <2024-01-01 Mon >"),
+		Entry("three parts after the weekday", "- TODO a\n  SCHEDULED: <2024-01-01 Mon 10:00 +1d x>"),
+		Entry("a repeater of one character", "- TODO a\n  SCHEDULED: <2024-01-01 Mon +>"),
+		Entry("a day that does not exist", "- TODO a\n  SCHEDULED: <2024-02-30 Fri>"),
 	)
 
 	DescribeTable("is not a date when it is not where Logseq looks for it",
@@ -509,5 +514,139 @@ var _ = Describe("A logbook without an end", func() {
 		v, err := markdown.AsString(root)
 		Expect(err).ToNot(HaveOccurred())
 		Expect(v).To(Equal(input))
+	})
+})
+
+var _ = Describe("Scheduled dates in forms that Logseq reads", func() {
+	parseAndWrite := func(input string) (*content.Block, string) {
+		root, err := markdown.ParseString(input)
+		Expect(err).ToNot(HaveOccurred())
+
+		v, err := markdown.AsString(root)
+		Expect(err).ToNot(HaveOccurred())
+		return root.Blocks()[0], v
+	}
+
+	It("reads a scheduled date with a time range, the same as Logseq", func() {
+		// Given a scheduled date with a time range
+		input := "- TODO a\n  SCHEDULED: <2024-01-01 Mon 10:00-11:00>"
+		block, out := parseAndWrite(input)
+
+		// Then the task is scheduled at the start of the range
+		Expect(block.Scheduled()).ToNot(BeNil())
+		Expect(block.Scheduled().Date).To(Equal(time.Date(2024, time.January, 1, 10, 0, 0, 0, time.Local)))
+
+		// And the text does not change on save
+		Expect(out).To(Equal(input))
+	})
+
+	It("reads a scheduled date written in lower case", func() {
+		block, _ := parseAndWrite("- TODO a\n  scheduled: <2024-01-01 Mon>")
+		Expect(block.Scheduled()).ToNot(BeNil())
+	})
+
+	It("reads an inactive scheduled date and does not escape its brackets on save", func() {
+		// Given a scheduled date in square brackets
+		input := "- TODO a\n  SCHEDULED: [2024-01-01 Mon]"
+		block, out := parseAndWrite(input)
+
+		// Then the task is scheduled
+		Expect(block.Scheduled()).ToNot(BeNil())
+
+		// And the brackets are not escaped on save
+		Expect(out).To(Equal(input))
+	})
+
+	DescribeTable("reads other scheduled forms that Logseq reads",
+		func(input string) {
+			block, _ := parseAndWrite(input)
+			Expect(block.Scheduled()).ToNot(BeNil())
+		},
+		Entry("a time with seconds", "- TODO a\n  SCHEDULED: <2024-01-01 Mon 10:00:30>"),
+		Entry("a time with am", "- TODO a\n  SCHEDULED: <2024-01-01 Mon 10:00am>"),
+		Entry("a repeater with a deadline interval", "- TODO a\n  SCHEDULED: <2024-01-01 Mon +1d/3d>"),
+		Entry("a date without leading zeros", "- TODO a\n  SCHEDULED: <2024-1-1 Mon>"),
+		Entry("text after the date", "- TODO a\n  SCHEDULED: <2024-01-01 Mon> x"),
+	)
+})
+
+var _ = Describe("Content after a task date", func() {
+	parse := func(input string) *content.Block {
+		root, err := markdown.ParseString(input)
+		Expect(err).ToNot(HaveOccurred())
+		return root.Blocks()[0]
+	}
+
+	// write writes the block as a page with only this block.
+	write := func(block *content.Block) string {
+		out, err := markdown.AsString(block.Parent())
+		Expect(err).ToNot(HaveOccurred())
+		return out
+	}
+
+	It("takes no reference from a page link after the date, the same as Logseq", func() {
+		// Given a scheduled date with a page link after it
+		input := "- TODO a\n  SCHEDULED: <2024-01-01 Mon> see [[Plan]]"
+		block := parse(input)
+
+		// Then the task is scheduled
+		Expect(block.Scheduled()).ToNot(BeNil())
+
+		// And the page link is kept, but is not a reference
+		Expect(block.Scheduled().Children().FilterDeep(content.IsOfType[*content.PageLink]())).To(HaveLen(1))
+		Expect(block.Children().PageReferences()).To(BeEmpty())
+
+		// And the text does not change on save
+		Expect(write(block)).To(Equal(input))
+	})
+
+	It("keeps the content after the date when the date is changed", func() {
+		// Given a scheduled date with text after it
+		block := parse("- TODO a\n  SCHEDULED: <2024-01-01 Mon> x")
+
+		// When the date is changed
+		block.Scheduled().WithDate(time.Date(2024, time.January, 2, 0, 0, 0, 0, time.Local))
+
+		// Then the text stays after the date
+		Expect(write(block)).To(Equal("- TODO a\n  SCHEDULED: <2024-01-02 Tue> x"))
+	})
+
+	It("keeps the content after the date when the date is replaced", func() {
+		// Given a scheduled date with text after it
+		block := parse("- TODO a\n  SCHEDULED: [2024-01-01 Mon] x")
+
+		// When a new date is set
+		block.SetScheduled(content.NewScheduled(time.Date(2024, time.January, 2, 0, 0, 0, 0, time.Local)))
+
+		// Then the text stays after the new date
+		Expect(write(block)).To(Equal("- TODO a\n  SCHEDULED: <2024-01-02 Tue> x"))
+	})
+
+	It("keeps the content as text when the date is not where Logseq looks for it", func() {
+		// Given a date with a page link after it, after a line of text
+		input := "- TODO a\n  note\n  SCHEDULED: <2024-01-01 Mon> see [[Plan]]"
+		block := parse(input)
+
+		// Then the task is not scheduled
+		Expect(block.Scheduled()).To(BeNil())
+
+		// And the page link is still a reference
+		Expect(block.Children().PageReferences()).To(HaveLen(1))
+
+		// And the text does not change on save
+		Expect(write(block)).To(Equal(input))
+	})
+
+	It("reads a time that is not a time of day as a date and keeps it as written", func() {
+		// Given a scheduled date at 24:00
+		input := "- TODO a\n  SCHEDULED: <2024-01-01 Mon 24:00>"
+		block := parse(input)
+
+		// Then the task is scheduled on the day, without a time
+		Expect(block.Scheduled()).ToNot(BeNil())
+		Expect(block.Scheduled().HasTime).To(BeFalse())
+
+		// And the text does not change on save
+		Expect(write(block)).To(Equal(input))
 	})
 })

@@ -1376,6 +1376,11 @@ func convertTaskDate(src []byte, node *taskDate) (content.Node, error) {
 	date.Repeater = node.Repeater
 	date.SetDateSource(string(node.Segment.Value(src)))
 
+	err := convertChildren(src, node, date)
+	if err != nil {
+		return nil, err
+	}
+
 	updatePreviousLineKeepingBlank(node, date)
 
 	return date, nil

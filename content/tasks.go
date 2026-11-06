@@ -451,8 +451,12 @@ func (r *Repeater) String() string {
 //	SCHEDULED: <2024-01-15 Mon 09:00 .+3d>
 //
 // The date can carry a time of day and a Repeater, both of which are optional.
+//
+// The children of the date are the inline content that follows the date on
+// its line, as in `SCHEDULED: <2024-01-15 Mon> see [[Plan]]`. Logseq reads
+// this content as text of the block, so links in it are references.
 type TaskDate struct {
-	baseNode
+	baseNodeWithChildren
 	previousLineAwareImpl
 
 	// Type is whether this is a scheduled date or a deadline.
@@ -475,20 +479,27 @@ type TaskDate struct {
 // NewTaskDate creates a date without a time of day. Any time of day in the
 // given time is dropped.
 func NewTaskDate(dateType TaskDateType, date time.Time) *TaskDate {
-	return &TaskDate{
+	return newTaskDate(&TaskDate{
 		Type: dateType,
 		Date: truncateToDay(date),
-	}
+	})
 }
 
 // NewTaskDateWithTime creates a date that includes the time of day. Seconds
 // and smaller units are dropped, as Logseq stores minute precision.
 func NewTaskDateWithTime(dateType TaskDateType, date time.Time) *TaskDate {
-	return &TaskDate{
+	return newTaskDate(&TaskDate{
 		Type:    dateType,
 		Date:    truncateToMinute(date),
 		HasTime: true,
-	}
+	})
+}
+
+// newTaskDate sets up the children of a new date.
+func newTaskDate(t *TaskDate) *TaskDate {
+	t.self = t
+	t.childValidator = allowOnlyInlineNodes
+	return t
 }
 
 // NewScheduled creates a `SCHEDULED` date without a time of day.
@@ -640,6 +651,7 @@ func (t *TaskDate) debug(p *debugPrinter) {
 	}
 
 	debugPreviousLineAware(p, t)
+	p.Children(t)
 	p.EndType()
 }
 
@@ -705,6 +717,11 @@ func (b *Block) setTaskDate(dateType TaskDateType, date *TaskDate) {
 	date.Type = dateType
 
 	if existing != nil {
+		if date.FirstChild() == nil {
+			// The content after the old date stays on the line of the date.
+			date.AddChildren(existing.Children()...)
+		}
+
 		b.ReplaceChild(existing, date)
 		return
 	}
