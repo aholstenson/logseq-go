@@ -41,6 +41,15 @@ type GraphConfig struct {
 
 	IgnoredPageReferencesKeywords KeywordList `edn:"ignored-page-references-keywords"`
 
+	// PropertyPagesEnabled is whether the name of a property links the block
+	// to the page with that name, so that `type:: book` links to the page
+	// `type`. Logseq does this when the key is not set, so nil means enabled.
+	PropertyPagesEnabled *bool `edn:"property-pages/enabled?"`
+
+	// PropertyPagesExcludelist are the properties whose names do not link to
+	// a page, also when PropertyPagesEnabled is set.
+	PropertyPagesExcludelist KeywordList `edn:"property-pages/excludelist"`
+
 	// PreferredWorkflow is the pair of task markers the graph is set up for.
 	PreferredWorkflow PreferredWorkflow `edn:"preferred-workflow"`
 

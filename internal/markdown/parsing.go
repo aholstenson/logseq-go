@@ -30,7 +30,7 @@ func init() {
 			util.Prioritized(&indentedBlocksParser{}, 450),
 			util.Prioritized(parser.NewCodeBlockParser(), 500),
 			util.Prioritized(parser.NewATXHeadingParser(), 600),
-			util.Prioritized(parser.NewFencedCodeBlockParser(), 700),
+			util.Prioritized(newFencedCodeBlockParser(), 700),
 			util.Prioritized(parser.NewBlockquoteParser(), 800),
 			util.Prioritized(&mathBlockParser{}, 896),
 			util.Prioritized(&taskDateParser{}, 897),

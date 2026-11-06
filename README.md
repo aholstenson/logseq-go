@@ -57,6 +57,14 @@ which other properties are read that way via `:property/separated-by-commas`,
 and which properties never point at a page via
 `:ignored-page-references-keywords`.
 
+The name of a property also points at the page with that name, the same as in
+Logseq, so a block with `type:: book` is a linked reference of the page
+`type`. For a name in a namespace, such as `ns/key::`, the page is `key`. The
+built-in properties of Logseq, such as `alias::`, `id::` and `collapsed::`, do
+not point at a page. A graph turns this off with
+`:property-pages/enabled? false`, or for some properties with
+`:property-pages/excludelist [:type]`.
+
 Property names follow the rules of Logseq. A name can hold letters of any
 language, digits and most punctuation, such as `ändring::` or `done?::`. A line
 with a name that Logseq does not allow, such as `a@b::` or `#tag::`, is read as

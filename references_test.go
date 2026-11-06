@@ -281,3 +281,136 @@ var _ = Describe("Linked references", func() {
 		Expect(err).To(HaveOccurred())
 	})
 })
+
+var _ = Describe("Linked references of property pages", func() {
+	var (
+		graph *logseq.Graph
+		dir   string
+		ctx   context.Context
+	)
+
+	BeforeEach(func() {
+		dir = setupGraph()
+		ctx = context.Background()
+	})
+
+	AfterEach(func() {
+		if graph != nil {
+			graph.Close()
+			graph = nil
+		}
+	})
+
+	referenceCount := func(title string) int {
+		page, err := graph.OpenPage(title)
+		Expect(err).ToNot(HaveOccurred())
+
+		results, err := page.LinkedReferences(ctx)
+		Expect(err).ToNot(HaveOccurred())
+		return results.Size()
+	}
+
+	writeConfig := func(config string) {
+		Expect(os.WriteFile(filepath.Join(dir, "logseq", "config.edn"), []byte(config), 0o644)).To(Succeed())
+	}
+
+	It("links a block to the page named by its property, the same as Logseq", func() {
+		// Given a block with a custom property
+		graph = openGraphWithPages(dir, map[string]string{
+			"referrer.md": "- a\n  type:: book\n",
+		})
+
+		// Then the block is a linked reference of the property page, and
+		// the plain text value is not a reference
+		Expect(referenceCount("type")).To(Equal(1))
+		Expect(referenceCount("book")).To(Equal(0))
+	})
+
+	It("does not link a block to the page of a built-in property", func() {
+		// Given a block with the built-in property tags
+		graph = openGraphWithPages(dir, map[string]string{
+			"referrer.md": "- a\n  tags:: x\n",
+		})
+
+		// Then the block is linked to the tag but not to a page tags
+		Expect(referenceCount("tags")).To(Equal(0))
+		Expect(referenceCount("x")).To(Equal(1))
+	})
+
+	It("links a block with a namespaced property to the page of the last part of the name", func() {
+		// Given a block with the property ns/key
+		graph = openGraphWithPages(dir, map[string]string{
+			"referrer.md": "- a\n  ns/key:: v\n",
+		})
+
+		// Then the block refs the page key, the same as Logseq
+		Expect(referenceCount("key")).To(Equal(1))
+	})
+
+	It("links the page properties to the property page", func() {
+		// Given page properties before the first block
+		graph = openGraphWithPages(dir, map[string]string{
+			"referrer.md": "type:: book\n\n- a\n",
+		})
+
+		// Then the pre-block is a linked reference of the property page
+		Expect(referenceCount("type")).To(Equal(1))
+	})
+
+	It("does not link to property pages when the graph turns them off", func() {
+		// Given a graph with :property-pages/enabled? false
+		writeConfig("{:property-pages/enabled? false}")
+		graph = openGraphWithPages(dir, map[string]string{
+			"referrer.md": "- a\n  type:: book\n",
+		})
+
+		// Then no reference is made from the property name
+		Expect(referenceCount("type")).To(Equal(0))
+	})
+
+	It("does not link to a property page that the graph excludes", func() {
+		// Given a graph that excludes the property type
+		writeConfig("{:property-pages/excludelist [:type]}")
+		graph = openGraphWithPages(dir, map[string]string{
+			"referrer.md": "- a\n  type:: book\n  status:: open\n",
+		})
+
+		// Then type makes no reference, but other names still do
+		Expect(referenceCount("type")).To(Equal(0))
+		Expect(referenceCount("status")).To(Equal(1))
+	})
+
+	It("does not link to a page named by an excluded namespaced property", func() {
+		// Given a graph that excludes the property key in a namespace
+		writeConfig("{:property-pages/excludelist [:ns/key]}")
+		graph = openGraphWithPages(dir, map[string]string{
+			"referrer.md": "- a\n  ns/key:: v\n",
+		})
+
+		// Then the name of the property makes no reference
+		Expect(referenceCount("key")).To(Equal(0))
+	})
+
+	It("does not link to a page named by an upper-case built-in property", func() {
+		// Given a block with the built-in property collapsed, written in
+		// upper case
+		graph = openGraphWithPages(dir, map[string]string{
+			"referrer.md": "- a\n  Collapsed:: true\n",
+		})
+
+		// Then the name of the property makes no reference
+		Expect(referenceCount("collapsed")).To(Equal(0))
+	})
+
+	It("puts the property page in the path refs of child blocks", func() {
+		// Given a child block below a block with a custom property
+		graph = openGraphWithPages(dir, map[string]string{
+			"referrer.md": "- a\n  type:: book\n\t- child\n",
+		})
+
+		// Then both blocks have the property page in their path refs
+		results, err := graph.SearchBlocks(ctx, logseq.WithQuery(logseq.PathReferences("type")))
+		Expect(err).ToNot(HaveOccurred())
+		Expect(results.Size()).To(Equal(2))
+	})
+})

@@ -97,6 +97,29 @@ var _ = Describe("Config", func() {
 		Expect(c.IgnoredPageReferencesKeywords).To(ConsistOf("author"))
 	})
 
+	It("leaves property pages unset when the graph does not set them", func() {
+		c, err := utils.ParseConfig([]byte(`{}`))
+		Expect(err).ToNot(HaveOccurred())
+
+		Expect(c.PropertyPagesEnabled).To(BeNil())
+		Expect(c.PropertyPagesExcludelist).To(BeEmpty())
+	})
+
+	It("parses property pages that are turned off", func() {
+		c, err := utils.ParseConfig([]byte(`{:property-pages/enabled? false}`))
+		Expect(err).ToNot(HaveOccurred())
+
+		Expect(c.PropertyPagesEnabled).ToNot(BeNil())
+		Expect(*c.PropertyPagesEnabled).To(BeFalse())
+	})
+
+	It("parses the property pages excludelist", func() {
+		c, err := utils.ParseConfig([]byte(`{:property-pages/excludelist [:type :ns/key]}`))
+		Expect(err).ToNot(HaveOccurred())
+
+		Expect(c.PropertyPagesExcludelist).To(ConsistOf("type", "ns/key"))
+	})
+
 	It("parses default templates", func() {
 		c, err := utils.ParseConfig([]byte(`{:default-templates {:journals "test"}}`))
 		Expect(err).ToNot(HaveOccurred())

@@ -32,7 +32,7 @@ func (i idTerm) Term() []byte {
 // Increase it when the way pages or blocks are indexed changes, so that an
 // index stored on disk is built again with the new fields. Without that the
 // pages that did not change since they were indexed keep their old documents.
-const indexVersion = 14
+const indexVersion = 15
 
 // versionDocID is the id of the document that stores the version of the
 // index. It does not have a type, so searches for pages and blocks never
@@ -53,6 +53,10 @@ type BlugeIndex struct {
 	// references a journal can be compared as a date. Nil if the format is
 	// not known.
 	journalTitles *utils.DateFormat
+
+	// propertyPages decides which property names link a block to the page
+	// with the same name.
+	propertyPages propertyPages
 }
 
 func NewBlugeIndex(graphConfig *utils.GraphConfig, indexDirectory string) (*BlugeIndex, error) {
@@ -64,6 +68,8 @@ func NewBlugeIndex(graphConfig *utils.GraphConfig, indexDirectory string) (*Blug
 	if graphConfig != nil && graphConfig.JournalPageTitleFormat != "" {
 		idx.journalTitles = utils.NewDateFormat(graphConfig.JournalPageTitleFormat)
 	}
+
+	idx.propertyPages = newPropertyPages(graphConfig)
 	return idx, nil
 }
 
@@ -440,6 +446,7 @@ func (i *BlugeIndex) pageToDocument(doc *Page) (*bluge.Document, error) {
 	if doc.Properties != nil {
 		i.transferProperties(blugeDoc, doc.Properties, true)
 		i.transferRefs(blugeDoc, "pages", doc.Properties.Children())
+		i.transferPropertyPageRefs(blugeDoc, "pages", doc.Properties)
 
 		// The tags are stored so that a query can find the pages that other
 		// pages use as tags, as the index can not join pages with pages.
@@ -566,7 +573,7 @@ func (i *BlugeIndex) getBlocks(ctx context.Context, pagePath string) (map[string
 // location is the place of the block on the page, see utils.LocationOf.
 func (i *BlugeIndex) indexBlock(idSet map[string]struct{}, page *Page, block *content.Block, parentPathRefs []string, location []int) error {
 	id := blockID(page, block)
-	pathRefs := pathRefsOf(parentPathRefs, block)
+	pathRefs := i.pathRefsOf(parentPathRefs, block)
 
 	blugeDoc, err := i.blockToDocument(page, id, block, pathRefs, location)
 	if err != nil {
@@ -598,7 +605,7 @@ func (i *BlugeIndex) indexBlock(idSet map[string]struct{}, page *Page, block *co
 // reference and the pages it references itself. The titles are normalized
 // with normalizeRef. parentPathRefs is the path refs of the parent block, or
 // of the page for a top-level block.
-func pathRefsOf(parentPathRefs []string, block *content.Block) []string {
+func (i *BlugeIndex) pathRefsOf(parentPathRefs []string, block *content.Block) []string {
 	// The full slice expression makes append copy the parent refs, so that
 	// sibling blocks do not write to the same array.
 	refs := parentPathRefs[:len(parentPathRefs):len(parentPathRefs)]
@@ -607,6 +614,13 @@ func pathRefsOf(parentPathRefs []string, block *content.Block) []string {
 	// of its path.
 	for _, ref := range block.Content().PageReferences() {
 		title := normalizeRef(ref.(content.PageRef).GetTo())
+		if !containsString(refs, title) {
+			refs = append(refs, title)
+		}
+	}
+
+	// The names of the properties of the block are refs of the block too.
+	for _, title := range i.propertyPages.titlesOf(block.FindProperties()) {
 		if !containsString(refs, title) {
 			refs = append(refs, title)
 		}
@@ -683,6 +697,7 @@ func (i *BlugeIndex) blockToDocument(page *Page, id string, block *content.Block
 	// are indexed on their own. Logseq calls these the refs of a block, and
 	// PathReferences matches on the refs of the parents as well.
 	i.transferRefs(blugeDoc, "pages", block.Content())
+	i.transferPropertyPageRefs(blugeDoc, "pages", block.FindProperties())
 	i.transferLinks(blugeDoc, block.Content())
 	transferTask(blugeDoc, block)
 
@@ -958,6 +973,14 @@ func sortableValue(value string) string {
 	}
 
 	return "t" + strings.ToLower(value)
+}
+
+// transferPropertyPageRefs indexes the pages that the names of the properties
+// link to, see propertyPages. The properties can be nil.
+func (i *BlugeIndex) transferPropertyPageRefs(doc *bluge.Document, field string, properties *content.Properties) {
+	for _, title := range i.propertyPages.titlesOf(properties) {
+		doc.AddField(bluge.NewKeywordField(field+":ref", title))
+	}
 }
 
 // transferRefs indexes the page references in the nodes and the nodes below
