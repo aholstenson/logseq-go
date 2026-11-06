@@ -19,6 +19,9 @@ import (
 // reader that Goldmark gets shows the spaces in the page name as another
 // character. The destination of the link that Goldmark returns is then set
 // back to the text of the source.
+//
+// A `!` directly before a page link, as in `![[Page]]`, does not start an
+// image. Logseq reads it as the text `!` and a page link.
 type labelledRefLinkParser struct {
 	parser.InlineParser
 }
@@ -61,6 +64,13 @@ func setDestinationSource(node ast.Node, consumed []byte) {
 
 func (p *labelledRefLinkParser) parse(parent ast.Node, block text.Reader, pc parser.Context) ast.Node {
 	line, segment := block.PeekLine()
+	if len(line) > 1 && line[0] == '!' && pageRefLength(line[1:]) > 0 {
+		// Logseq reads `![[Page]]` as the text `!` and a page link, not as an
+		// image. The `!` is left as text, so that the page link parser reads
+		// the page link after it.
+		return nil
+	}
+
 	if len(line) < 2 || line[0] != ']' || line[1] != '(' {
 		return p.InlineParser.Parse(parent, block, pc)
 	}

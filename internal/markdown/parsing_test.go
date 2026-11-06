@@ -3826,6 +3826,75 @@ var _ = Describe("Parsing", func() {
 		})
 	})
 
+	Describe("Page links after an exclamation mark", func() {
+		It("refers to the page of a page link after an exclamation mark", func() {
+			// Given a block with `![[My Page]]`
+			block, err := markdown.ParseString("- ![[My Page]]")
+			Expect(err).ToNot(HaveOccurred())
+
+			// When its page references are read
+			titles := make([]string, 0)
+			for _, ref := range block.Children().PageReferences() {
+				titles = append(titles, ref.(content.PageRef).GetTo())
+			}
+
+			// Then it refers to `My Page`, the same as Logseq (text `!` and a page link)
+			Expect(titles).To(ConsistOf("My Page"))
+		})
+
+		DescribeTable("reads the exclamation mark as text and the page link as a page link",
+			func(input string, page string) {
+				// Given a block with an exclamation mark directly before a page link
+				block, err := markdown.ParseString(input)
+				Expect(err).ToNot(HaveOccurred())
+
+				// When it is parsed
+				// Then it has the page link and no image
+				link, ok := block.Children().FindDeep(content.IsOfType[*content.PageLink]()).(*content.PageLink)
+				Expect(ok).To(BeTrue())
+				Expect(link.To).To(Equal(page))
+				Expect(block.Children().FilterDeep(content.IsOfType[*content.Image]())).To(BeEmpty())
+
+				// And the exclamation mark is text before the page link
+				text, ok := link.PreviousSibling().(*content.Text)
+				Expect(ok).To(BeTrue())
+				Expect(text.Value).To(HaveSuffix("!"))
+
+				// And when it is written, Then the text is unchanged
+				Expect(markdown.AsString(block)).To(Equal(input))
+			},
+			Entry("inside text", "- see ![[My Page]] here", "My Page"),
+			Entry("with a file name", "- ![[a.png]]", "a.png"),
+			Entry("with two exclamation marks", "- !![[x]]", "x"),
+			Entry("with text in parentheses after it", "- ![[x]](url)", "x"),
+		)
+
+		It("still reads an image with a label", func() {
+			// Given an image with a label that does not start with `[`
+			block, err := markdown.ParseString("- ![a](b.png)")
+			Expect(err).ToNot(HaveOccurred())
+
+			// When it is parsed
+			// Then it is an image and not a page link
+			Expect(block.Children().FilterDeep(content.IsOfType[*content.Image]())).To(HaveLen(1))
+			Expect(block.Children().FilterDeep(content.IsOfType[*content.PageLink]())).To(BeEmpty())
+		})
+
+		It("keeps an exclamation mark and a page link that is not closed as text", func() {
+			// Given an exclamation mark and a page link without a closing `]]`
+			input := "- ![[a]"
+			block, err := markdown.ParseString(input)
+			Expect(err).ToNot(HaveOccurred())
+
+			// When it is parsed
+			// Then there is no page link
+			Expect(block.Children().FilterDeep(content.IsOfType[*content.PageLink]())).To(BeEmpty())
+
+			// And when it is written, Then the text is unchanged
+			Expect(markdown.AsString(block)).To(Equal(input))
+		})
+	})
+
 	Describe("Highlights with equals signs", func() {
 		It("reads text between double equals signs as a highlight", func() {
 			// Given `==mark==`
