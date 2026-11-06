@@ -2075,7 +2075,8 @@ func (w *Output) writeCodeBlock(node *content.CodeBlock) error {
 		return err
 	}
 
-	err = w.writeRaw("```")
+	fence := codeBlockFence(node.Code)
+	err = w.writeRaw(fence)
 	if err != nil {
 		return err
 	}
@@ -2105,13 +2106,30 @@ func (w *Output) writeCodeBlock(node *content.CodeBlock) error {
 		}
 	}
 
-	err = w.writeRaw("```")
+	err = w.writeRaw(fence)
 	if err != nil {
 		return err
 	}
 
 	w.endBlock()
 	return nil
+}
+
+// codeBlockFence gets the fence to write around a code block. It is ```
+// unless a line of the code starts with three or more backticks, which would
+// close the code block when the page is read again. Then the fence is one
+// backtick longer than the longest such run, the same as CommonMark requires.
+func codeBlockFence(code string) string {
+	length := 3
+	for _, line := range strings.Split(code, "\n") {
+		line = strings.TrimLeft(line, " \t")
+		run := len(line) - len(strings.TrimLeft(line, "`"))
+		if run >= length {
+			length = run + 1
+		}
+	}
+
+	return strings.Repeat("`", length)
 }
 
 func (w *Output) writeThematicBreak(node *content.ThematicBreak) error {
