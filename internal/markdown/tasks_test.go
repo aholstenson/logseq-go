@@ -473,3 +473,41 @@ var _ = Describe("Task times in a daylight saving gap", func() {
 		Expect(roundTrip(input)).To(Equal(input))
 	})
 })
+
+var _ = Describe("A logbook without an end", func() {
+	It("does not hide the text after an unclosed logbook", func() {
+		// Given a logbook with no :END: line, then a paragraph with a link
+		input := "- TODO a\n  :LOGBOOK:\n  CLOCK: [2024-01-01 Mon 10:00:00]\n\n  text [[x]]\n- b"
+
+		root, err := markdown.ParseString(input)
+		Expect(err).ToNot(HaveOccurred())
+
+		// Then the link is a reference of the block, the same as Logseq
+		targets := make([]string, 0)
+		for _, ref := range root.Blocks()[0].Children().PageReferences() {
+			targets = append(targets, ref.(content.PageRef).GetTo())
+		}
+		Expect(targets).To(ConsistOf("x"))
+
+		// And the text does not change on save
+		v, err := markdown.AsString(root)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(v).To(Equal(input))
+	})
+
+	It("does not add an end to an unclosed logbook before the next block", func() {
+		// Given an unclosed logbook followed by another block
+		input := "- a\n  :LOGBOOK:\n  CLOCK: [2024-01-01 Mon 10:00:00]\n- b"
+
+		root, err := markdown.ParseString(input)
+		Expect(err).ToNot(HaveOccurred())
+
+		// Then there are two blocks
+		Expect(root.Blocks()).To(HaveLen(2))
+
+		// And no :END: line is added on save
+		v, err := markdown.AsString(root)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(v).To(Equal(input))
+	})
+})

@@ -185,9 +185,11 @@ func (b *logbookParser) Trigger() []byte {
 	return []byte{':'}
 }
 
-// Open looks for :LOGBOOK: at the beginning of a line
+// Open looks for :LOGBOOK: at the beginning of a line. The line starts a
+// logbook only if an :END: line follows in the same block, see
+// hasLogbookEnd. Otherwise the lines are text.
 func (b *logbookParser) Open(parent ast.Node, reader text.Reader, pc parser.Context) (ast.Node, parser.State) {
-	line, _ := reader.PeekLine()
+	line, segment := reader.PeekLine()
 	pos := pc.BlockOffset()
 	if pos < 0 {
 		return nil, parser.NoChildren
@@ -197,6 +199,10 @@ func (b *logbookParser) Open(parent ast.Node, reader text.Reader, pc parser.Cont
 
 	// Check if the line starts with :LOGBOOK:
 	if !bytes.HasPrefix(line[pos:], []byte(":LOGBOOK:")) {
+		return nil, parser.NoChildren
+	}
+
+	if !hasLogbookEnd(reader.Source()[segment.Stop:], indent) {
 		return nil, parser.NoChildren
 	}
 
@@ -210,6 +216,41 @@ func (b *logbookParser) Open(parent ast.Node, reader text.Reader, pc parser.Cont
 	})
 
 	return block, parser.NoChildren
+}
+
+// hasLogbookEnd checks if an :END: line comes after a :LOGBOOK: line before
+// the block that holds the logbook ends. The source starts at the line after
+// the :LOGBOOK: line, and indent is the number of characters before
+// :LOGBOOK: on its line.
+//
+// The block ends at a bullet line, or at a line with fewer characters of
+// indentation than the :LOGBOOK: line. Without an :END: line before that, the
+// logbook would hide the text after it, and an :END: line would be added on
+// save. Logseq reads such a logbook up to an :END: line in a later block,
+// which hides those blocks too, so here the lines are read as text instead.
+func hasLogbookEnd(source []byte, indent int) bool {
+	for len(source) > 0 {
+		line := source
+		if i := bytes.IndexByte(source, '\n'); i >= 0 {
+			line = source[:i+1]
+		}
+		source = source[len(line):]
+
+		trimmed := bytes.TrimLeft(line, " \t")
+		if util.IsBlank(trimmed) {
+			continue
+		}
+
+		if len(line)-len(trimmed) < indent || isBulletLine(trimmed) {
+			return false
+		}
+
+		if bytes.HasPrefix(trimmed, []byte(":END:")) && util.IsBlank(trimmed[len(":END:"):]) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (b *logbookParser) Continue(node ast.Node, reader text.Reader, pc parser.Context) parser.State {
