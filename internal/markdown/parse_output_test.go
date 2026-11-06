@@ -387,6 +387,16 @@ var _ = Describe("Parsing then outputting", func() {
 		})
 	})
 
+	Describe("Hashtags at the end of emphasis", func() {
+		// Given emphasis that ends with a hashtag, When it is written, Then it is unchanged
+		FullyEqual("Italic text that ends with a hashtag", "- *see #x*")
+		FullyEqual("Bold text that ends with a hashtag", "- **Status: #done**")
+		FullyEqual("Bold text with a hashtag in the middle", "- **a #x b**")
+		FullyEqual("Strikethrough text that ends with a hashtag", "- ~~a #x~~")
+		FullyEqual("Highlighted text that ends with a hashtag", "- ^^a #x^^")
+		FullyEqual("Italic text that ends with a bracketed hashtag", "- *see #[[a b]]*")
+	})
+
 	Describe("Block properties after a quote", func() {
 		// Given a quote followed by an id property, When it is written, Then
 		// it is unchanged and the property is not written as part of the quote

@@ -3779,6 +3779,83 @@ var _ = Describe("Parsing", func() {
 		})
 	})
 
+	Describe("Hashtags at the end of emphasis", func() {
+		// pageRefTitles returns the title of every page the parsed text refers to.
+		pageRefTitles := func(input string) []string {
+			block, err := markdown.ParseString(input)
+			Expect(err).ToNot(HaveOccurred())
+
+			titles := make([]string, 0)
+			for _, ref := range block.Children().PageReferences() {
+				titles = append(titles, ref.(content.PageRef).GetTo())
+			}
+			return titles
+		}
+
+		It("keeps a hash inside italic text as text of the emphasis", func() {
+			// Given italic text that ends with a hashtag
+			// When it is parsed
+			// Then the emphasis holds the text and there is no tag, the same as Logseq
+			block, err := markdown.ParseString("*see #x*")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewEmphasis(content.NewText("see #x")),
+				),
+			)))
+		})
+
+		It("makes no page reference from a hash at the end of italic text", func() {
+			Expect(pageRefTitles("- *see #x*")).To(BeEmpty())
+		})
+
+		It("does not take the closing marker of bold text into the tag", func() {
+			// Given bold text that ends with a hashtag
+			// When it is parsed
+			// Then no page with the closing marker in its name is referenced
+			Expect(pageRefTitles("- **Status: #done**")).ToNot(ContainElement("done**"))
+		})
+
+		It("makes no page reference from a hash in the middle of bold text", func() {
+			Expect(pageRefTitles("- **a #x b**")).To(BeEmpty())
+		})
+
+		It("makes no page reference from a hash inside strikethrough or highlighted text", func() {
+			Expect(pageRefTitles("- ~~a #x~~")).To(BeEmpty())
+			Expect(pageRefTitles("- ^^a #x^^")).To(BeEmpty())
+		})
+
+		It("keeps the page link of a bracketed hashtag inside italic text", func() {
+			// Given italic text with a hashtag in the form #[[name]]
+			// When it is parsed
+			// Then the hash is text and the brackets are a page link, the same as Logseq
+			block, err := markdown.ParseString("*see #[[a b]]*")
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(block).To(tests.EqualNode(content.NewBlock(
+				content.NewParagraph(
+					content.NewEmphasis(
+						content.NewText("see #"),
+						content.NewPageLink("a b"),
+					),
+				),
+			)))
+		})
+
+		It("keeps a hashtag after the end of italic text", func() {
+			Expect(pageRefTitles("- *a #x* b #y")).To(Equal([]string{"y"}))
+		})
+
+		It("keeps a marker that cannot close formatting in the tag name", func() {
+			Expect(pageRefTitles("- _a #snake_case b")).To(Equal([]string{"snake_case"}))
+		})
+
+		It("keeps a marker in the tag name when no formatting is open", func() {
+			Expect(pageRefTitles("- a #x* b")).To(Equal([]string{"x*"}))
+		})
+	})
+
 	Describe("Block properties after a quote, table, list or HTML", func() {
 		const id = "65e5a0b2-1c2d-4e3f-9a8b-0c1d2e3f4a5b"
 

@@ -56,11 +56,18 @@ const lineEdgeRune = rune(-2)
 // escapeText is EscapePotentialMarkdown for a text with known characters
 // directly before and after it. Either can be unknownRune or lineEdgeRune.
 func escapeText(str string, before rune, after rune) string {
+	return escapeTextIn(str, before, after, false)
+}
+
+// escapeTextIn is escapeText for a text that can be inside formatting, such
+// as emphasis. The text of formatting has no tags when it is read back, so a
+// `#` in it is not escaped.
+func escapeTextIn(str string, before rune, after rune, inFormatting bool) string {
 	escapes := map[int]bool{}
 	mathEscapes(str, escapes)
 	bracketEscapes(str, escapes)
 	delimiterEscapes(str, before, after, escapes)
-	markupEscapes(str, before, escapes)
+	markupEscapes(str, before, !inFormatting, escapes)
 	backslashEscapes(str, after, escapes)
 
 	out := strings.Builder{}
@@ -115,8 +122,9 @@ func backslashEscapes(str string, after rune, escapes map[int]bool) {
 }
 
 // markupEscapes finds the characters in the text that would start a tag, a
-// heading, a block reference, a macro, code or HTML when read back.
-func markupEscapes(str string, before rune, escapes map[int]bool) {
+// heading, a block reference, a macro, code or HTML when read back. Tags are
+// only looked for if tags is true.
+func markupEscapes(str string, before rune, tags bool, escapes map[int]bool) {
 	if !strings.ContainsAny(str, "#({`<") {
 		return
 	}
@@ -129,7 +137,7 @@ func markupEscapes(str string, before rune, escapes map[int]bool) {
 				previous, _ = utf8.DecodeLastRuneInString(str[:i])
 			}
 
-			if startsTag(str, i, previous) || startsHeading(str, i, previous) {
+			if (tags && startsTag(str, i, previous)) || startsHeading(str, i, previous) {
 				escapes[i] = true
 			}
 		case '(':
@@ -798,7 +806,7 @@ func (w *Output) writeText(node *content.Text) error {
 		before, after = w.textSurroundings(node, node.SoftLineBreak || node.HardLineBreak)
 	}
 
-	value := escapeText(node.Value, before, after)
+	value := escapeTextIn(node.Value, before, after, isInFormatting(node))
 	if strings.HasSuffix(value, "]") && !strings.HasSuffix(value, `\]`) && (after == '(' || after == '[') {
 		// The next node starts with `(` or `[`, which together with the
 		// closing bracket would be read back as a link.
@@ -823,6 +831,19 @@ func (w *Output) writeText(node *content.Text) error {
 	}
 
 	return nil
+}
+
+// isInFormatting returns true if the node is inside emphasis, strong text,
+// strikethrough or a highlight.
+func isInFormatting(node content.Node) bool {
+	for p := node.Parent(); p != nil; p = p.Parent() {
+		switch p.(type) {
+		case *content.Emphasis, *content.Strong, *content.Strikethrough, *content.Highlight:
+			return true
+		}
+	}
+
+	return false
 }
 
 // textSurroundings finds the characters that are written directly before

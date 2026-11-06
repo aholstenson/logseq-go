@@ -66,6 +66,7 @@ func init() {
 		),
 		parser.WithASTTransformers(
 			util.Prioritized(extension.NewTableASTTransformer(), 0),
+			util.Prioritized(defaultTagsInFormattingASTTransformer, 100),
 			util.Prioritized(defaultPropertiesASTTransformer, 200),
 		),
 	)

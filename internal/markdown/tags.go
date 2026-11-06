@@ -6,6 +6,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/yuin/goldmark/ast"
+	east "github.com/yuin/goldmark/extension/ast"
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/text"
 )
@@ -15,6 +16,13 @@ var tagKind = ast.NewNodeKind("Hashtag")
 type tag struct {
 	ast.BaseInline
 	Page string
+
+	// Segment is the source of the whole tag, from the # to the end of the
+	// name or the closing ]].
+	Segment text.Segment
+
+	// Extended is true for a tag in the form #[[name]].
+	Extended bool
 }
 
 func (*tag) Kind() ast.NodeKind {
@@ -77,6 +85,7 @@ func (t *tagParser) Parse(parent ast.Node, block text.Reader, pc parser.Context)
 
 	end := 0
 	var value []byte
+	extended := false
 
 	// Check for extended tag syntax which wraps tags in [[...]], this is how
 	// Logseq supports tags with spaces.
@@ -97,8 +106,12 @@ func (t *tagParser) Parse(parent ast.Node, block text.Reader, pc parser.Context)
 		// The value of the tag is the text between the [[ and ]].
 		value = line[2:end]
 		end += 2
+		extended = true
 	} else {
 		end = tagNameLength(line)
+		if closer := formattingCloserIndex(line, end, pc); closer >= 0 {
+			end = closer
+		}
 		value = line[:end]
 	}
 
@@ -110,7 +123,9 @@ func (t *tagParser) Parse(parent ast.Node, block text.Reader, pc parser.Context)
 	seg = seg.WithStop(seg.Start + end + 1)
 
 	n := tag{
-		Page: string(value),
+		Page:     string(value),
+		Segment:  seg,
+		Extended: extended,
 	}
 	block.Advance(seg.Len())
 	return &n
@@ -152,6 +167,104 @@ func tagNameLength(line []byte) int {
 
 	return len(line)
 }
+
+// formattingCloserIndex returns the position of the first run of markers in
+// the tag name line[:end] that closes emphasis, strong text, strikethrough or
+// a highlight that is open before the tag. Returns -1 if there is no such run.
+//
+// Logseq reads the formatting before the tag, so the run ends the name. Thus
+// "*see #x*" is italic text, and the name does not take the closing "*".
+// A run that cannot close stays in the name, so "_a #snake_case" has the tag
+// "snake_case".
+func formattingCloserIndex(line []byte, end int, pc parser.Context) int {
+	if pc.LastDelimiter() == nil {
+		return -1
+	}
+
+	// The search starts after the first character, so that the name is not
+	// empty.
+	for i := 1; i < end; i++ {
+		processor, min := delimiterProcessorFor(line[i])
+		if processor == nil || !hasOpenDelimiter(pc, line[i]) {
+			continue
+		}
+
+		before, _ := utf8.DecodeLastRune(line[:i])
+		closer := scanDelimiter(line[i:], before, min, processor)
+		if closer != nil && closer.CanClose {
+			return i
+		}
+	}
+
+	return -1
+}
+
+// hasOpenDelimiter returns true if a run of the marker c that can open
+// formatting is waiting for a closing run.
+func hasOpenDelimiter(pc parser.Context, c byte) bool {
+	for d := pc.LastDelimiter(); d != nil; d = d.PreviousDelimiter {
+		if d.Char == c && d.CanOpen {
+			return true
+		}
+	}
+
+	return false
+}
+
+// tagsInFormattingASTTransformer turns tags inside emphasis, strong text,
+// strikethrough and highlights back into text. Logseq reads the formatting
+// before the tags, and the text of formatting has no tags. Thus "*see #x*"
+// has no tag. A page link stays a page link, so "*see #[[a b]]*" has the text
+// "see #" and the page link "a b".
+type tagsInFormattingASTTransformer struct {
+}
+
+var defaultTagsInFormattingASTTransformer = &tagsInFormattingASTTransformer{}
+
+func (t *tagsInFormattingASTTransformer) Transform(node *ast.Document, reader text.Reader, pc parser.Context) {
+	// The tags are found before they are replaced, as a replaced node has no
+	// next sibling for the walk to continue to.
+	var tags []*tag
+	_ = ast.Walk(node, func(node ast.Node, entering bool) (ast.WalkStatus, error) {
+		if hashtag, ok := node.(*tag); ok && entering && insideFormatting(hashtag) {
+			tags = append(tags, hashtag)
+		}
+
+		return ast.WalkContinue, nil
+	})
+
+	for _, hashtag := range tags {
+		parent := hashtag.Parent()
+		if hashtag.Extended {
+			hash := ast.NewTextSegment(hashtag.Segment.WithStop(hashtag.Segment.Start + 1))
+			parent.InsertBefore(parent, hashtag, hash)
+			parent.ReplaceChild(parent, hashtag, &pageLink{Page: hashtag.Page})
+		} else {
+			// The text is next to the text around it in the source, so it is
+			// merged with that text when it is converted.
+			parent.ReplaceChild(parent, hashtag, ast.NewTextSegment(hashtag.Segment))
+		}
+	}
+}
+
+// insideFormatting returns true if the node is inside emphasis, strong text,
+// strikethrough or a highlight.
+func insideFormatting(node ast.Node) bool {
+	for p := node.Parent(); p != nil; p = p.Parent() {
+		switch p.Kind() {
+		case ast.KindEmphasis, east.KindStrikethrough, highlightKind:
+			return true
+		}
+
+		if p.Type() == ast.TypeBlock {
+			return false
+		}
+	}
+
+	return false
+}
+
+var _ parser.ASTTransformer = (*tagsInFormattingASTTransformer)(nil)
 
 // followsTag returns true if the last inline node of parent is a tag. A tag
 // can end at a "#" that starts the next tag, so "#a#b" has the tags "a" and
