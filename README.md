@@ -69,6 +69,12 @@ The task marker and the priority at the start of a block point at pages too,
 so a block with `TODO [#A] x` is a linked reference of the pages `TODO` and
 `A`. Logseq has no setting in `config.edn` to turn this off.
 
+A reference to a page in a namespace also points at the namespaces above it,
+the same as in Logseq, so a block with `[[a/b/c]]` is a linked reference of the
+pages `a/b` and `a` as well. Logseq has no setting in `config.edn` to turn this
+off. A slash at the start or at the end of a title is not part of the title, so
+`[[/a/]]` points at the page `a`.
+
 A program can change these settings for itself, without a change to the
 `config.edn` that Logseq uses, with `WithConfig`. A field that is not set keeps
 the value of the graph:
@@ -77,6 +83,7 @@ the value of the graph:
 graph, err := logseq.Open(ctx, "path/to/graph", logseq.WithConfig(logseq.Config{
   PropertyPages:         logseq.Bool(false),
   TaskPages:             logseq.Bool(false),
+  NamespaceParentRefs:   logseq.Bool(false),
   IgnoredPageReferences: []string{"author"},
 }))
 ```

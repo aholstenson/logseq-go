@@ -32,7 +32,7 @@ func (i idTerm) Term() []byte {
 // Increase it when the way pages or blocks are indexed changes, so that an
 // index stored on disk is built again with the new fields. Without that the
 // pages that did not change since they were indexed keep their old documents.
-const indexVersion = 19
+const indexVersion = 20
 
 // versionDocID is the id of the document that stores the version of the
 // index. It does not have a type, so searches for pages and blocks never
@@ -61,6 +61,11 @@ type BlugeIndex struct {
 	// taskPagesDisabled is whether the task marker and the priority of a
 	// block do not link to pages, see WithTaskPages.
 	taskPagesDisabled bool
+
+	// namespaceParentRefsDisabled is whether a reference to a page in a
+	// namespace does not also link to the namespaces above it, see
+	// WithNamespaceParentRefs.
+	namespaceParentRefsDisabled bool
 }
 
 func NewBlugeIndex(graphConfig *utils.GraphConfig, indexDirectory string, opts ...Option) (*BlugeIndex, error) {
@@ -453,7 +458,7 @@ func (i *BlugeIndex) pageToDocument(doc *Page) (*bluge.Document, error) {
 
 	if doc.Properties != nil {
 		i.transferProperties(blugeDoc, doc.Properties, true)
-		i.transferRefs(blugeDoc, "pages", doc.Properties.Children())
+		i.transferRefs(blugeDoc, "pages", doc.Properties.Children(), true)
 		i.transferPropertyPageRefs(blugeDoc, "pages", doc.Properties)
 
 		// The tags are stored so that a query can find the pages that other
@@ -469,7 +474,7 @@ func (i *BlugeIndex) pageToDocument(doc *Page) (*bluge.Document, error) {
 	// itself. The pre-block holding the content before the first bullet is part
 	// of that opening, so it is taken together with the first bullet.
 	for _, block := range doc.Blocks {
-		i.transferRefs(blugeDoc, "pages", block.Children())
+		i.transferRefs(blugeDoc, "pages", block.Children(), true)
 
 		if !block.IsPreBlock() {
 			break
@@ -621,9 +626,10 @@ func (i *BlugeIndex) pathRefsOf(parentPathRefs []string, block *content.Block) [
 	// Only the content is used, as the blocks below this block are not part
 	// of its path.
 	for _, ref := range block.Content().PageReferences() {
-		title := normalizeRef(ref.(content.PageRef).GetTo())
-		if !containsString(refs, title) {
-			refs = append(refs, title)
+		for _, title := range i.refTitles(ref.(content.PageRef)) {
+			if !containsString(refs, title) {
+				refs = append(refs, title)
+			}
 		}
 	}
 
@@ -707,7 +713,7 @@ func (i *BlugeIndex) blockToDocument(page *Page, id string, block *content.Block
 	// Only the content of the block itself is used, as the blocks below it
 	// are indexed on their own. Logseq calls these the refs of a block, and
 	// PathReferences matches on the refs of the parents as well.
-	i.transferRefs(blugeDoc, "pages", block.Content())
+	i.transferRefs(blugeDoc, "pages", block.Content(), true)
 	i.transferPropertyPageRefs(blugeDoc, "pages", block.FindProperties())
 	for _, title := range i.taskPageTitles(block) {
 		blugeDoc.AddField(bluge.NewKeywordField("pages:ref", title))
@@ -906,7 +912,7 @@ func (i *BlugeIndex) transferProperties(doc *bluge.Document, properties *content
 		doc.AddField(bluge.NewKeywordField("props", content.NormalizePropertyName(prop.Name)))
 
 		field := propertyField(prop.Name)
-		i.transferRefs(doc, field, prop.Children())
+		i.transferRefs(doc, field, prop.Children(), false)
 
 		s := plainText(prop.Children())
 		if s == "" {
@@ -998,11 +1004,20 @@ func (i *BlugeIndex) transferPropertyPageRefs(doc *bluge.Document, field string,
 }
 
 // transferRefs indexes the page references in the nodes and the nodes below
-// them, as both a link and, for hashtags, a tag.
-func (i *BlugeIndex) transferRefs(doc *bluge.Document, field string, nodes content.NodeList) {
+// them, as both a link and, for hashtags, a tag. If namespaceParents is true,
+// a link to a page in a namespace is also a link to the namespaces above it,
+// see refTitles. The tags are only the pages that are named.
+func (i *BlugeIndex) transferRefs(doc *bluge.Document, field string, nodes content.NodeList, namespaceParents bool) {
 	refs := nodes.PageReferences()
 	for _, ref := range refs {
-		doc.AddField(bluge.NewKeywordField(field+":ref", normalizeRef(ref.(content.PageRef).GetTo())))
+		titles := []string{normalizeRef(ref.(content.PageRef).GetTo())}
+		if namespaceParents {
+			titles = i.refTitles(ref.(content.PageRef))
+		}
+
+		for _, title := range titles {
+			doc.AddField(bluge.NewKeywordField(field+":ref", title))
+		}
 
 		if hashtag, ok := ref.(*content.Hashtag); ok {
 			doc.AddField(bluge.NewKeywordField(field+":tag", normalizeRef(hashtag.GetTo())))
@@ -1010,12 +1025,28 @@ func (i *BlugeIndex) transferRefs(doc *bluge.Document, field string, nodes conte
 	}
 }
 
+// refTitles returns the titles of the pages that a reference links a block
+// to, normalized with normalizeRef. This is the page that is named and, as in
+// Logseq, the namespaces above it, so that `[[a/b/c]]` also links to `a/b` and
+// `a`. WithNamespaceParentRefs turns the namespaces off.
+func (i *BlugeIndex) refTitles(ref content.PageRef) []string {
+	title := normalizeRef(ref.GetTo())
+	if i.namespaceParentRefsDisabled {
+		return []string{title}
+	}
+
+	return append([]string{title}, utils.NamespacesOf(title)...)
+}
+
 // normalizeRef brings a page title into the form it is indexed and queried in,
 // used for the fields that hold a title rather than text. Logseq does not
 // distinguish between page titles that only differ in case, so `[[example]]`
 // and `[[Example]]` are references to the same page and have to match the same
-// query.
+// query. Logseq also removes a slash at the start and at the end of a title,
+// so `[[/a/]]` is a reference to the page `a`.
 func normalizeRef(title string) string {
+	title = strings.TrimPrefix(title, "/")
+	title = strings.TrimSuffix(title, "/")
 	return strings.ToLower(title)
 }
 

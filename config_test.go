@@ -525,6 +525,37 @@ var _ = Describe("Config", func() {
 			Expect(referencesTo(graph, "A")).To(Equal(0))
 		})
 
+		It("turns namespace parent references off", func() {
+			// Given a link to a page in a namespace
+			writePage("referrer.md", "- see [[a/b/c]]\n")
+
+			// When the program turns namespace parent references off
+			graph := openWithConfig(`{}`,
+				logseq.WithInMemoryIndex(),
+				logseq.WithConfig(logseq.Config{NamespaceParentRefs: logseq.Bool(false)}),
+			)
+
+			// Then only the page that is named is a reference
+			Expect(referencesTo(graph, "a/b/c")).To(Equal(1))
+			Expect(referencesTo(graph, "a/b")).To(Equal(0))
+			Expect(referencesTo(graph, "a")).To(Equal(0))
+		})
+
+		It("keeps namespace parent references on when the program does not set them", func() {
+			// Given a link to a page in a namespace
+			writePage("referrer.md", "- see [[a/b/c]]\n")
+
+			// When the program sets another field only
+			graph := openWithConfig(`{}`,
+				logseq.WithInMemoryIndex(),
+				logseq.WithConfig(logseq.Config{TaskPages: logseq.Bool(false)}),
+			)
+
+			// Then the namespaces above the page are references too
+			Expect(referencesTo(graph, "a/b")).To(Equal(1))
+			Expect(referencesTo(graph, "a")).To(Equal(1))
+		})
+
 		It("keeps task pages on when the program does not set them", func() {
 			// Given a task with a priority
 			writePage("referrer.md", "- TODO [#A] x\n")

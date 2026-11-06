@@ -251,6 +251,13 @@ type Config struct {
 	// a linked reference of the pages `TODO` and `A`. Logseq always does
 	// this, and has no setting for it in `config.edn`. Use Bool to set it.
 	TaskPages *bool
+
+	// NamespaceParentRefs is whether a reference to a page in a namespace
+	// also points at the namespaces above it, so that a block with
+	// `[[a/b/c]]` is a linked reference of the pages `a/b` and `a`. Logseq
+	// always does this, and has no setting for it in `config.edn`. Use Bool
+	// to set it.
+	NamespaceParentRefs *bool
 }
 
 // Bool returns a pointer to the value, for the fields of Config that are not
@@ -281,6 +288,10 @@ func (c Config) merge(other Config) Config {
 		c.TaskPages = other.TaskPages
 	}
 
+	if other.NamespaceParentRefs != nil {
+		c.NamespaceParentRefs = other.NamespaceParentRefs
+	}
+
 	return c
 }
 
@@ -308,9 +319,13 @@ func (c Config) applyTo(config *utils.GraphConfig) {
 // indexOptions are the options of the index for the fields that the config of
 // the graph does not have.
 func (c Config) indexOptions() []indexing.Option {
-	opts := make([]indexing.Option, 0, 1)
+	opts := make([]indexing.Option, 0, 2)
 	if c.TaskPages != nil {
 		opts = append(opts, indexing.WithTaskPages(*c.TaskPages))
+	}
+
+	if c.NamespaceParentRefs != nil {
+		opts = append(opts, indexing.WithNamespaceParentRefs(*c.NamespaceParentRefs))
 	}
 
 	return opts

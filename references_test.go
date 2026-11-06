@@ -269,6 +269,31 @@ var _ = Describe("Linked references", func() {
 		Expect(string(data)).To(Equal("- see [[target]] for more\n\t- a note about the reference\n"))
 	})
 
+	It("finds blocks that link to a page in the namespace of the page", func() {
+		// Given page r with a link to the namespace page a/b/c
+		graph = openGraphWithPages(dir, map[string]string{
+			"r.md": "- see [[a/b/c]]\n",
+		})
+
+		// When the linked references of the namespace parents are read
+		// Then both parents have the block, the same as Logseq (block.cljs adds
+		// the namespace parents of every ref to the refs of the block)
+		Expect(previews(linkedReferences("a"))).To(ConsistOf("see a/b/c"))
+		Expect(previews(linkedReferences("a/b"))).To(ConsistOf("see a/b/c"))
+	})
+
+	It("finds blocks that link to the page with slashes around the title", func() {
+		// Given page r with a link to /a/
+		graph = openGraphWithPages(dir, map[string]string{
+			"r.md": "- see [[/a/]]\n",
+		})
+
+		// When the linked references of page a are read
+		// Then the block is there, the same as Logseq (which removes the
+		// slashes at the start and end of a page name)
+		Expect(linkedReferences("a").Size()).To(Equal(1))
+	})
+
 	It("fails when indexing is not enabled", func() {
 		var err error
 		graph, err = logseq.Open(ctx, dir)

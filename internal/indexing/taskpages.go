@@ -15,6 +15,15 @@ func WithTaskPages(enabled bool) Option {
 	}
 }
 
+// WithNamespaceParentRefs sets whether a reference to a page in a namespace
+// also links the block to the namespaces above it, so that `[[a/b/c]]` links
+// to `a/b` and `a` as well. Logseq does this, so it is on by default.
+func WithNamespaceParentRefs(enabled bool) Option {
+	return func(i *BlugeIndex) {
+		i.namespaceParentRefsDisabled = !enabled
+	}
+}
+
 // taskPageTitles returns the titles of the pages that the task marker and the
 // priority of the block link to, normalized with normalizeRef. Logseq reads
 // the marker and the priority only at the start of the block, as
