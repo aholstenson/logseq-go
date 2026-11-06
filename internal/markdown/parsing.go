@@ -404,7 +404,9 @@ func convert(src []byte, in ast.Node) (content.Node, error) {
 	case *blockRef:
 		return content.NewBlockRef(node.ID), nil
 	case *priority:
-		return content.NewTaskPriority(node.Priority), nil
+		result := content.NewTaskPriority(node.Priority)
+		result.SetSpaceAfter(node.SpaceAfter)
+		return result, nil
 	case *macro:
 		return convertMacro(src, node)
 	case *ast.FencedCodeBlock:

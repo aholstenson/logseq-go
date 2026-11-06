@@ -2924,7 +2924,7 @@ func (w *Output) writeTaskPriority(node *content.TaskPriority) error {
 		return err
 	}
 
-	if node.NextSibling() != nil {
+	if node.NextSibling() != nil && node.SpaceAfter() {
 		err = w.writeRaw(" ")
 		if err != nil {
 			return err

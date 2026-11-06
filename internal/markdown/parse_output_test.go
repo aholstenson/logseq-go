@@ -375,6 +375,12 @@ var _ = Describe("Parsing then outputting", func() {
 			FullyEqual("Scheduled with a plain date", "TODO Task\nSCHEDULED: 2024-01-15")
 		})
 	})
+})
+
+var _ = Describe("Spaces around a task priority", func() {
+	FullyEqual("adds no space between a priority and the text after it", "- TODO [#A]x")
+	FullyEqual("adds no space after a priority before properties", "- [#A]\n  alias:: y")
+	FullyEqual("adds no space between a priority and a tag after it", "- DOING [#B]#[[c d]]")
 
 	Describe("Highlights with equals signs", func() {
 		// Given `==mark==`, When it is written, Then the equals signs are kept

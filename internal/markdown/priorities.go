@@ -15,6 +15,9 @@ var priorityKind = ast.NewNodeKind("Priority")
 type priority struct {
 	ast.BaseInline
 	Priority content.Priority
+
+	// SpaceAfter is true when a space follows the closing `]`.
+	SpaceAfter bool
 }
 
 func (*priority) Kind() ast.NodeKind {
@@ -70,7 +73,8 @@ func (t *priorityParser) Parse(parent ast.Node, block text.Reader, pc parser.Con
 	}
 
 	length := end + 1
-	if length < len(line) && line[length] == ' ' {
+	spaceAfter := length < len(line) && line[length] == ' '
+	if spaceAfter {
 		// The space after the priority separates it from the content and is
 		// written back out with the priority.
 		length++
@@ -78,7 +82,8 @@ func (t *priorityParser) Parse(parent ast.Node, block text.Reader, pc parser.Con
 
 	block.Advance(length)
 	return &priority{
-		Priority: value,
+		Priority:   value,
+		SpaceAfter: spaceAfter,
 	}
 }
 

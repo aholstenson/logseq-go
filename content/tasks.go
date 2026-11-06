@@ -155,6 +155,10 @@ type TaskPriority struct {
 	baseNode
 
 	Priority Priority
+
+	// noSpaceAfter is true when the text after the priority starts directly
+	// after the `]`, see SpaceAfter.
+	noSpaceAfter bool
 }
 
 func NewTaskPriority(priority Priority) *TaskPriority {
@@ -167,6 +171,20 @@ func NewTaskPriority(priority Priority) *TaskPriority {
 func (t *TaskPriority) WithPriority(priority Priority) *TaskPriority {
 	t.Priority = priority
 	return t
+}
+
+// SpaceAfter reports if a space separates the priority from the text after
+// it, as in `[#A] x`. It is false for a priority read from text such as
+// `[#A]x`, so that the text is written back as it was. It is true for a new
+// priority.
+func (t *TaskPriority) SpaceAfter() bool {
+	return !t.noSpaceAfter
+}
+
+// SetSpaceAfter sets if a space separates the priority from the text after
+// it, see SpaceAfter.
+func (t *TaskPriority) SetSpaceAfter(spaceAfter bool) {
+	t.noSpaceAfter = !spaceAfter
 }
 
 func (t *TaskPriority) debug(p *debugPrinter) {
