@@ -398,7 +398,7 @@ func loadRootBlock(path string, parseOptions ...markdown.ParseOption) (*content.
 
 // parseRootBlock parses the text of a page into its root block.
 func parseRootBlock(data []byte, parseOptions ...markdown.ParseOption) (*content.Block, error) {
-	block, err := markdown.Parse(data, parseOptions...)
+	block, err := markdown.Parse(data, append(parseOptions, markdown.AsPage())...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse markdown: %w", err)
 	}

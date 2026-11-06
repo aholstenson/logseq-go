@@ -151,7 +151,7 @@ func (g *Graph) expandTemplate(template *content.Block, options *templateOptions
 
 	text = g.fillTemplateVariables(text, options)
 
-	copied, err := markdown.ParseString(text, g.markdownParseOptions()...)
+	copied, err := markdown.ParseString(text, append(g.markdownParseOptions(), markdown.AsPage())...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read the template: %w", err)
 	}

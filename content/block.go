@@ -8,8 +8,9 @@ type Block struct {
 	baseNodeWithChildren
 	previousLineAwareImpl
 
-	properties *Properties
-	preBlock   bool
+	properties   *Properties
+	preBlock     bool
+	headingBlock bool
 }
 
 func NewBlock(children ...Node) *Block {
@@ -38,6 +39,29 @@ func NewPreBlock(children ...Node) *Block {
 // bullet of a page. See NewPreBlock for details.
 func (b *Block) IsPreBlock() bool {
 	return b.preBlock
+}
+
+// NewHeadingBlock creates a top-level block that starts with a heading line
+// that is not in a bullet, such as `# Title`. Logseq reads each such line as
+// the start of a block, and the text and properties after it are part of
+// that block:
+//
+//	# Title
+//	type:: book
+//	- The next block
+//
+// The block is written without a bullet marker while it is a top-level block
+// that starts with a heading. Otherwise it is written as a usual block.
+func NewHeadingBlock(children ...Node) *Block {
+	block := NewBlock(children...)
+	block.headingBlock = true
+	return block
+}
+
+// IsHeadingBlock returns true if this block was read from a heading line that
+// is not in a bullet. See NewHeadingBlock for details.
+func (b *Block) IsHeadingBlock() bool {
+	return b.headingBlock
 }
 
 // Content gets the content part of this block, which is all children that

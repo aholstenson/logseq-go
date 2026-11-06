@@ -14,6 +14,9 @@ var indentedBlocksKind = ast.NewNodeKind("IndentedBlocks")
 // indentation taken off.
 type indentedBlocks struct {
 	ast.BaseBlock
+
+	// width is how many columns of indentation are taken off each line.
+	width int
 }
 
 func (*indentedBlocks) Kind() ast.NodeKind {
@@ -35,6 +38,12 @@ func (n *indentedBlocks) Dump(source []byte, level int) {
 // CommonMark reads these lines as an indented code block, or as more text of
 // the paragraph before them. Logseq reads them as child blocks, so this parser
 // takes them before the code block and paragraph parsers do.
+//
+// Bullets after a heading line of a page are children of the heading at any
+// indentation, so there one to three spaces are enough:
+//
+//	# Heading
+//	  - A child of the heading
 type indentedBlocksParser struct {
 }
 
@@ -44,16 +53,21 @@ func (p *indentedBlocksParser) Trigger() []byte {
 
 func (p *indentedBlocksParser) Open(parent ast.Node, reader text.Reader, pc parser.Context) (ast.Node, parser.State) {
 	line, _ := reader.PeekLine()
-	pos, indent := blockStart(line, reader, pc)
-	if pos < 0 || indent < 4 || !isBlockMarker(line[pos:]) {
+	width, ok := indentedUnderHeading(parent, reader, pc)
+	if !ok {
+		pos, indent := blockStart(line, reader, pc)
+		if pos < 0 || indent < 4 || !isBlockMarker(line[pos:]) {
+			return nil, parser.NoChildren
+		}
+
+		width = 4
+	}
+
+	if !advanceIndent(line, reader, width) {
 		return nil, parser.NoChildren
 	}
 
-	if !advanceIndentLevel(line, reader) {
-		return nil, parser.NoChildren
-	}
-
-	return &indentedBlocks{}, parser.HasChildren
+	return &indentedBlocks{width: width}, parser.HasChildren
 }
 
 func (p *indentedBlocksParser) Continue(node ast.Node, reader text.Reader, pc parser.Context) parser.State {
@@ -62,7 +76,7 @@ func (p *indentedBlocksParser) Continue(node ast.Node, reader text.Reader, pc pa
 		return parser.Continue | parser.HasChildren
 	}
 
-	if !advanceIndentLevel(line, reader) {
+	if !advanceIndent(line, reader, node.(*indentedBlocks).width) {
 		return parser.Close
 	}
 
@@ -80,16 +94,45 @@ func (p *indentedBlocksParser) CanAcceptIndentedLine() bool {
 	return true
 }
 
-// advanceIndentLevel moves the reader past one level of indentation, which is
-// a tab or four spaces. It returns false if the line is not indented that far.
-func advanceIndentLevel(line []byte, reader text.Reader) bool {
-	pos, padding := util.IndentPosition(line, reader.LineOffset(), 4)
+// advanceIndent moves the reader past the given number of columns of
+// indentation. A tab is four columns. It returns false if the line is not
+// indented that far.
+func advanceIndent(line []byte, reader text.Reader, width int) bool {
+	pos, padding := util.IndentPosition(line, reader.LineOffset(), width)
 	if pos < 0 {
 		return false
 	}
 
 	reader.AdvanceAndSetPadding(pos, padding)
 	return true
+}
+
+// indentedUnderHeading checks if the line is a bullet that is indented by one
+// to three spaces directly after a heading line of a page, and returns the
+// width of the indentation. Logseq reads such a bullet as a child of the
+// heading. A bullet with more indentation is found by the usual rule of
+// indentedBlocksParser.
+func indentedUnderHeading(parent ast.Node, reader text.Reader, pc parser.Context) (int, bool) {
+	if _, ok := parent.(*ast.Document); !ok {
+		return 0, false
+	}
+
+	// Only a page has heading blocks, see AsPage.
+	if options, ok := pc.Get(parseOptionsKey).(*parseOptions); !ok || !options.page {
+		return 0, false
+	}
+
+	if _, ok := parent.LastChild().(*ast.Heading); !ok {
+		return 0, false
+	}
+
+	line, _ := reader.PeekLine()
+	pos, indent := blockStart(line, reader, pc)
+	if pos < 0 || indent < 1 || indent >= 4 || !isBlockMarker(line[pos:]) {
+		return 0, false
+	}
+
+	return indent, true
 }
 
 // isBlockMarker checks if a line starts with the marker of a block, which is a

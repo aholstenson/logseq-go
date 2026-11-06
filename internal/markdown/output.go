@@ -1996,10 +1996,22 @@ func (w *Output) writeBlock(node *content.Block) error {
 		for _, child := range blocks {
 			i++
 
+			if child.PreviousLineType() == content.PreviousLineTypeBlank && (i > 1 || hasContent) && writesWithoutBullet(child) {
+				// Keep the blank line before a heading block.
+				err := w.out.WriteString("\n")
+				if err != nil {
+					return err
+				}
+			}
+
 			if writesWithoutBullet(child) {
-				// The pre-block is the content before the first bullet of the
-				// page, so it is written as is with no marker to indent under.
+				// A pre-block or a heading block is written as is, with no
+				// marker to indent under. It gets an indentation level of its
+				// own, so that what was written before it does not count as
+				// content of the block.
+				w.out.PushIndentation("")
 				err := w.Write(child)
+				w.out.PopIndentation()
 				if err != nil {
 					return err
 				}
@@ -2056,16 +2068,26 @@ func (w *Output) writeBlock(node *content.Block) error {
 	return nil
 }
 
-// writesWithoutBullet checks if a block is a pre-block in a position where the
-// bullet-less form parses back into the same structure, which is as the first
-// block of a page.
+// writesWithoutBullet checks if a block is written without a bullet. This is
+// the case in the positions where the bullet-less form parses back into the
+// same structure: a pre-block as the first block of a page, and a heading
+// block as a top-level block that starts with a heading.
 func writesWithoutBullet(node *content.Block) bool {
-	if !node.IsPreBlock() || node.PreviousSibling() != nil {
+	parent, ok := node.Parent().(*content.Block)
+	if !ok || parent.Parent() != nil {
 		return false
 	}
 
-	parent, ok := node.Parent().(*content.Block)
-	return ok && parent.Parent() == nil
+	if node.IsPreBlock() {
+		return node.PreviousSibling() == nil
+	}
+
+	if node.IsHeadingBlock() {
+		_, ok := node.FirstChild().(*content.Heading)
+		return ok
+	}
+
+	return false
 }
 
 func (w *Output) writeProperties(node *content.Properties) error {

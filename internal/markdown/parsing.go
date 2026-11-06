@@ -106,6 +106,9 @@ type parseOptions struct {
 	// ignoredPageReferences are the properties whose value never points at a
 	// page, even where it is written as a link.
 	ignoredPageReferences map[string]struct{}
+
+	// page is whether the text is the text of a whole page, see AsPage.
+	page bool
 }
 
 // defaultParseOptions are what Logseq does for a graph that does not configure
@@ -141,6 +144,17 @@ func WithIgnoredPageReferences(names ...string) ParseOption {
 		for _, name := range names {
 			o.ignoredPageReferences[normalizePropertyName(name)] = struct{}{}
 		}
+	}
+}
+
+// AsPage reads the text as the text of a whole page, instead of as the text
+// of one block. In a page, Logseq reads each heading line that is not in a
+// bullet, such as `# Title`, as the start of a top-level block, see
+// content.NewHeadingBlock. In the text of a block, such a line is part of
+// the block.
+func AsPage() ParseOption {
+	return func(o *parseOptions) {
+		o.page = true
 	}
 }
 
@@ -180,16 +194,12 @@ func parseWithOptions(src []byte, options *parseOptions) (*content.Block, error)
 	context.Set(parseOptionsKey, options)
 
 	doc := markdownParser.Parse(text.NewReader(src), parser.WithContext(context))
-	node, err := convert(src, doc)
+	block, err := convertOutline(src, doc, options.page)
 	if err != nil {
 		return nil, fmt.Errorf("Could not parse Markdown: %w", err)
 	}
 
-	if b, ok := node.(*content.Block); ok {
-		return b, nil
-	}
-
-	return nil, errors.New("Could not parse Markdown")
+	return block, nil
 }
 
 func ParseString(src string, opts ...ParseOption) (*content.Block, error) {
@@ -335,6 +345,13 @@ func canMergeTextNodes(a *ast.Text, b *ast.Text) bool {
 // convertToBlock implements the Logseq outlining, where lists using `-` are
 // converted into sub-blocks.
 func convertToBlock(src []byte, node ast.Node) (*content.Block, error) {
+	return convertOutline(src, node, false)
+}
+
+// convertOutline converts a page, a block or indented bullets into a block.
+// If headingBlocks is true, the node is a page and its heading lines start
+// top-level blocks, see AsPage.
+func convertOutline(src []byte, node ast.Node, headingBlocks bool) (*content.Block, error) {
 	block := content.NewBlock()
 
 	// target is the block that content before the first list of blocks goes
@@ -378,6 +395,29 @@ func convertToBlock(src []byte, node ast.Node) (*content.Block, error) {
 			continue
 		}
 
+		if heading, ok := child.(*ast.Heading); ok && headingBlocks {
+			if _, isDocument := node.(*ast.Document); isDocument {
+				// A heading line of a page starts a top-level block. The
+				// content after it goes to the block that comes last in the
+				// file, which is this block until it gets children.
+				headingNode, err := convertHeading(src, heading)
+				if err != nil {
+					return nil, err
+				}
+
+				convertTaskMarker(headingNode, src, heading)
+
+				headingBlock := content.NewHeadingBlock(headingNode)
+				if heading.HasBlankPreviousLines() && block.FirstChild() != nil {
+					headingBlock.SetPreviousLineType(content.PreviousLineTypeBlank)
+				}
+
+				block.AddChild(headingBlock)
+				hasParsedBlock = true
+				continue
+			}
+		}
+
 		// Check if the child is a list of blocks.
 		if list, ok := child.(*ast.List); ok && list.Marker == '-' {
 			// This is a list using the block marker, so children are parsed
@@ -389,8 +429,9 @@ func convertToBlock(src []byte, node ast.Node) (*content.Block, error) {
 				}
 
 				_, isDocument := node.(*ast.Document)
-				if isDocument && !hasParsedBlock && listItem == list.FirstChild() &&
-					list.HasBlankPreviousLines() && block.FirstChild() != nil {
+				if isDocument && listItem == list.FirstChild() &&
+					list.HasBlankPreviousLines() && block.FirstChild() != nil &&
+					(!hasParsedBlock || isHeadingBlock(block.LastChild())) {
 					// Keep the blank line between the content before the
 					// first bullet of a page, such as page properties, and
 					// the first bullet.
@@ -441,6 +482,12 @@ func convertToBlock(src []byte, node ast.Node) (*content.Block, error) {
 	}
 
 	return block, nil
+}
+
+// isHeadingBlock checks if a node is a block read from a heading line.
+func isHeadingBlock(node content.Node) bool {
+	block, ok := node.(*content.Block)
+	return ok && block.IsHeadingBlock()
 }
 
 // deepestLastBlock follows the last child blocks down from the block, and

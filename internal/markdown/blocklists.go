@@ -26,6 +26,11 @@ func newBlockListParser() *blockListParser {
 }
 
 func (p *blockListParser) Open(parent ast.Node, reader text.Reader, pc parser.Context) (ast.Node, parser.State) {
+	if _, ok := indentedUnderHeading(parent, reader, pc); ok {
+		// The bullets are children of the heading, see indentedBlocksParser.
+		return nil, parser.NoChildren
+	}
+
 	if interruptsWithEmptyBlock(parent, reader, pc) {
 		// The list item parser of Goldmark adds the empty item to the list.
 		return ast.NewList('-'), parser.HasChildren
