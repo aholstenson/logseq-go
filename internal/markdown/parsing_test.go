@@ -3823,6 +3823,72 @@ var _ = Describe("Parsing", func() {
 			})
 		})
 	})
+})
+
+var _ = Describe("Directives at the start of a page", func() {
+	// pageRefTargets parses a page and returns the targets of all page
+	// references in it.
+	pageRefTargets := func(input string) []string {
+		root, err := markdown.ParseString(input)
+		Expect(err).ToNot(HaveOccurred())
+
+		targets := make([]string, 0)
+		for _, ref := range root.Children().PageReferences() {
+			targets = append(targets, ref.(content.PageRef).GetTo())
+		}
+		return targets
+	}
+
+	It("makes no tag from a title directive, the same as Logseq", func() {
+		// Given a page that starts with #+title:
+		// Then there is no reference to a page +title
+		Expect(pageRefTargets("#+title: X\n\n- a")).ToNot(ContainElement("+title"))
+	})
+
+	It("makes no tags from directives and refs the tags they name", func() {
+		// Given title and tags directives
+		targets := pageRefTargets("#+title: X\n#+tags: a\n\n- a")
+
+		// Then the directives make no tags, and the tag a is referenced
+		Expect(targets).ToNot(ContainElement("+title"))
+		Expect(targets).ToNot(ContainElement("+tags"))
+		Expect(targets).To(ContainElement("a"))
+	})
+
+	It("makes no tag from a directive below the first block", func() {
+		// Given a directive line at the start of a line after a block
+		// Then Logseq reads a page property, not a tag
+		Expect(pageRefTargets("- a\n#+foo: bar")).ToNot(ContainElement("+foo"))
+	})
+
+	It("does not change a directive on save", func() {
+		input := "#+alias: Y\n- a"
+		Expect(parseAndOutput(input)).To(Equal(input))
+	})
+
+	It("keeps a directive in the text of a block as text, without a backslash on save", func() {
+		// Given a directive line in the text of a block
+		input := "- a\n  #+foo: bar\n  more"
+
+		// Then it is not a tag, and it is written back as it was
+		Expect(pageRefTargets(input)).To(BeEmpty())
+		Expect(parseAndOutput(input)).To(Equal(input))
+	})
+
+	It("reads a directive after a property line as a property of the same group", func() {
+		// Given a block with a property line and then a directive line
+		input := "- a\n  b:: c\n  #+foo: bar"
+		root, err := markdown.ParseString(input)
+		Expect(err).ToNot(HaveOccurred())
+
+		// Then the block has both properties, and the directive keeps its form
+		properties := root.Blocks()[0].Properties()
+		Expect(properties.GetAsNode("b")).ToNot(BeNil())
+		foo := properties.GetAsNode("foo")
+		Expect(foo).ToNot(BeNil())
+		Expect(foo.Directive).To(BeTrue())
+		Expect(parseAndOutput(input)).To(Equal(input))
+	})
 
 	Describe("LaTeX math with backslash delimiters", func() {
 		It("reads backslash parentheses as inline math", func() {

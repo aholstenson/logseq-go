@@ -109,6 +109,9 @@ type property struct {
 	// Quoted is whether the value is wrapped in double quotes, which Logseq
 	// reads as text.
 	Quoted bool
+
+	// Directive is whether the property is written as `#+name: value`.
+	Directive bool
 }
 
 func (*property) Kind() ast.NodeKind {
@@ -418,6 +421,14 @@ func (t *propertiesASTTransformer) transformTextBlockOrParagraph(node ast.Node, 
 				// of the line, as Goldmark can split the name into several
 				// nodes, such as at an underscore.
 				name, valueStart, ok := findPropertyAt(reader.Source(), textNode.Segment.Start)
+				directive := false
+				if !ok && (currentProperties != nil || atPageStart(node)) {
+					// A directive is a property before the first bullet of
+					// a page, and in a group of properties.
+					name, valueStart, ok = findDirectiveAt(reader.Source(), textNode.Segment.Start)
+					directive = ok
+				}
+
 				var rest ast.Node
 				if ok {
 					rest, ok = nodeAfterName(textNode, valueStart)
@@ -453,6 +464,7 @@ func (t *propertiesASTTransformer) transformTextBlockOrParagraph(node ast.Node, 
 
 				currentProperty = &property{}
 				currentProperty.Name = name
+				currentProperty.Directive = directive
 
 				currentProperties.AppendChild(currentProperties, currentProperty)
 

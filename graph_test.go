@@ -1196,3 +1196,90 @@ var _ = Describe("Pages with YAML front matter", func() {
 		Expect(string(data)).To(HavePrefix("---\ntags:\n  - a\n---\nicon:: x\n"))
 	})
 })
+
+var _ = Describe("Pages with directives", func() {
+	var (
+		graph *logseq.Graph
+		dir   string
+	)
+
+	BeforeEach(func() {
+		dir = setupGraph()
+	})
+
+	AfterEach(func() {
+		if graph != nil {
+			graph.Close()
+			graph = nil
+		}
+	})
+
+	openPage := func(title string) logseq.Page {
+		page, err := graph.OpenPage(title)
+		Expect(err).ToNot(HaveOccurred())
+		return page
+	}
+
+	// propertyText returns the value of a page property as written, or an
+	// empty string when the page does not have the property.
+	propertyText := func(page logseq.Page, name string) string {
+		property := page.Properties().GetAsNode(name)
+		if property == nil {
+			return ""
+		}
+		v, err := logseq.AsString(content.NewParagraph(property.Children()...))
+		Expect(err).ToNot(HaveOccurred())
+		return v
+	}
+
+	// tagTargets returns the pages named by the tags page property.
+	tagTargets := func(page logseq.Page) []string {
+		targets := make([]string, 0)
+		for _, ref := range page.Properties().Get("tags").PageReferences() {
+			targets = append(targets, ref.(content.PageRef).GetTo())
+		}
+		return targets
+	}
+
+	It("reads a title directive as the title page property, the same as Logseq", func() {
+		// Given a page that starts with #+title:
+		graph = openGraphWithPages(dir, map[string]string{
+			"directive.md": "#+title: X\n\n- a\n",
+		})
+
+		// Then the page property title is X
+		Expect(propertyText(openPage("directive"), "title")).To(Equal("X"))
+	})
+
+	It("reads an alias directive as the aliases of the page", func() {
+		// Given a page with #+alias: and two names
+		graph = openGraphWithPages(dir, map[string]string{
+			"directive.md": "#+alias: x, y\n\n- a\n",
+		})
+
+		// Then the page has the aliases x and y
+		Expect(openPage("directive").Aliases()).To(Equal([]string{"x", "y"}))
+	})
+
+	It("reads a title directive after page properties", func() {
+		// Given page properties followed by a directive
+		graph = openGraphWithPages(dir, map[string]string{
+			"directive.md": "title:: X\n#+tags: y\n\n- a\n",
+		})
+
+		// Then the page has both the title and the tags
+		page := openPage("directive")
+		Expect(propertyText(page, "title")).To(Equal("X"))
+		Expect(tagTargets(page)).To(ConsistOf("y"))
+	})
+
+	It("reads tags in front matter as page tags", func() {
+		// Given front matter with tags
+		graph = openGraphWithPages(dir, map[string]string{
+			"front.md": "---\ntags: a, b\n---\n\n- a\n",
+		})
+
+		// Then the page has the tags a and b
+		Expect(tagTargets(openPage("front"))).To(ConsistOf("a", "b"))
+	})
+})

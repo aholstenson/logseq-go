@@ -127,6 +127,11 @@ type Property struct {
 	// quotes, such as `alias:: "Smith, John"`. Logseq reads such a value as
 	// text, so it names no pages and is not split on commas.
 	Quoted bool
+
+	// Directive is whether the property is written as an Org-mode directive,
+	// `#+name: value`, instead of as `name:: value`. Logseq also reads
+	// directives in Markdown files, and uses them as page properties.
+	Directive bool
 }
 
 // NewProperty creates a new Property node with the given name and values.
@@ -158,6 +163,13 @@ func (p *Property) WithQuoted(quoted bool) *Property {
 	return p
 }
 
+// WithDirective sets whether the property is written as a directive,
+// `#+name: value`.
+func (p *Property) WithDirective(directive bool) *Property {
+	p.Directive = directive
+	return p
+}
+
 func (p *Property) debug(p2 *debugPrinter) {
 	p2.StartType("Property")
 	p2.Field("Name", p.Name)
@@ -166,6 +178,9 @@ func (p *Property) debug(p2 *debugPrinter) {
 	}
 	if p.Quoted {
 		p2.Field("Quoted", "true")
+	}
+	if p.Directive {
+		p2.Field("Directive", "true")
 	}
 	p2.Children(p)
 	p2.EndType()

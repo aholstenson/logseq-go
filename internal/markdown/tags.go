@@ -50,7 +50,8 @@ const tagPrefixes = tagDelimiters + "["
 //
 // A # starts a tag only at the start of the text, after a Unicode space or
 // after one of tagPrefixes. Thus "C#Sharp" and "https://a.com/#top" do not
-// contain tags.
+// contain tags. A directive at the start of a line, such as `#+title: X`, is
+// not a tag either.
 type tagParser struct {
 }
 
@@ -62,6 +63,11 @@ func (t *tagParser) Parse(parent ast.Node, block text.Reader, pc parser.Context)
 	line, seg := block.PeekLine()
 
 	if len(line) == 0 || line[0] != '#' {
+		return nil
+	}
+
+	if isDirective(line) && atLineStart(parent, block) {
+		// A line such as `#+title: X` is a directive, see directives.go.
 		return nil
 	}
 

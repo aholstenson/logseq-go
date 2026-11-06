@@ -196,6 +196,11 @@ func startsTag(str string, i int, previous rune) bool {
 		return false
 	}
 
+	if (previous == lineEdgeRune || previous == '\n') && isDirective([]byte(str[i:])) {
+		// A directive at the start of a line is not a tag, see directives.go.
+		return false
+	}
+
 	if strings.HasPrefix(rest, "[[") {
 		return strings.Contains(rest[2:], "]]")
 	}
@@ -2123,12 +2128,7 @@ func (w *Output) writeProperties(node *content.Properties) error {
 		}
 
 		property := child.(*content.Property)
-		err := w.writeRaw(property.Name)
-		if err != nil {
-			return err
-		}
-
-		err = w.writeRaw(":: ")
+		err := w.writePropertyName(property)
 		if err != nil {
 			return err
 		}
@@ -2148,6 +2148,20 @@ func (w *Output) writeProperties(node *content.Properties) error {
 
 	w.endBlock()
 	return nil
+}
+
+// writePropertyName writes the name of a property and the separator before
+// its value, as `name:: ` or, for a directive, as `#+name: `.
+func (w *Output) writePropertyName(property *content.Property) error {
+	if !property.Directive {
+		return w.writeRaw(property.Name + ":: ")
+	}
+
+	if property.FirstChild() == nil {
+		return w.writeRaw("#+" + property.Name + ":")
+	}
+
+	return w.writeRaw("#+" + property.Name + ": ")
 }
 
 // writePropertyDrawer writes properties in a `:PROPERTIES:` drawer, with one
