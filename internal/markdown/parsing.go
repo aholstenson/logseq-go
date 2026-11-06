@@ -400,18 +400,19 @@ func convertToBlock(src []byte, node ast.Node) (*content.Block, error) {
 			}
 
 			if target != block && !hasParsedBlock {
-				// Content after the child blocks of the pre-block still
-				// belongs to the pre-block.
-				addBeforeBlocks(target, node)
+				// Content after the child blocks of the pre-block belongs to
+				// the block that comes last in the file.
+				addBeforeBlocks(deepestLastBlock(target), node)
 			} else if !hasParsedBlock {
 				// No list of blocks encountered yet, treat nodes as content
 				// to main block.
 				block.AddChild(node)
 			} else {
-				// We have parsed blocks so this is trailing content, in Logseq
-				// this seems to be added to the last block.
+				// We have parsed blocks so this is trailing content. Logseq
+				// adds it to the block that comes last in the file, which can
+				// be a child of the last block.
 				if lastBlock, ok := block.LastChild().(*content.Block); ok {
-					addBeforeBlocks(lastBlock, node)
+					addBeforeBlocks(deepestLastBlock(lastBlock), node)
 				} else {
 					return nil, errors.New("Last node is not a block")
 				}
@@ -420,6 +421,19 @@ func convertToBlock(src []byte, node ast.Node) (*content.Block, error) {
 	}
 
 	return block, nil
+}
+
+// deepestLastBlock follows the last child blocks down from the block, and
+// returns the block that comes last in the file.
+func deepestLastBlock(block *content.Block) *content.Block {
+	for {
+		last, ok := block.LastChild().(*content.Block)
+		if !ok {
+			return block
+		}
+
+		block = last
+	}
 }
 
 // addBeforeBlocks adds a node to the end of the content of a block, which is
