@@ -1023,6 +1023,13 @@ func (w *Output) writeText(node *content.Text) error {
 		value = value[:len(value)-1] + `\]`
 	}
 
+	if image, ok := node.PreviousSibling().(*content.Image); ok && image.Metadata == "" &&
+		imageMetadataLength([]byte(value)) > 0 {
+		// The `{` directly after an image without metadata would be read
+		// back as the metadata of the image.
+		value = `\` + value
+	}
+
 	err := w.writeRaw(value)
 	if err != nil {
 		return err
@@ -1616,6 +1623,10 @@ func (w *Output) writeImage(node *content.Image) error {
 	err = w.writeRaw(")")
 	if err != nil {
 		return err
+	}
+
+	if node.Metadata != "" {
+		return w.writeRaw(node.Metadata)
 	}
 
 	return nil

@@ -477,6 +477,28 @@ var _ = Describe("Output", func() {
 
 			Expect(buf.String()).To(Equal("![abc](https://example.com 'title\\)')"))
 		})
+
+		It("can write image with metadata", func() {
+			err := writer.Write(content.NewImage("a.png", content.NewText("abc")).WithMetadata("{:height 100, :width 200}"))
+			Expect(err).ToNot(HaveOccurred())
+
+			Expect(buf.String()).To(Equal("![abc](a.png){:height 100, :width 200}"))
+		})
+
+		It("escapes curly braces in text after an image so they are not read as metadata", func() {
+			// Given an image without metadata and a text with curly braces after it
+			paragraph := content.NewParagraph(
+				content.NewImage("a.png", content.NewText("abc")),
+				content.NewText("{x}"),
+			)
+
+			// When it is written
+			err := writer.Write(paragraph)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Then the brace is escaped, so the text is not read back as metadata
+			Expect(buf.String()).To(Equal("![abc](a.png)\\{x}"))
+		})
 	})
 
 	Describe("Macros", func() {

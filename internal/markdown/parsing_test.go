@@ -3825,6 +3825,83 @@ var _ = Describe("Parsing", func() {
 			})
 		})
 	})
+
+	Describe("Image size metadata", func() {
+		It("keeps the size after an image with the image and not as text", func() {
+			// Given an image with the size Logseq writes when it is resized
+			block, err := markdown.ParseString("![img](../assets/a.png){:height 100, :width 200}")
+			Expect(err).ToNot(HaveOccurred())
+
+			// When it is parsed
+			// Then the paragraph holds only the image, as Logseq reads the size as
+			// metadata of the image
+			paragraph, ok := block.Children().FindDeep(content.IsOfType[*content.Paragraph]()).(*content.Paragraph)
+			Expect(ok).To(BeTrue())
+			Expect(paragraph.Children()).To(HaveLen(1))
+			Expect(paragraph.Children()[0]).To(BeAssignableToTypeOf(&content.Image{}))
+			Expect(paragraph.Children()[0].(*content.Image).Metadata).To(Equal("{:height 100, :width 200}"))
+		})
+
+		It("keeps the size of an image inside a link and inside bold text", func() {
+			// Given images with a size inside a link and inside bold text
+			block, err := markdown.ParseString("[![a](a.png){:width 1}](https://x.com) **![b](b.png){:width 2}**")
+			Expect(err).ToNot(HaveOccurred())
+
+			// When it is parsed
+			// Then each image has its size
+			images := block.Children().FilterDeep(content.IsOfType[*content.Image]())
+			Expect(images).To(HaveLen(2))
+			Expect(images[0].(*content.Image).Metadata).To(Equal("{:width 1}"))
+			Expect(images[1].(*content.Image).Metadata).To(Equal("{:width 2}"))
+		})
+
+		DescribeTable("reads curly braces as text when they are not the size of an image",
+			func(input string, text string) {
+				// Given curly braces that are not directly after an image, or that do
+				// not close on the line
+				block, err := markdown.ParseString(input)
+				Expect(err).ToNot(HaveOccurred())
+
+				// When it is parsed
+				// Then the image has no metadata, and the braces are text
+				image, ok := block.Children().FindDeep(content.IsOfType[*content.Image]()).(*content.Image)
+				Expect(ok).To(BeTrue())
+				Expect(image.Metadata).To(BeEmpty())
+
+				next, ok := image.NextSibling().(*content.Text)
+				Expect(ok).To(BeTrue())
+				Expect(next.Value).To(Equal(text))
+			},
+			Entry("after a space", "![a](a.png) {:width 1}", " {:width 1}"),
+			Entry("without a closing brace", "![a](a.png){:width 1", "{:width 1"),
+			Entry("with an escaped brace", `![a](a.png)\{:width 1}`, "{:width 1}"),
+		)
+
+		It("reads a macro directly after an image as a macro", func() {
+			// Given a macro directly after an image
+			block, err := markdown.ParseString("![a](a.png){{embed [[x]]}}")
+			Expect(err).ToNot(HaveOccurred())
+
+			// When it is parsed
+			// Then the image has no metadata and the macro is kept
+			image, ok := block.Children().FindDeep(content.IsOfType[*content.Image]()).(*content.Image)
+			Expect(ok).To(BeTrue())
+			Expect(image.Metadata).To(BeEmpty())
+			Expect(image.NextSibling()).To(BeAssignableToTypeOf(&content.PageEmbed{}))
+		})
+
+		It("does not read curly braces after a link as metadata", func() {
+			// Given curly braces directly after a link that is not an image
+			block, err := markdown.ParseString("[a](https://x.com){:width 1}")
+			Expect(err).ToNot(HaveOccurred())
+
+			// When it is parsed
+			// Then the braces are text
+			link, ok := block.Children().FindDeep(content.IsOfType[*content.Link]()).(*content.Link)
+			Expect(ok).To(BeTrue())
+			Expect(link.NextSibling()).To(BeAssignableToTypeOf(&content.Text{}))
+		})
+	})
 })
 
 var _ = Describe("Spaces and alternative names for block ids", func() {

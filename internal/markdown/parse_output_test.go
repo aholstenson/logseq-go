@@ -386,6 +386,16 @@ var _ = Describe("Parsing then outputting", func() {
 		})
 	})
 
+	Describe("Image size metadata", func() {
+		// Given an image with size metadata, When it is written, Then it is unchanged
+		FullyEqual("Image with size metadata", "- ![img](../assets/a.png){:height 100, :width 200}")
+		FullyEqual("Image with size metadata and a title", "- ![img](a.png 'T'){:width 1} after [[p]]")
+		FullyEqual("Image with size metadata in a link", "- [![img](a.png){:width 1}](https://x.com)")
+		FullyEqual("Image with two groups of curly braces", "- ![img](a.png){:width 1}{:height 2}")
+		FullyEqual("Image with an escaped curly brace after it", `- ![img](a.png)\{:width 1}`)
+		FullyEqual("Image with an unclosed curly brace after it", "- ![img](a.png){:width 1")
+	})
+
 	Describe("LaTeX math with backslash delimiters", func() {
 		// Given LaTeX with backslash delimiters, When it is written, Then it is unchanged
 		FullyEqual("Inline math in backslash parentheses", "- \\(z\\)")

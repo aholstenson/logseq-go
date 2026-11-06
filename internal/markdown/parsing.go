@@ -72,6 +72,7 @@ func inlineParsers() []util.PrioritizedValue {
 		util.Prioritized(&footnoteRefParser{}, 194),
 		util.Prioritized(&mathParser{}, 195),
 		util.Prioritized(&priorityParser{}, 196),
+		util.Prioritized(&imageMetadataParser{}, 190),
 		util.Prioritized(&macroParser{}, 197),
 		util.Prioritized(&blockRefParser{}, 198),
 		util.Prioritized(&pageLinkParser{}, 199),
@@ -1133,6 +1134,9 @@ func convertHTMLBlock(src []byte, node *ast.HTMLBlock) (*content.RawHTMLBlock, e
 func convertImage(src []byte, node *ast.Image) (*content.Image, error) {
 	image := content.NewImage(string(node.Destination))
 	image.Title = unescapePunctuation(node.Title)
+	if metadata, ok := node.AttributeString(imageMetadataAttribute); ok {
+		image.Metadata = metadata.(string)
+	}
 
 	err := convertChildren(src, node, image)
 	if err != nil {
