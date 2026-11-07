@@ -4,8 +4,6 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
-
-	"github.com/aholstenson/logseq-go/content"
 )
 
 // String returns the query in the text form that Parse reads. The sort order,
@@ -92,7 +90,7 @@ func (f *TaskFilter) String() string {
 func (f *PriorityFilter) String() string {
 	priorities := make([]string, 0, len(f.Priorities))
 	for _, priority := range f.Priorities {
-		priorities = append(priorities, priorityNames[priority])
+		priorities = append(priorities, priority.String())
 	}
 	return list("priority", priorities...)
 }
@@ -264,12 +262,6 @@ func (f *DateFilter) String() string {
 	default:
 		return list(name, opNames[f.Op], f.Date.String())
 	}
-}
-
-var priorityNames = map[content.Priority]string{
-	content.PriorityA: "A",
-	content.PriorityB: "B",
-	content.PriorityC: "C",
 }
 
 func filterStrings(filters []Filter) []string {

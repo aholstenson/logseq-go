@@ -136,11 +136,30 @@ func indentedUnderHeading(parent ast.Node, reader text.Reader, pc parser.Context
 }
 
 // isBlockMarker checks if a line starts with the marker of a block, which is a
-// dash followed by a space or by the end of the line.
+// dash followed by a space or by the end of the line. A dash directly followed
+// by the `#` marks of a heading is also a block marker, see isHeadingBullet.
 func isBlockMarker(line []byte) bool {
 	if len(line) == 0 || line[0] != '-' {
 		return false
 	}
 
-	return len(line) == 1 || util.IsSpace(line[1])
+	return len(line) == 1 || util.IsSpace(line[1]) || isHeadingBullet(line)
+}
+
+// isHeadingBullet checks if a line starts with a dash directly followed by
+// the `#` marks of a heading and then a space or the end of the line, as in
+// "-## Title". Logseq reads such a line as a bullet with a heading, the same
+// as "- ## Title". CommonMark needs a space after the dash of a bullet, so the
+// list parsers of Goldmark do not read it.
+func isHeadingBullet(line []byte) bool {
+	if len(line) < 2 || line[0] != '-' || line[1] != '#' {
+		return false
+	}
+
+	i := 1
+	for i < len(line) && line[i] == '#' {
+		i++
+	}
+
+	return i == len(line) || util.IsSpace(line[i])
 }

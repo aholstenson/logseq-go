@@ -2,6 +2,7 @@ package content
 
 import (
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -30,6 +31,9 @@ const (
 	TaskStatusWait
 	// TaskStatusWaiting is a WAITING task.
 	TaskStatusWaiting
+	// TaskStatusStarted is a STARTED task. Logseq reads the marker, but does
+	// not offer it in its menus.
+	TaskStatusStarted
 )
 
 // String returns the marker Logseq writes for this status, or an empty string
@@ -56,6 +60,8 @@ func (t TaskStatus) String() string {
 		return "WAIT"
 	case TaskStatusWaiting:
 		return "WAITING"
+	case TaskStatusStarted:
+		return "STARTED"
 	}
 
 	return ""
@@ -124,25 +130,49 @@ func (t *TaskMarker) debug(p *debugPrinter) {
 		p.Field("type", "wait")
 	case TaskStatusWaiting:
 		p.Field("type", "waiting")
+	case TaskStatusStarted:
+		p.Field("type", "started")
 	}
 	p.EndType()
 }
 
 func (t *TaskMarker) isInline() {}
 
-// Priority is how urgent a task is.
+// Priority is how urgent a task is. Logseq writes a priority as one
+// character in brackets, such as `[#A]`, and the value of a Priority is that
+// character. Logseq offers A, B and C, but it reads any character, such as
+// `[#D]`, `[#a]` or `[#1]`. Use PriorityOf for a priority other than
+// PriorityA, PriorityB and PriorityC.
 type Priority int
 
 const (
 	// PriorityNone is used when a task does not have a priority.
-	PriorityNone Priority = iota
+	PriorityNone Priority = 0
 	// PriorityA is the highest priority, written as `[#A]`.
-	PriorityA
+	PriorityA Priority = 'A'
 	// PriorityB is the middle priority, written as `[#B]`.
-	PriorityB
+	PriorityB Priority = 'B'
 	// PriorityC is the lowest priority, written as `[#C]`.
-	PriorityC
+	PriorityC Priority = 'C'
 )
+
+// PriorityOf returns the priority that is written with the given character,
+// such as PriorityA for 'A'. The character is a single byte, as Logseq reads
+// it. Use PriorityNone for no priority, as the byte 0 is not a priority.
+func PriorityOf(character byte) Priority {
+	return Priority(character)
+}
+
+// String returns the character that Logseq writes for this priority, such as
+// `A` for PriorityA, or an empty string for PriorityNone and for values that
+// are not a priority.
+func (p Priority) String() string {
+	if p <= 0 || p > 0xff {
+		return ""
+	}
+
+	return string([]byte{byte(p)})
+}
 
 // TaskPriority is the priority of a task. Logseq puts it at the start of the
 // content of a block, after the task marker if there is one:
@@ -189,15 +219,10 @@ func (t *TaskPriority) SetSpaceAfter(spaceAfter bool) {
 
 func (t *TaskPriority) debug(p *debugPrinter) {
 	p.StartType("TaskPriority")
-	switch t.Priority {
-	case PriorityNone:
+	if t.Priority == PriorityNone {
 		p.Field("priority", "none")
-	case PriorityA:
-		p.Field("priority", "a")
-	case PriorityB:
-		p.Field("priority", "b")
-	case PriorityC:
-		p.Field("priority", "c")
+	} else {
+		p.Field("priority", t.Priority.String())
 	}
 	p.EndType()
 }
@@ -338,10 +363,22 @@ func (b *Block) taskPriority() *TaskPriority {
 	node := paragraph.FirstChild()
 	if _, ok := node.(*TaskMarker); ok {
 		node = node.NextSibling()
+
+		// Logseq allows more than one space between the marker and the
+		// priority, and the spaces after the first one are kept as text.
+		if text, ok := node.(*Text); ok && isOnlySpaces(text) {
+			node = node.NextSibling()
+		}
 	}
 
 	priority, _ := node.(*TaskPriority)
 	return priority
+}
+
+// isOnlySpaces checks if a text node holds only spaces and tabs on one line.
+func isOnlySpaces(text *Text) bool {
+	return text.Value != "" && strings.Trim(text.Value, " \t") == "" &&
+		!text.SoftLineBreak && !text.HardLineBreak
 }
 
 // TaskDateType is the type of a date that is attached to a task.

@@ -62,6 +62,18 @@ var _ = Describe("Linked references", func() {
 		Expect(previews(results)).To(ConsistOf("see target for more"))
 	})
 
+	It("finds blocks that link to the page in another Unicode normal form", func() {
+		// Given page café (composed é), and links to it with a decomposed é
+		// and in upper case
+		graph = openGraphWithPages(dir, map[string]string{
+			"caf\u00e9.md": "- content of cafe\n",
+			"referrer.md":  "- see [[cafe\u0301]]\n- and #CAFE\u0301\n",
+		})
+
+		// Then both blocks are linked references, the same as in Logseq
+		Expect(linkedReferences("caf\u00e9").Size()).To(Equal(2))
+	})
+
 	It("finds only the block with the link, not its parents", func() {
 		graph = openGraphWithPages(dir, map[string]string{
 			"target.md":   "- content of target\n",
@@ -530,5 +542,48 @@ var _ = Describe("Linked references of task markers and priorities", func() {
 		results, err := graph.SearchBlocks(ctx, logseq.WithQuery(logseq.PathReferences("TODO")))
 		Expect(err).ToNot(HaveOccurred())
 		Expect(results.Size()).To(Equal(2))
+	})
+})
+
+var _ = Describe("Linked references from properties with ignored references", func() {
+	var (
+		graph *logseq.Graph
+		dir   string
+		ctx   context.Context
+	)
+
+	BeforeEach(func() {
+		dir = setupGraph()
+		ctx = context.Background()
+	})
+
+	AfterEach(func() {
+		if graph != nil {
+			graph.Close()
+			graph = nil
+		}
+	})
+
+	It("still links a page written as a link in the property, the same as Logseq 0.10.9", func() {
+		// Given a graph that ignores the references of author
+		Expect(os.WriteFile(
+			filepath.Join(dir, "logseq", "config.edn"),
+			[]byte("{:ignored-page-references-keywords #{:author}}"),
+			0o644,
+		)).To(Succeed())
+
+		// And a block with a link to Bob in author
+		graph = openGraphWithPages(dir, map[string]string{
+			"referrer.md": "- a\n  author:: [[Bob]]\n",
+		})
+
+		// Then Logseq 0.10.9 still extracts the link from the raw value, so
+		// the block is a linked reference of Bob
+		page, err := graph.OpenPage("Bob")
+		Expect(err).ToNot(HaveOccurred())
+
+		results, err := page.LinkedReferences(ctx)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(results.Size()).To(Equal(1))
 	})
 })

@@ -127,6 +127,17 @@ func (l *ListSection) debug(p *debugPrinter) {
 
 type ListItem struct {
 	baseNodeWithChildren
+	previousLineAwareImpl
+
+	// MarkerSpace is the spaces and tabs between the marker of the item and
+	// its text, as it is in the file, such as the two spaces of "*  Item". If
+	// it is empty, one space is written.
+	MarkerSpace string
+
+	// Number is the number of an item of an ordered list as it is in the
+	// file, such as "1" for every item of "1. a\n1. b". If it is empty, the
+	// items are numbered from one when they are written.
+	Number string
 }
 
 func NewListItem(items ...Node) *ListItem {
@@ -136,8 +147,17 @@ func NewListItem(items ...Node) *ListItem {
 	return li
 }
 
+// WithPreviousLineType sets the type of the line before the item. A blank
+// line is kept between the item and the item before it. It is not used for
+// the first item of a list, see List.
+func (l *ListItem) WithPreviousLineType(t PreviousLineType) *ListItem {
+	l.previousLineType = t
+	return l
+}
+
 func (l *ListItem) debug(p *debugPrinter) {
 	p.StartType("ListItem")
+	debugPreviousLineAware(p, l)
 	p.Children(l)
 	p.EndType()
 }

@@ -22,10 +22,12 @@ type Text struct {
 	TrailingSpace string
 
 	// LazyLine is whether the line after the line break of the text is in a
-	// quote but is written without the `>` marker, as `b` is in "> a\nb".
-	// Logseq and CommonMark read such a line as a part of the quote. It is
-	// written back without the marker, so that saving does not change the
-	// line. It is not used if the text has no line break.
+	// quote but is written without the `>` marker, as `b` is in "> a\nb", or
+	// is in a footnote definition but is not indented under it, as `b` is in
+	// "[^1]: a\nb". Logseq and CommonMark read such a line as a part of the
+	// quote or the footnote. It is written back without the marker or the
+	// indentation, so that saving does not change the line. It is not used if
+	// the text has no line break.
 	LazyLine bool
 
 	// NextLineIndentation is the spaces and tabs at the start of the line
@@ -34,6 +36,16 @@ type Text struct {
 	// that holds the text. It is written back so that saving does not change
 	// the line. It is not used if the text has no line break.
 	NextLineIndentation string
+
+	// LazyBlockLine is whether the line after the line break of the text is
+	// indented less than the text of the block that holds it, as `b` is in
+	// "- a\nb". Logseq reads such a line as a part of the block. It is
+	// written without the indentation of the text of the block, and
+	// NextLineIndentation then holds its indentation after the column of the
+	// bullet of the block. It is not used if the text has no line break.
+	LazyBlockLine bool
+
+	source string
 }
 
 func NewText(text string) *Text {
@@ -71,6 +83,20 @@ func (t *Text) WithNoLineBreak() *Text {
 	t.SoftLineBreak = false
 	t.HardLineBreak = false
 	return t
+}
+
+// TextSource gets the text as it is in the file, with the backslashes that
+// escape punctuation, such as `a \* b` for the value `a * b`. It is empty for
+// a text that was not read from a file, or that has no such backslashes. A
+// text whose value is still the value of this text is written with its
+// backslashes, so that they do not change on save.
+func (t *Text) TextSource() string {
+	return t.source
+}
+
+// SetTextSource sets the text as it is in the file, see TextSource.
+func (t *Text) SetTextSource(source string) {
+	t.source = source
 }
 
 func (t *Text) isInline() {}
@@ -117,17 +143,35 @@ func (t *RawText) debug(p *debugPrinter) {
 
 var _ InlineNode = (*RawText)(nil)
 
+// CodeSpan is code inside a line of text, written as `code`.
 type CodeSpan struct {
 	baseNode
 
 	// Value is the text of this node.
 	Value string
+
+	source string
 }
 
 func NewCodeSpan(text string) *CodeSpan {
 	return &CodeSpan{
 		Value: text,
 	}
+}
+
+// CodeSpanSource gets the text of the code span as it is in the file, with
+// its backticks and the spaces inside them, such as "“ a ` b “". It is
+// empty for a code span that was not read from a file. A code span whose
+// text reads back as its Value is written with this text, so that its
+// backticks and spaces do not change.
+func (c *CodeSpan) CodeSpanSource() string {
+	return c.source
+}
+
+// SetCodeSpanSource sets the text of the code span as it is in the file, see
+// CodeSpanSource.
+func (c *CodeSpan) SetCodeSpanSource(source string) {
+	c.source = source
 }
 
 func (c *CodeSpan) isInline() {}
@@ -225,6 +269,18 @@ type Paragraph struct {
 	// that starts on a line indented four or more columns keeps this
 	// indentation as part of its text, and it is written back on save.
 	Indentation string
+
+	// TrailingSpace is the spaces and tabs at the end of the last line of the
+	// paragraph, as it is in the file. It is written back so that saving does
+	// not change the line.
+	TrailingSpace string
+
+	// FirstLineIndentation is the spaces and tabs at the start of the first
+	// line of the paragraph, as it is in the file, such as the two spaces
+	// before `a` in "# H\n  a". It does not include the indentation of the
+	// block or quote that holds the paragraph. It is written back so that
+	// saving does not change the line.
+	FirstLineIndentation string
 }
 
 type Strikethrough struct {
@@ -355,6 +411,21 @@ type Heading struct {
 
 	// Level is the level of this heading.
 	Level int
+
+	// Indentation is the spaces before the `#` marks of the heading, as it
+	// is in the file, such as the space in " # Title". It does not include
+	// the indentation of the block or quote that holds the heading.
+	Indentation string
+
+	// MarksSpace is the spaces and tabs after the `#` marks of the heading,
+	// as it is in the file, such as the three spaces of "##   Title". If it
+	// is empty, one space is written between the marks and the text.
+	MarksSpace string
+
+	// TrailingSpace is the spaces and tabs at the end of the line of the
+	// heading, after its text, as it is in the file. It is written back so
+	// that saving does not change the line.
+	TrailingSpace string
 }
 
 func NewHeading(level int, children ...Node) *Heading {

@@ -13,6 +13,9 @@ var pageLinkKind = ast.NewNodeKind("PageLink")
 type pageLink struct {
 	ast.BaseInline
 	Page string
+
+	// Source is the text between the `[[` and `]]` as it is in the file.
+	Source string
 }
 
 func (*pageLink) Kind() ast.NodeKind {
@@ -51,7 +54,8 @@ func (t *pageLinkParser) Parse(parent ast.Node, block text.Reader, pc parser.Con
 	block.Advance(end + 2)
 
 	return &pageLink{
-		Page: unescapePunctuation(value),
+		Page:   unescapePunctuation(value),
+		Source: string(value),
 	}
 }
 
@@ -62,7 +66,13 @@ func (t *pageLinkParser) Parse(parent ast.Node, block text.Reader, pc parser.Con
 // Page links can be nested, as in Logseq, so "[[a [[b]]]]" is a link to the
 // page "a [[b]]". The [[ and ]] in the title are counted. If they do not
 // balance, the first ]] closes the link, so "[[a [[b]]" is a link to "a [[b".
+//
+// A link needs a title, so "[[]]" is not a link, the same as in Logseq.
 func pageLinkClose(line []byte) int {
+	if len(line) >= 4 && line[2] == ']' && line[3] == ']' {
+		return 0
+	}
+
 	depth := 1
 	first := 0
 	for i := 2; i < len(line)-1; i++ {

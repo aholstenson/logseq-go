@@ -75,9 +75,10 @@ func (p *labelledRefLinkParser) parse(parent ast.Node, block text.Reader, pc par
 		return p.InlineParser.Parse(parent, block, pc)
 	}
 
-	// The page link starts after the `](` and the link ends directly after it.
+	// The page link starts after the `](`. The link ends directly after it,
+	// or a title comes after it, as in `[label]([[Page Name]] "title")`.
 	length := pageRefLength(line[2:])
-	if length == 0 || len(line) < 2+length+1 || line[2+length] != ')' {
+	if length == 0 || len(line) < 2+length+1 || (line[2+length] != ')' && !util.IsSpace(line[2+length])) {
 		return p.InlineParser.Parse(parent, block, pc)
 	}
 
@@ -106,6 +107,42 @@ func (p *labelledRefLinkParser) CloseBlock(parent ast.Node, block text.Reader, p
 	}
 }
 
+// refTitleSource gets the text after the `[[Page]]` or `((id))` in the text
+// between the parentheses of a link, such as ` "title"` in
+// `[[Page]] "title"`. Returns the whole text if it does not start with a page
+// link or block reference.
+func refTitleSource(source string) string {
+	trimmed := strings.TrimLeft(source, " \t")
+	if length := pageRefLength([]byte(trimmed)); length > 0 {
+		return trimmed[length:]
+	}
+
+	if length := blockRefLength([]byte(trimmed)); length > 0 {
+		return trimmed[length:]
+	}
+
+	return source
+}
+
+// refLinkTitle reads the title of a page link or block reference with a
+// label from the text after the `[[Page]]` or `((id))`, see refTitleSource.
+// Logseq reads a title only in double quotes, after a space, and only when it
+// is not empty, so `[[Page]] "title"` has the title `title`. Text with only
+// spaces is no title. Returns false for any other text, such as `'title'` or
+// `""`, as Logseq then reads the link as a search and not as a reference.
+func refLinkTitle(rest string) (string, bool) {
+	trimmed := strings.Trim(rest, " \t")
+	if trimmed == "" {
+		return "", true
+	}
+
+	if !util.IsSpace(rest[0]) || len(trimmed) < 3 || trimmed[0] != '"' || trimmed[len(trimmed)-1] != '"' {
+		return "", false
+	}
+
+	return unescapePunctuation([]byte(trimmed[1 : len(trimmed)-1])), true
+}
+
 // pageRefLength gets the length of the `[[...]]` at the start of the value,
 // including the brackets. The page reference ends in the same way as a page
 // link, see pageLinkClose. Returns 0 if the value does not start with a page
@@ -131,15 +168,11 @@ func blockRefLength(value []byte) int {
 		return 0
 	}
 
-	for i := 2; i < len(value)-1; i++ {
-		if value[i] == ')' && value[i+1] == ')' {
-			return i + 2
-		} else if !isUUIDChar(value[i]) {
-			return 0
-		}
+	if len(value) < 40 || value[38] != ')' || value[39] != ')' || !isBlockID(value[2:38]) {
+		return 0
 	}
 
-	return 0
+	return 40
 }
 
 // spacelessReader is a reader that shows the spaces between start and stop in

@@ -1529,6 +1529,16 @@ var _ = Describe("Output", func() {
 
 				Expect(buf.String()).To(Equal("WAITING Task"))
 			})
+
+			It("can write STARTED", func() {
+				err := writer.Write(content.NewParagraph(
+					content.NewTaskMarker(content.TaskStatusStarted),
+					content.NewText("Task"),
+				))
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(buf.String()).To(Equal("STARTED Task"))
+			})
 		})
 
 		Describe("Priorities", func() {

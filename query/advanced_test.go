@@ -300,11 +300,11 @@ var _ = Describe("Advanced queries", func() {
 	Describe("Block attributes", func() {
 		Translates("marker value", where(`[?b :block/marker "TODO"]`), "(task TODO)")
 		Translates("any marker", where(`[?b :block/marker _]`),
-			"(task TODO DOING DONE LATER NOW CANCELLED CANCELED IN-PROGRESS WAIT WAITING)")
+			"(task TODO DOING DONE LATER NOW CANCELLED CANCELED IN-PROGRESS WAIT WAITING STARTED)")
 		Translates("marker not equal", where(`[?b :block/marker ?m] [(not= ?m "DONE")]`),
-			"(and (task TODO DOING DONE LATER NOW CANCELLED CANCELED IN-PROGRESS WAIT WAITING) (not (task DONE)))")
+			"(and (task TODO DOING DONE LATER NOW CANCELLED CANCELED IN-PROGRESS WAIT WAITING STARTED) (not (task DONE)))")
 		Translates("marker in a not", where(`[?b :block/marker ?m] (not [(contains? #{"DONE" "CANCELED"} ?m)])`),
-			"(and (task TODO DOING DONE LATER NOW CANCELLED CANCELED IN-PROGRESS WAIT WAITING) (not (task DONE CANCELED)))")
+			"(and (task TODO DOING DONE LATER NOW CANCELLED CANCELED IN-PROGRESS WAIT WAITING STARTED) (not (task DONE CANCELED)))")
 		Translates("priority", where(`[?b :block/priority ?p] [(contains? #{"A" "B"} ?p)]`), "(priority A B)")
 		Translates("priority equal", where(`[?b :block/priority ?p] [(= "A" ?p)]`), "(priority A)")
 		Translates("content", where(`[?b :block/content ?c] [(clojure.string/includes? ?c "bank")]`), `(content includes "bank")`)

@@ -99,6 +99,44 @@ var _ = Describe("Blocks", func() {
 			Expect(text.(*content.Text).Value).To(Equal("referenced block"))
 		})
 
+		It("resolves a block reference in upper case to an id in lower case, the same as Logseq", func() {
+			// Given a block with an id in lower case, and a reference to it
+			// in upper case
+			graph = openGraphWithPages(dir, map[string]string{
+				"target.md": "- referenced block\n  id:: 65e0a3f6-0000-4000-8000-00000000000a\n",
+				"source.md": "- see ((65E0A3F6-0000-4000-8000-00000000000A))\n",
+			})
+
+			page, err := graph.OpenPage("source")
+			Expect(err).ToNot(HaveOccurred())
+
+			node := page.Blocks().FindDeep(func(block *content.Block) bool {
+				return block.Content().FindDeep(content.IsOfType[*content.BlockRef]()) != nil
+			}).Content().FindDeep(content.IsOfType[*content.BlockRef]())
+
+			// When the block of the reference is opened
+			block, _, err := graph.OpenBlock(ctx, node.(*content.BlockRef).ID)
+
+			// Then it is the block with the id
+			Expect(err).ToNot(HaveOccurred())
+			Expect(block.ID()).To(Equal("65e0a3f6-0000-4000-8000-00000000000a"))
+		})
+
+		It("opens a block with an id in upper case by its id in lower case", func() {
+			// Given a block with an id in upper case
+			graph = openGraphWithPages(dir, map[string]string{
+				"target.md": "- referenced block\n  id:: 65E0A3F6-0000-4000-8000-00000000000B\n",
+			})
+
+			// When it is opened by the id in lower case
+			block, _, err := graph.OpenBlock(ctx, "65e0a3f6-0000-4000-8000-00000000000b")
+
+			// Then it is found
+			Expect(err).ToNot(HaveOccurred())
+			text := block.Content().FindDeep(content.IsOfType[*content.Text]())
+			Expect(text.(*content.Text).Value).To(Equal("referenced block"))
+		})
+
 		It("fails when no block has the id", func() {
 			graph = openGraphWithPages(dir, map[string]string{
 				"target.md": "- a block without an id\n",

@@ -123,6 +123,17 @@ var _ = Describe("Task queries", func() {
 		It("matches nothing for no priority", func() {
 			Expect(searchBlocks(idx, indexing.PriorityIs(content.PriorityNone))).To(BeEmpty())
 		})
+
+		It("matches a priority other than A, B and C", func() {
+			// Given a task with the priority D
+			indexPage(idx, "pages/b.md", "Page B",
+				taskBlock(content.TaskStatusTodo, content.PriorityOf('D'), "later"),
+			)
+
+			// Then it is found by that priority only
+			Expect(previewsOf(searchBlocks(idx, indexing.PriorityIs(content.PriorityOf('D'))))).To(ConsistOf("later"))
+			Expect(previewsOf(searchBlocks(idx, indexing.PriorityIs(content.PriorityA)))).To(ConsistOf("todo"))
+		})
 	})
 
 	Describe("ScheduledBetween", func() {

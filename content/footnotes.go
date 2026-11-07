@@ -42,6 +42,11 @@ type FootnoteDefinition struct {
 	// Label identifies the footnote, and is what the references to it point
 	// at.
 	Label string
+
+	// LabelSpace is the spaces and tabs between the `:` after the label and
+	// the text of the footnote, as it is in the file. If it is empty, one
+	// space is written before the text.
+	LabelSpace string
 }
 
 func NewFootnoteDefinition(label string, children ...Node) *FootnoteDefinition {

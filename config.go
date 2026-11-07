@@ -230,9 +230,9 @@ type Config struct {
 	// are read that way also when they are not in the list.
 	PropertiesSeparatedByCommas []string
 
-	// IgnoredPageReferences are the properties whose value never points at a
-	// page, also when it is written as a link. It replaces
-	// `:ignored-page-references-keywords`.
+	// IgnoredPageReferences are the properties whose value is not split into
+	// pages at commas. A link or a tag in the value still points at its page,
+	// the same as in Logseq. It replaces `:ignored-page-references-keywords`.
 	IgnoredPageReferences []string
 
 	// PropertyPages is whether the name of a property points at the page with

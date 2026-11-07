@@ -7,13 +7,16 @@ import (
 
 	"github.com/aholstenson/logseq-go/content"
 	"github.com/aholstenson/logseq-go/internal/indexing"
+	"golang.org/x/text/unicode/norm"
 )
 
 // pageTitlesEqual checks if two titles refer to the same page. Logseq does not
 // distinguish between titles that only differ in case, so `[[example]]` and
-// `[[Example]]` point at the same page.
+// `[[Example]]` point at the same page. Logseq also compares titles in the
+// Unicode NFC form, so `café` written with `é` and with `e` and a combining
+// accent is the same page.
 func pageTitlesEqual(a string, b string) bool {
-	return strings.EqualFold(a, b)
+	return strings.EqualFold(norm.NFC.String(a), norm.NFC.String(b))
 }
 
 // retargetPageReferences points every reference to the page `from` in the given

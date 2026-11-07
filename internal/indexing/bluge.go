@@ -16,6 +16,7 @@ import (
 	"github.com/blugelabs/bluge"
 	"github.com/blugelabs/bluge/index"
 	"github.com/blugelabs/bluge/search"
+	"golang.org/x/text/unicode/norm"
 )
 
 type idTerm string
@@ -32,7 +33,7 @@ func (i idTerm) Term() []byte {
 // Increase it when the way pages or blocks are indexed changes, so that an
 // index stored on disk is built again with the new fields. Without that the
 // pages that did not change since they were indexed keep their old documents.
-const indexVersion = 26
+const indexVersion = 30
 
 // versionDocID is the id of the document that stores the version of the
 // index. It does not have a type, so searches for pages and blocks never
@@ -804,7 +805,8 @@ func transferTask(doc *bluge.Document, block *content.Block) {
 	}
 
 	if priority := priorityValue(block.Priority()); priority != "" {
-		// The values A, B and C sort in the order of the priorities.
+		// The values A, B and C sort in the order of the priorities, and
+		// other priorities sort by their character.
 		doc.AddField(bluge.NewKeywordField("priority", priority).Sortable())
 	}
 
@@ -829,18 +831,10 @@ func addTitleSort(doc *bluge.Document, page *Page) {
 }
 
 // priorityValue is the value a priority is indexed as, or an empty string for
-// no priority.
+// no priority. It is the character of the priority as it is written, so
+// `[#a]` and `[#A]` are not the same priority, the same as in Logseq.
 func priorityValue(priority content.Priority) string {
-	switch priority {
-	case content.PriorityA:
-		return "A"
-	case content.PriorityB:
-		return "B"
-	case content.PriorityC:
-		return "C"
-	}
-
-	return ""
+	return priority.String()
 }
 
 // formatLocation writes a location as it is stored in the index, such as
@@ -1045,11 +1039,13 @@ func (i *BlugeIndex) refTitles(ref content.PageRef) []string {
 // distinguish between page titles that only differ in case, so `[[example]]`
 // and `[[Example]]` are references to the same page and have to match the same
 // query. Logseq also removes a slash at the start and at the end of a title,
-// so `[[/a/]]` is a reference to the page `a`.
+// so `[[/a/]]` is a reference to the page `a`. Like Logseq, the lower case
+// title is brought into the Unicode NFC form, so `café` written with `é` and
+// with `e` and a combining accent is the same page.
 func normalizeRef(title string) string {
 	title = strings.TrimPrefix(title, "/")
 	title = strings.TrimSuffix(title, "/")
-	return strings.ToLower(title)
+	return norm.NFC.String(strings.ToLower(title))
 }
 
 // transferLinks indexes the URLs that the nodes and the nodes below them link

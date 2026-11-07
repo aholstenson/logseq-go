@@ -165,6 +165,8 @@ var _ = Describe("Tasks", func() {
 			Expect(content.TaskStatusTodo.IsOpen()).To(BeTrue())
 			Expect(content.TaskStatusTodo.IsClosed()).To(BeFalse())
 			Expect(content.TaskStatusWaiting.IsOpen()).To(BeTrue())
+			Expect(content.TaskStatusStarted.IsOpen()).To(BeTrue())
+			Expect(content.TaskStatusStarted.String()).To(Equal("STARTED"))
 		})
 
 		It("is closed for a status that is finished", func() {
@@ -315,6 +317,23 @@ var _ = Describe("Tasks", func() {
 		It("can get the priority after a marker", func() {
 			block := content.NewBlock(content.NewParagraph(
 				content.NewTaskMarker(content.TaskStatusTodo),
+				content.NewTaskPriority(content.PriorityA),
+				content.NewText("Task"),
+			))
+
+			Expect(block.Priority()).To(Equal(content.PriorityA))
+		})
+
+		It("writes a priority as its character", func() {
+			Expect(content.PriorityA.String()).To(Equal("A"))
+			Expect(content.PriorityOf('d').String()).To(Equal("d"))
+			Expect(content.PriorityNone.String()).To(BeEmpty())
+		})
+
+		It("can get the priority after a marker and more spaces", func() {
+			block := content.NewBlock(content.NewParagraph(
+				content.NewTaskMarker(content.TaskStatusTodo),
+				content.NewText(" "),
 				content.NewTaskPriority(content.PriorityA),
 				content.NewText("Task"),
 			))

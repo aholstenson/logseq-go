@@ -53,9 +53,10 @@ second page for the same content.
 The properties that hold a list of pages, such as `alias::` and `tags::`, have
 their values read as references to those pages, so `tags:: Book, Reading`
 points at two pages without either being written as a link. The graph decides
-which other properties are read that way via `:property/separated-by-commas`,
-and which properties never point at a page via
-`:ignored-page-references-keywords`. In the value of any property, only the
+which other properties are read that way via `:property/separated-by-commas`.
+A property in `:ignored-page-references-keywords` is not read that way, so
+its text names no page, but a link or a tag in its value still points at its
+page, the same as in Logseq 0.10.9. In the value of any property, only the
 links at the top level point at pages, the same as in Logseq: `[[x]]` in
 `related:: **[[x]]**` is text in bold, not a reference.
 
@@ -161,6 +162,17 @@ at, can be opened directly in a graph that has indexing enabled:
 
 ```go
 block, page, err := graph.OpenBlock(ctx, "65a1b2c3-d4e5-6789-abcd-ef0123456789")
+```
+
+The ids of the blocks that a block points at are found the same way as in
+Logseq. Besides `((id))` and `{{embed ((id))}}`, a link to `id://id` or to the
+id alone, such as `[label](id)` or `[[id]]`, points at the block:
+
+```go
+for _, id := range block.Children().BlockReferenceIDs() {
+  target, _, err := graph.OpenBlock(ctx, id)
+  // ...
+}
 ```
 
 Content can also be opened for writing, by creating a transaction:
@@ -389,6 +401,11 @@ tasks, err := graph.SearchBlocks(ctx, logseq.WithQuery(logseq.And(
   logseq.DeadlineBetween(time.Time{}, endOfToday),
 )))
 ```
+
+Logseq offers the priorities A, B and C, but it reads any one character as a
+priority, such as `[#D]` or `[#1]`. Use `content.PriorityOf('D')` for such a
+priority. A query such as `(priority d)` makes the name upper case, the same as
+in Logseq, so it finds `[#D]` but not `[#d]`.
 
 Blocks can be found by the pages they are about. `PathReferences` matches the
 blocks on a page, the blocks that reference it, and all blocks below them:

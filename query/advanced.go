@@ -3467,7 +3467,7 @@ func (t *translator) taskFilter(node *ednNode, values []string) (Filter, error) 
 func (t *translator) priorityFilter(node *ednNode, values []string) (Filter, error) {
 	priorities := make([]content.Priority, 0, len(values))
 	for _, value := range values {
-		priority, ok := priorityValues[strings.ToUpper(value)]
+		priority, ok := priorityNamed(value)
 		if !ok {
 			return nil, t.unsupported(node, "unknown priority %q", value)
 		}

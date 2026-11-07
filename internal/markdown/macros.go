@@ -62,6 +62,26 @@ const (
 	macroParseStateExpectComma
 )
 
+// macroPrefixes are the characters after which Logseq can start a macro. They
+// are the characters that end a run of plain text in the Markdown parser of
+// Logseq (mldoc), as for block references, see blockRefPrefixes. After `_`, `^`
+// and `#`, Logseq reads a subscript, a superscript or a tag first, so a macro
+// does not start there.
+const macroPrefixes = " \t\n\r\f\\[*~`=${"
+
+// canStartMacro returns true if a macro can start at the current position.
+// Logseq reads a run of plain text as one piece, so `x{{m}}` is text, see
+// canStartAfterText.
+func canStartMacro(parent ast.Node, block text.Reader) bool {
+	return canStartAfterText(parent, block, macroPrefixes)
+}
+
+// macroCanFollow returns true if a macro can start directly after the
+// Markdown text.
+func macroCanFollow(text []byte) bool {
+	return canFollowText(text, macroPrefixes)
+}
+
 // macroParser parses Logseq macros which are in the form of {{macro-name arg1 arg2}}.
 type macroParser struct {
 }
@@ -75,6 +95,11 @@ func (t *macroParser) Parse(parent ast.Node, block text.Reader, pc parser.Contex
 
 	start := 2
 	if len(line) < 2 || line[0] != '{' || line[1] != '{' {
+		return nil
+	}
+
+	if !canStartMacro(parent, block) {
+		// Logseq reads `x{{m [[q]]}}` as text with a page link.
 		return nil
 	}
 

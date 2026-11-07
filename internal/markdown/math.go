@@ -174,7 +174,7 @@ type mathScanner struct {
 
 	lineEnds nextMatch
 	doubles  nextMatch
-	closers  nextMatch
+	dollars  nextMatch
 }
 
 func newMathScanner(src []byte) *mathScanner {
@@ -203,10 +203,13 @@ func (s *mathScanner) lineEnd(offset int) int {
 // returning its LaTeX, how much of the text it takes up and whether it was
 // written with two dollar signs.
 //
-// The rules for a formula between single dollar signs keep the amounts in a
-// sentence such as `$5 and $10` out of it: the opening dollar sign is
-// followed by something other than a space, the closing one comes after
-// something other than a space, and a digit never follows the closing one.
+// A formula between single dollar signs ends at the next dollar sign, the same
+// as in Logseq, so `$5 [[Bob]] $x$` has the formula `x` and a page link. The
+// rules keep the amounts in a sentence such as `$5 and $10` out of it: the
+// opening dollar sign is followed by something other than a space, and the
+// closing one comes after something other than a space. A digit never follows
+// the closing one, so `US$5 and US$6` has no formula either. Logseq does not
+// have this last rule.
 func (s *mathScanner) at(offset int, end int) (value []byte, length int, displayed bool, ok bool) {
 	line := s.src[offset:end]
 	if bytes.HasPrefix(line, []byte("$$")) {
@@ -229,39 +232,25 @@ func (s *mathScanner) at(offset int, end int) (value []byte, length int, display
 		return nil, 0, false, false
 	}
 
-	closing := s.closers.find(offset+2, func(from int) int {
-		for i := from; i < len(s.src); i++ {
-			if s.closesFormula(i) {
-				return i
-			}
+	closing := s.dollars.find(offset+1, func(from int) int {
+		if i := bytes.IndexByte(s.src[from:], '$'); i >= 0 {
+			return from + i
 		}
 
 		return -1
 	})
 
-	if (closing < 0 || closing >= end) && end-1 >= offset+2 &&
-		s.src[end-1] == '$' && !isMathSpace(s.src[end-2]) {
-		// A dollar sign at the end of the line closes the formula also when
-		// a digit comes after the end, such as in the next cell of a table.
-		closing = end - 1
+	if closing < offset+2 || closing >= end || isMathSpace(s.src[closing-1]) {
+		return nil, 0, false, false
 	}
 
-	if closing < 0 || closing >= end {
+	// A dollar sign at the end of the line closes the formula also when a
+	// digit comes after the end, such as in the next cell of a table.
+	if closing != end-1 && closing+1 < len(s.src) && util.IsNumeric(s.src[closing+1]) {
 		return nil, 0, false, false
 	}
 
 	return s.src[offset+1 : closing], closing + 1 - offset, false, true
-}
-
-// closesFormula checks if the dollar sign at the position can close a formula
-// between single dollar signs: it comes after something other than a space,
-// and no digit follows it.
-func (s *mathScanner) closesFormula(i int) bool {
-	if s.src[i] != '$' || isMathSpace(s.src[i-1]) {
-		return false
-	}
-
-	return i+1 >= len(s.src) || !util.IsNumeric(s.src[i+1])
 }
 
 func isMathSpace(b byte) bool {
@@ -457,7 +446,7 @@ func isLatexEnvironmentEnd(line []byte, environment string) bool {
 // isBulletLine checks if a line, without its indentation, starts a block.
 func isBulletLine(line []byte) bool {
 	line = bytes.TrimRight(line, "\r\n")
-	return bytes.Equal(line, []byte("-")) || bytes.HasPrefix(line, []byte("- ")) || bytes.HasPrefix(line, []byte("-\t"))
+	return bytes.Equal(line, []byte("-")) || bytes.HasPrefix(line, []byte("- ")) || bytes.HasPrefix(line, []byte("-\t")) || isHeadingBullet(line)
 }
 
 var _ parser.BlockParser = (*latexEnvironmentParser)(nil)

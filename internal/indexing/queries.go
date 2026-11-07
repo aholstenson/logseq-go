@@ -137,28 +137,32 @@ func TitlePartiallyMatches(text string) Query {
 	}
 }
 
+// BlockIDEquals matches the block with the id, which is the value of its
+// `id` property. The id is matched without regard to case, the same as in
+// Logseq, see content.Block.ID.
 func BlockIDEquals(id string) Query {
 	return &fieldEquals{
 		field: "id",
-		value: id,
+		value: strings.ToLower(id),
 	}
 }
 
 // ParentIs matches the blocks directly below the block with the id, which is
-// the value of its `id` property.
+// the value of its `id` property. The id is matched without regard to case.
 func ParentIs(id string) Query {
 	return &fieldEquals{
 		field: "parent",
-		value: id,
+		value: strings.ToLower(id),
 	}
 }
 
 // AncestorIs matches the blocks below the block with the id at any depth,
-// which is the value of its `id` property.
+// which is the value of its `id` property. The id is matched without regard
+// to case.
 func AncestorIs(id string) Query {
 	return &fieldEquals{
 		field: "ancestor",
-		value: id,
+		value: strings.ToLower(id),
 	}
 }
 

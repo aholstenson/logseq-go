@@ -139,7 +139,9 @@ func (t *tagParser) Parse(parent ast.Node, block text.Reader, pc parser.Context)
 // tagNameLength returns the length in bytes of the tag name at the start of
 // line. It uses the same rule as Logseq:
 //
-//   - A Unicode space ends the name.
+//   - A space, a tab, a line break or a form feed ends the name, see
+//     isTagSpace. Other Unicode spaces, such as a non-breaking space, are
+//     part of the name, so "#a\u00a0b" has the tag "a\u00a0b".
 //   - A run of tag delimiters before a space or the end of line ends the
 //     name, so "#tag,.?" has the tag "tag" followed by the text ",.?".
 //   - Other tag delimiters end the name, except "." and ";" which stay in
@@ -147,7 +149,7 @@ func (t *tagParser) Parse(parent ast.Node, block text.Reader, pc parser.Context)
 func tagNameLength(line []byte) int {
 	for i := 0; i < len(line); {
 		r, size := utf8.DecodeRune(line[i:])
-		if unicode.IsSpace(r) {
+		if isTagSpace(r) {
 			return i
 		}
 
@@ -162,7 +164,7 @@ func tagNameLength(line []byte) int {
 			}
 
 			next, _ := utf8.DecodeRune(line[j:])
-			if unicode.IsSpace(next) || !strings.ContainsRune(tagInnerDelimiters, r) {
+			if isTagSpace(next) || !strings.ContainsRune(tagInnerDelimiters, r) {
 				return i
 			}
 		}
@@ -171,6 +173,13 @@ func tagNameLength(line []byte) int {
 	}
 
 	return len(line)
+}
+
+// isTagSpace checks if the character ends the name of a tag. Logseq (mldoc)
+// ends a tag only at ASCII whitespace other than the vertical tab: a space, a
+// tab, a line break, a carriage return or a form feed.
+func isTagSpace(r rune) bool {
+	return r == ' ' || r == '\t' || r == '\n' || r == '\r' || r == '\f'
 }
 
 // formattingCloserIndex returns the position of the first run of markers in

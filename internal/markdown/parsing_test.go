@@ -821,15 +821,16 @@ var _ = Describe("Parsing", func() {
 		})
 
 		It("does not end a tag inside a multi-byte character", func() {
-			// A non-breaking space ends the tag, but only as a whole character
-			// and not on the byte of it that looks like one.
-			block, err := markdown.ParseString("#tag\u00a0name")
+			// The second byte of "ą" is 0x85, which is a next line character
+			// when it is read as a byte on its own. A non-breaking space is
+			// part of the tag, the same as in Logseq.
+			block, err := markdown.ParseString("#tagą\u00a0name end")
 			Expect(err).ToNot(HaveOccurred())
 
 			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
-					content.NewHashtag("tag"),
-					content.NewText("\u00a0name"),
+					content.NewHashtag("tagą\u00a0name"),
+					content.NewText(" end"),
 				),
 			)))
 		})
@@ -1311,12 +1312,23 @@ var _ = Describe("Parsing", func() {
 
 		Describe("Block embed", func() {
 			It("can parse block embed", func() {
+				block, err := markdown.ParseString("{{embed ((64f0a2b1-1234-4abc-9def-0123456789ab))}}")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewParagraph(
+						content.NewBlockEmbed("64f0a2b1-1234-4abc-9def-0123456789ab"),
+					),
+				)))
+			})
+
+			It("keeps an embed of an id that is not a uuid as a macro, the same as Logseq", func() {
 				block, err := markdown.ParseString("{{embed ((block))}}")
 				Expect(err).ToNot(HaveOccurred())
 
 				Expect(block).To(tests.EqualNode(content.NewBlock(
 					content.NewParagraph(
-						content.NewBlockEmbed("block"),
+						content.NewMacro("embed", "((block))"),
 					),
 				)))
 			})
@@ -3130,22 +3142,22 @@ var _ = Describe("Parsing", func() {
 				)))
 			})
 
-			It("marks a property whose references are ignored", func() {
+			It("does not split a configured list property whose references are ignored", func() {
 				block, err := markdown.ParseString(
-					"author:: Someone",
+					"author:: First, Second",
+					markdown.WithPropertiesSeparatedByCommas("author"),
 					markdown.WithIgnoredPageReferences("author"),
 				)
 				Expect(err).ToNot(HaveOccurred())
 
 				Expect(block).To(tests.EqualNode(content.NewBlock(
 					content.NewProperties(
-						content.NewProperty("author", content.NewText("Someone")).
-							WithPageRefsIgnored(true),
+						content.NewProperty("author", content.NewText("First, Second")),
 					),
 				)))
 			})
 
-			It("keeps the page links of a property whose references are ignored", func() {
+			It("keeps the page links of a property whose references are ignored as links, the same as Logseq", func() {
 				block, err := markdown.ParseString(
 					"author:: [[Someone]]",
 					markdown.WithIgnoredPageReferences("author"),
@@ -3154,8 +3166,7 @@ var _ = Describe("Parsing", func() {
 
 				Expect(block).To(tests.EqualNode(content.NewBlock(
 					content.NewProperties(
-						content.NewProperty("author", content.NewPageLink("Someone")).
-							WithPageRefsIgnored(true),
+						content.NewProperty("author", content.NewPageLink("Someone")),
 					),
 				)))
 			})
@@ -3169,8 +3180,7 @@ var _ = Describe("Parsing", func() {
 
 				Expect(block).To(tests.EqualNode(content.NewBlock(
 					content.NewProperties(
-						content.NewProperty("tags", content.NewText("First, Second")).
-							WithPageRefsIgnored(true),
+						content.NewProperty("tags", content.NewText("First, Second")),
 					),
 				)))
 			})
@@ -3575,6 +3585,25 @@ var _ = Describe("Parsing", func() {
 					),
 				)))
 			})
+
+			It("can parse STARTED", func() {
+				block, err := markdown.ParseString("STARTED Task")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewParagraph(
+						content.NewTaskMarker(content.TaskStatusStarted),
+						content.NewText("Task"),
+					),
+				)))
+			})
+
+			It("does not read a marker in lower case, the same as Logseq", func() {
+				root, err := markdown.ParseString("- started Task")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(root.Blocks()[0].TaskStatus()).To(Equal(content.TaskStatusNone))
+			})
 		})
 
 		Describe("Priorities", func() {
@@ -3626,14 +3655,27 @@ var _ = Describe("Parsing", func() {
 				)))
 			})
 
-			It("keeps an unknown priority as text", func() {
+			It("reads any one character as a priority, the same as Logseq", func() {
 				block, err := markdown.ParseString("TODO [#D] Task")
 				Expect(err).ToNot(HaveOccurred())
 
 				Expect(block).To(tests.EqualNode(content.NewBlock(
 					content.NewParagraph(
 						content.NewTaskMarker(content.TaskStatusTodo),
-						content.NewText("[#D] Task"),
+						content.NewTaskPriority(content.PriorityOf('D')),
+						content.NewText("Task"),
+					),
+				)))
+			})
+
+			It("keeps a priority with more than one character as text", func() {
+				block, err := markdown.ParseString("TODO [#AB] Task")
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block).To(tests.EqualNode(content.NewBlock(
+					content.NewParagraph(
+						content.NewTaskMarker(content.TaskStatusTodo),
+						content.NewText("[#AB] Task"),
 					),
 				)))
 			})
@@ -3925,6 +3967,323 @@ var _ = Describe("Parsing", func() {
 					content.NewLogbookEntryRaw("* State \"SOMEDAY\" from \"TODO\" [2023-06-26 Mon 17:25:56]"),
 				)))
 			})
+		})
+	})
+
+	Describe("Dollar signs that do not start math", func() {
+		It("refers to a page between a price and a formula", func() {
+			// Given a price, a page link and a formula on one line
+			block, err := markdown.ParseString("- $5 [[Bob]] $x$")
+			Expect(err).ToNot(HaveOccurred())
+
+			// When it is parsed
+			// Then the page link is not part of a formula, the same as Logseq
+			titles := make([]string, 0)
+			for _, ref := range block.Children().PageReferences() {
+				titles = append(titles, ref.(content.PageRef).GetTo())
+			}
+			Expect(titles).To(ContainElement("Bob"))
+		})
+
+		// formulas parses the input and returns the LaTeX of every formula.
+		formulas := func(input string) []string {
+			block, err := markdown.ParseString(input)
+			Expect(err).ToNot(HaveOccurred())
+
+			values := make([]string, 0)
+			for _, node := range block.Children().FilterDeep(content.IsOfType[*content.Math]()) {
+				values = append(values, node.(*content.Math).Value)
+			}
+			return values
+		}
+
+		DescribeTable("ends a formula at the next dollar sign, the same as Logseq",
+			func(input string, expected []string) {
+				Expect(formulas(input)).To(Equal(expected))
+			},
+			Entry("after a price with a space before the next dollar sign", "- price $5 and $ 6 and $x$y", []string{"x"}),
+			Entry("after text with a space before the dollar sign", "- $a $b$", []string{"b"}),
+			Entry("three formulas in a row", "- $x$y$z$", []string{"x", "z"}),
+			Entry("two formulas next to each other", "- $a$$b$", []string{"a", "b"}),
+			Entry("between words", "- a$x$b", []string{"x"}),
+			Entry("two prices", "- $5 and $10", []string{}),
+		)
+
+		DescribeTable("keeps a dollar sign before a digit out of a formula",
+			func(input string) {
+				Expect(formulas(input)).To(BeEmpty())
+			},
+			Entry("two amounts in US dollars", "- US$5 [[z]] and US$6"),
+			Entry("a formula before a digit", "- $x$5"),
+		)
+	})
+
+	Describe("Macros directly after a word", func() {
+		It("reads a macro directly after a word as text with its page links", func() {
+			// Given `x{{m [[q]]}}` with no space before the macro
+			block, err := markdown.ParseString("- x{{m [[q]]}}")
+			Expect(err).ToNot(HaveOccurred())
+
+			// When it is parsed
+			// Then there is no macro and the page link refers to q, the same as Logseq
+			Expect(block.Children().FindDeep(content.IsOfType[*content.Macro]())).To(BeNil())
+
+			titles := make([]string, 0)
+			for _, ref := range block.Children().PageReferences() {
+				titles = append(titles, ref.(content.PageRef).GetTo())
+			}
+			Expect(titles).To(ContainElement("q"))
+		})
+
+		// isMacro checks if the first block has a macro of any kind.
+		isMacro := func(input string) bool {
+			block, err := markdown.ParseString(input)
+			Expect(err).ToNot(HaveOccurred())
+
+			return block.Children().FindDeep(func(node content.Node) bool {
+				_, ok := node.(content.MacroSourceAware)
+				return ok
+			}) != nil
+		}
+
+		DescribeTable("reads text before a macro the same as Logseq",
+			func(input string, macro bool) {
+				Expect(isMacro(input)).To(Equal(macro))
+			},
+			Entry("query after a percent sign", "- %{{query (and [[q]] x)}}", false),
+			Entry("embed after a letter", "- x{{embed [[q]]}}", false),
+			Entry("after a digit", "- 1{{m a}}", false),
+			Entry("after a comma", "- ,{{m a}}", false),
+			Entry("after an opening parenthesis", "- ({{m a}}", false),
+			Entry("after a space", "- x {{m a}}", true),
+			Entry("at the start", "- {{m a}}", true),
+			Entry("after an opening bracket", "- [{{m a}}", true),
+			Entry("after a dollar sign", "- ${{m a}}", true),
+			Entry("after an escaped character", "- \\){{m a}}", true),
+			Entry("after a page link", "- [[p]]{{m a}}", true),
+			Entry("after bold text", "- **b**{{m a}}", true),
+			Entry("after code", "- `c`{{m a}}", true),
+			Entry("after a timestamp", "- <2024-01-01 Mon>{{m a}}", true),
+		)
+	})
+
+	Describe("Links whose target is a block id", func() {
+		// blockRefIDs returns the id of every block that the parsed text
+		// refers to.
+		blockRefIDs := func(input string) []string {
+			block, err := markdown.ParseString(input)
+			Expect(err).ToNot(HaveOccurred())
+
+			return block.Children().BlockReferenceIDs()
+		}
+
+		// Given a Markdown link whose target is a block id, When it is parsed,
+		// Then it refers to the block, the same as Logseq (graph-parser reads
+		// any link whose target is a UUID, and id:// links, as block refs).
+		DescribeTable("refers to the block",
+			func(input string) {
+				Expect(blockRefIDs(input)).To(Equal([]string{"64f0a2b1-1234-4abc-9def-0123456789ab"}))
+			},
+			Entry("with the id protocol", "- [x](id://64f0a2b1-1234-4abc-9def-0123456789ab)"),
+			Entry("with a bare id", "- [x](64f0a2b1-1234-4abc-9def-0123456789ab)"),
+			Entry("with an upper case id", "- [x](64F0A2B1-1234-4ABC-9DEF-0123456789AB)"),
+			Entry("in angle brackets with the id protocol", "- <id://64f0a2b1-1234-4abc-9def-0123456789ab>"),
+			Entry("as an image", "- ![x](64f0a2b1-1234-4abc-9def-0123456789ab)"),
+			Entry("as a page link", "- [[64f0a2b1-1234-4abc-9def-0123456789ab]]"),
+			Entry("as a labelled page link", "- [x]([[64f0a2b1-1234-4abc-9def-0123456789ab]])"),
+			Entry("as a block reference", "- ((64f0a2b1-1234-4abc-9def-0123456789ab))"),
+			Entry("as a block embed", "- {{embed ((64f0a2b1-1234-4abc-9def-0123456789ab))}}"),
+			Entry("in a property value", "- a\n  p:: [[64f0a2b1-1234-4abc-9def-0123456789ab]]"),
+			Entry("twice", "- ((64f0a2b1-1234-4abc-9def-0123456789ab)) [x](id://64f0a2b1-1234-4abc-9def-0123456789ab)"),
+		)
+
+		DescribeTable("does not refer to a block",
+			func(input string) {
+				Expect(blockRefIDs(input)).To(BeEmpty())
+			},
+			Entry("with an id that is not a uuid", "- [x](id://abc)"),
+			Entry("with a web link", "- [x](https://example.com/64f0a2b1-1234-4abc-9def-0123456789ab)"),
+			Entry("with a tag", "- #64f0a2b1-1234-4abc-9def-0123456789ab"),
+		)
+
+		It("keeps the page reference of a page link to a block id", func() {
+			// Given a page link whose title is a block id
+			block, err := markdown.ParseString("- [[64f0a2b1-1234-4abc-9def-0123456789ab]]")
+			Expect(err).ToNot(HaveOccurred())
+
+			// Then it is still a reference to the page with that title, the
+			// same as Logseq
+			Expect(block.Children().PageReferences()).To(HaveLen(1))
+		})
+	})
+
+	Describe("Empty page links", func() {
+		It("makes no page reference from an empty page link", func() {
+			// Given a block with `[[]]`
+			block, err := markdown.ParseString("- [[]]")
+			Expect(err).ToNot(HaveOccurred())
+
+			// When it is parsed
+			// Then there is no page reference, the same as Logseq
+			Expect(block.Children().PageReferences()).To(BeEmpty())
+		})
+
+		// pageRefTargets parses the input and returns the targets of all page
+		// references in it.
+		pageRefTargets := func(input string) []string {
+			block, err := markdown.ParseString(input)
+			Expect(err).ToNot(HaveOccurred())
+
+			targets := []string{}
+			for _, ref := range block.Children().PageReferences() {
+				targets = append(targets, ref.(content.PageRef).GetTo())
+			}
+			return targets
+		}
+
+		DescribeTable("makes no page reference to an empty or blank title, the same as Logseq",
+			func(input string) {
+				Expect(pageRefTargets(input)).To(BeEmpty())
+			},
+			Entry("empty tag", "- #[[]]"),
+			Entry("page link with a space", "- [[ ]]"),
+			Entry("tag with a space", "- #[[ ]]"),
+			Entry("embed of an empty page link", "- {{embed [[]]}}"),
+			Entry("embed of a page link with a space", "- {{embed [[ ]]}}"),
+			Entry("labelled empty page link", "- [l]([[]])"),
+			Entry("labelled page link with a space", "- [l]([[ ]])"),
+			Entry("property value with a space in a page link", "- a\n  p:: [[ ]]"),
+		)
+
+		It("still reads a page link after an empty one", func() {
+			Expect(pageRefTargets("- [[]] [[x]]")).To(Equal([]string{"x"}))
+		})
+	})
+
+	Describe("Hashtags with Unicode spaces in the name", func() {
+		// pageRefTitles returns the title of every page the parsed text refers to.
+		pageRefTitles := func(input string) []string {
+			block, err := markdown.ParseString(input)
+			Expect(err).ToNot(HaveOccurred())
+
+			titles := make([]string, 0)
+			for _, ref := range block.Children().PageReferences() {
+				titles = append(titles, ref.(content.PageRef).GetTo())
+			}
+			return titles
+		}
+
+		// Given a hashtag with a space that is not ASCII in the name, When it is
+		// parsed, Then the tag goes on to the next ASCII space, the same as Logseq.
+		DescribeTable("keeps the space in the tag the same as Logseq",
+			func(input string, expected string) {
+				Expect(pageRefTitles(input)).To(ConsistOf(expected))
+			},
+			Entry("with a non-breaking space", "- #x\u00a0y", "x\u00a0y"),
+			Entry("with an ideographic space", "- #x\u3000y", "x\u3000y"),
+			Entry("with an em space", "- #x\u2003y", "x\u2003y"),
+			Entry("with a vertical tab", "- #x\vy", "x\vy"),
+			Entry("with a dot before a non-breaking space", "- #a.\u00a0b", "a.\u00a0b"),
+			Entry("with a comma before a non-breaking space", "- #a,\u00a0b", "a"),
+			Entry("ended by a tab", "- #a\tb", "a"),
+			Entry("ended by a form feed", "- #a\fb", "a"),
+		)
+	})
+
+	Describe("Double parentheses without a block id", func() {
+		It("makes no block reference from text that is not a block id", func() {
+			// Given `((abc))`, which is not a full block id
+			block, err := markdown.ParseString("- ((abc))")
+			Expect(err).ToNot(HaveOccurred())
+
+			// When it is parsed
+			// Then there is no block reference, the same as Logseq
+			Expect(block.Children().FindDeep(content.IsOfType[*content.BlockRef]())).To(BeNil())
+		})
+
+		It("makes no page references from the text inside the parentheses", func() {
+			// Given `((see [[x]]))`, which Logseq reads as one block reference with an invalid id
+			block, err := markdown.ParseString("- ((see [[x]]))")
+			Expect(err).ToNot(HaveOccurred())
+
+			// When it is parsed
+			// Then there are no page references, the same as Logseq
+			Expect(block.Children().PageReferences()).To(BeEmpty())
+		})
+
+		// pageRefTargets parses the input and returns the targets of all page
+		// references in it.
+		pageRefTargets := func(input string) []string {
+			block, err := markdown.ParseString(input)
+			Expect(err).ToNot(HaveOccurred())
+
+			targets := []string{}
+			for _, ref := range block.Children().PageReferences() {
+				targets = append(targets, ref.(content.PageRef).GetTo())
+			}
+			return targets
+		}
+
+		DescribeTable("reads references in the same places as Logseq",
+			func(input string, expected []string) {
+				Expect(pageRefTargets(input)).To(Equal(expected))
+			},
+			Entry("tag inside, tag after", "- ((see #y)) #w", []string{"w"}),
+			Entry("page link after the first closing parentheses", "- ((x ((y)) [[z]]))", []string{"z"}),
+			Entry("single closing parenthesis inside", "- ((x) [[z]]))", []string{"z"}),
+			Entry("directly after a word", "- a((see [[x]]))", []string{"x"}),
+		)
+
+		DescribeTable("makes no block reference from an id that is not a uuid",
+			func(input string) {
+				block, err := markdown.ParseString(input)
+				Expect(err).ToNot(HaveOccurred())
+
+				Expect(block.Children().FindDeep(content.IsOfType[*content.BlockRef]())).To(BeNil())
+			},
+			Entry("short hexadecimal id", "- ((abc))"),
+			Entry("uuid with spaces around it", "- (( 64f0a2b1-1234-4abc-9def-0123456789ab ))"),
+			Entry("uuid without dashes", "- ((64f0a2b112344abc9def0123456789ab))"),
+			Entry("with a label", "- [l](((abc)))"),
+		)
+	})
+
+	Describe("Block references with upper case ids", func() {
+		// blockRefOf returns the block reference in the parsed text, or nil.
+		blockRefOf := func(input string) *content.BlockRef {
+			block, err := markdown.ParseString(input)
+			Expect(err).ToNot(HaveOccurred())
+
+			ref, _ := block.Children().FindDeep(content.IsOfType[*content.BlockRef]()).(*content.BlockRef)
+			return ref
+		}
+
+		It("reads a block reference with an upper case id", func() {
+			// Given a block reference whose id is upper case
+			// When it is parsed
+			// Then it is a block reference to that id, the same as Logseq
+			ref := blockRefOf("- ((64F0A2B1-1234-4ABC-9DEF-0123456789AB))")
+			Expect(ref).ToNot(BeNil())
+			Expect(ref.ID).To(MatchRegexp("(?i)^64f0a2b1-1234-4abc-9def-0123456789ab$"))
+		})
+
+		It("reads a block reference with a label and an upper case id", func() {
+			// Given a labelled block reference whose id is upper case
+			// When it is parsed
+			// Then it is a block reference to that id with the label
+			ref := blockRefOf("- [x](((64F0A2B1-1234-4ABC-9DEF-0123456789AB)))")
+			Expect(ref).ToNot(BeNil())
+			Expect(ref.ID).To(MatchRegexp("(?i)^64f0a2b1-1234-4abc-9def-0123456789ab$"))
+			Expect(ref.Children()).To(HaveLen(1))
+		})
+
+		It("saves a block reference with an upper case id unchanged", func() {
+			// Given a block reference whose id is upper case
+			input := "- see ((64F0A2B1-1234-4ABC-9DEF-0123456789AB))"
+
+			// When it is parsed and written
+			// Then the id keeps its case
+			Expect(parseAndOutput(input)).To(Equal(input))
 		})
 	})
 
@@ -5099,14 +5458,20 @@ var _ = Describe("References in values of built-in properties", func() {
 		Expect(targets).To(ConsistOf("y"))
 	})
 
-	It("still adds the properties that the graph ignores references of", func() {
+	It("keeps the links of a property that the graph ignores references of, the same as Logseq", func() {
 		// Given a graph that ignores the references of a property
 		root, err := markdown.ParseString("- a\n  related:: [[x]]\n  template:: [[y]]", markdown.WithIgnoredPageReferences("related"))
 		Expect(err).ToNot(HaveOccurred())
 
-		// When the references are read
-		// Then neither property makes a reference
-		Expect(root.Blocks()[0].Children().PageReferences()).To(BeEmpty())
+		targets := make([]string, 0)
+		for _, ref := range root.Blocks()[0].Children().PageReferences() {
+			targets = append(targets, ref.(content.PageRef).GetTo())
+		}
+
+		// Then the link in the ignored property is a reference, as Logseq
+		// 0.10.9 reads links in such a value, and the built-in property
+		// still makes no reference
+		Expect(targets).To(ConsistOf("x"))
 	})
 })
 

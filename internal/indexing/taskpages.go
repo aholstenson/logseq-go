@@ -1,6 +1,10 @@
 package indexing
 
-import "github.com/aholstenson/logseq-go/content"
+import (
+	"strings"
+
+	"github.com/aholstenson/logseq-go/content"
+)
 
 // Option changes how the index reads pages and blocks, for settings that the
 // config of the graph does not have.
@@ -38,8 +42,9 @@ func (i *BlugeIndex) taskPageTitles(block *content.Block) []string {
 		titles = append(titles, normalizeRef(status.String()))
 	}
 
-	if priority := priorityValue(block.Priority()); priority != "" {
-		titles = append(titles, normalizeRef(priority))
+	// Logseq drops a blank title, such as the one of the priority `[# ]`
+	if title := normalizeRef(priorityValue(block.Priority())); strings.TrimSpace(title) != "" {
+		titles = append(titles, title)
 	}
 
 	return titles

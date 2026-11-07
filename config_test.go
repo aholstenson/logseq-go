@@ -372,12 +372,12 @@ var _ = Describe("Config", func() {
 			Expect(referencesTo(graph, "target")).To(Equal(0))
 		})
 
-		It("does not reference the pages of a property whose references are ignored", func() {
+		It("does not reference the pages in the text of a list property whose references are ignored", func() {
 			writePage("target.md", "- content of target\n")
-			writePage("referrer.md", "- a block\n  author:: [[target]]\n")
+			writePage("referrer.md", "- a block\n  author:: target, Someone Else\n")
 
 			graph := openWithConfig(
-				`{:ignored-page-references-keywords #{:author}}`,
+				`{:property/separated-by-commas #{:author} :ignored-page-references-keywords #{:author}}`,
 				logseq.WithInMemoryIndex(),
 			)
 
@@ -469,14 +469,14 @@ var _ = Describe("Config", func() {
 		})
 
 		It("replaces the ignored page references of the graph", func() {
-			// Given a graph that does not ignore the references of author
+			// Given a graph that does not ignore the references of tags
 			writePage("target.md", "- content of target\n")
-			writePage("referrer.md", "- a block\n  author:: [[target]]\n")
+			writePage("referrer.md", "- a block\n  tags:: target\n")
 
 			// When the program ignores them
 			graph := openWithConfig(`{}`,
 				logseq.WithInMemoryIndex(),
-				logseq.WithConfig(logseq.Config{IgnoredPageReferences: []string{"author"}}),
+				logseq.WithConfig(logseq.Config{IgnoredPageReferences: []string{"tags"}}),
 			)
 
 			// Then the value is not a reference
@@ -484,12 +484,12 @@ var _ = Describe("Config", func() {
 		})
 
 		It("clears a list of the graph with an empty list", func() {
-			// Given a graph that ignores the references of author
+			// Given a graph that ignores the references of tags
 			writePage("target.md", "- content of target\n")
-			writePage("referrer.md", "- a block\n  author:: [[target]]\n")
+			writePage("referrer.md", "- a block\n  tags:: target\n")
 
 			// When the program sets an empty list
-			graph := openWithConfig(`{:ignored-page-references-keywords #{:author}}`,
+			graph := openWithConfig(`{:ignored-page-references-keywords #{:tags}}`,
 				logseq.WithInMemoryIndex(),
 				logseq.WithConfig(logseq.Config{IgnoredPageReferences: []string{}}),
 			)
@@ -639,7 +639,7 @@ var _ = Describe("Config", func() {
 
 		It("does not change the settings of an open graph when the list of the program changes", func() {
 			// Given a graph opened with a list from the program
-			ignored := []string{"author"}
+			ignored := []string{"tags"}
 			graph := openWithConfig(`{}`,
 				logseq.WithConfig(logseq.Config{IgnoredPageReferences: ignored}),
 			)
@@ -647,10 +647,11 @@ var _ = Describe("Config", func() {
 			// When the program changes the list
 			ignored[0] = "other"
 
-			// Then the graph keeps the list it was opened with
-			block, err := graph.ParseBlock("author:: [[target]]")
+			// Then the graph keeps the list it was opened with, so the value
+			// is not split into pages
+			block, err := graph.ParseBlock("tags:: target, other")
 			Expect(err).ToNot(HaveOccurred())
-			Expect(block.FindProperties().GetAsNode("author").PageRefsIgnored).To(BeTrue())
+			Expect(block.Children().PageReferences()).To(BeEmpty())
 		})
 	})
 

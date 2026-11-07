@@ -9,7 +9,8 @@ type HasLinkURL interface {
 }
 
 // DestinationSourceAware is implemented by the nodes that are read from a
-// link or an image with a destination in parentheses, such as Link and Image.
+// link or an image with a destination in parentheses, such as Link, Image,
+// and a PageLink or BlockRef with a label.
 // They keep the text between the parentheses as it is in the file. A node
 // whose text reads back as the same URL and title is written with this text,
 // so that its quotes, angle brackets and backslashes do not change.
@@ -161,12 +162,35 @@ type PageRef interface {
 // PageLink is a link to a page, written as `[[To]]`. A link with a label is
 // written as `[label]([[To]])`, where the children of the link are the label.
 // Logseq shows the label in place of the title of the page, and the link is
-// still a reference to the page.
+// still a reference to the page. A link with a label can also have a title,
+// written as `[label]([[To]] "title")`.
 type PageLink struct {
 	baseNodeWithChildren
+	destinationSourceImpl
 
 	// To is the target of the link.
 	To string
+
+	// Title of this link as displayed on hover. It is written only for a link
+	// with a label, as `[[To]]` has no place for it.
+	Title string
+
+	toSource string
+}
+
+// ToSource gets the target of the link as it is in the file, between the
+// `[[` and `]]`, with the backslashes that escape punctuation, such as
+// `a \* b` for the target `a * b`. It is empty for a link that was not read
+// from a file. If this text still reads as the target of the link, the link
+// is written with it, so that the backslashes do not change on save.
+func (l *PageLink) ToSource() string {
+	return l.toSource
+}
+
+// SetToSource sets the target of the link as it is in the file, see
+// ToSource.
+func (l *PageLink) SetToSource(source string) {
+	l.toSource = source
 }
 
 // NewPageLink creates a link to the page with the given title. The label is
@@ -194,6 +218,12 @@ func (l *PageLink) WithTo(target string) *PageLink {
 	return l
 }
 
+// WithTitle sets the title of this link, see Title.
+func (l *PageLink) WithTitle(title string) *PageLink {
+	l.Title = title
+	return l
+}
+
 // HasLabel checks if the link has a label to show in place of the title of
 // the page.
 func (l *PageLink) HasLabel() bool {
@@ -205,6 +235,9 @@ func (l *PageLink) isInline() {}
 func (l *PageLink) debug(p *debugPrinter) {
 	p.StartType("PageLink")
 	p.Field("to", l.To)
+	if l.Title != "" {
+		p.Field("title", l.Title)
+	}
 	if l.HasLabel() {
 		p.Children(l)
 	}
@@ -215,6 +248,7 @@ func (l *PageLink) isPageRef() {}
 
 var _ InlineNode = (*PageLink)(nil)
 var _ PageRef = (*PageLink)(nil)
+var _ DestinationSourceAware = (*PageLink)(nil)
 
 // PageRefText is a reference to a page written as plain text, without any
 // markup around it. Logseq reads the values of the properties that hold a list
@@ -316,9 +350,16 @@ var _ PageRef = (*Hashtag)(nil)
 // are the label. Logseq shows the label in place of the content of the block.
 type BlockRef struct {
 	baseNodeWithChildren
+	destinationSourceImpl
 
-	// ID is the id of the block to reference.
+	// ID is the id of the block to reference, as it is written. Logseq reads
+	// the id without regard to case, so compare it with Block.ID, which is
+	// in lower case, with strings.EqualFold.
 	ID string
+
+	// Title of this reference as displayed on hover. It is written only for
+	// a reference with a label, as `[label](((id)) "title")`.
+	Title string
 }
 
 // NewBlockRef creates a reference to the block with the given id. The label is
@@ -338,6 +379,12 @@ func (l *BlockRef) WithID(id string) *BlockRef {
 	return l
 }
 
+// WithTitle sets the title of this reference, see Title.
+func (l *BlockRef) WithTitle(title string) *BlockRef {
+	l.Title = title
+	return l
+}
+
 // HasLabel checks if the reference has a label to show in place of the
 // content of the block.
 func (l *BlockRef) HasLabel() bool {
@@ -347,6 +394,9 @@ func (l *BlockRef) HasLabel() bool {
 func (b *BlockRef) debug(p *debugPrinter) {
 	p.StartType("BlockRef")
 	p.Field("id", b.ID)
+	if b.Title != "" {
+		p.Field("title", b.Title)
+	}
 	if b.HasLabel() {
 		p.Children(b)
 	}
@@ -356,3 +406,4 @@ func (b *BlockRef) debug(p *debugPrinter) {
 func (l *BlockRef) isInline() {}
 
 var _ InlineNode = (*BlockRef)(nil)
+var _ DestinationSourceAware = (*BlockRef)(nil)

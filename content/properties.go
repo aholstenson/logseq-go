@@ -247,9 +247,12 @@ type Property struct {
 	Name string
 
 	// PageRefsIgnored is whether the pages named in the value of this property
-	// are only text rather than references to those pages, which is what
-	// `:ignored-page-references-keywords` sets up. A page is not found via the
-	// value of such a property, not even where the value is written as a link.
+	// are only text rather than references to those pages. A page is not
+	// found via the value of such a property, not even where the value is
+	// written as a link. Logseq does this for some of its built-in
+	// properties, such as `template::` and `id::`. The properties of
+	// `:ignored-page-references-keywords` do not have this set, as Logseq
+	// still reads the links in their values.
 	PageRefsIgnored bool
 
 	// Quoted is whether the value of this property is wrapped in double

@@ -33,7 +33,7 @@ func init() {
 			util.Prioritized(newBlockListItemParser(), 400),
 			util.Prioritized(&indentedBlocksParser{}, 450),
 			util.Prioritized(&indentedParagraphParser{}, 500),
-			util.Prioritized(parser.NewATXHeadingParser(), 600),
+			util.Prioritized(newATXHeadingParser(), 600),
 			util.Prioritized(newFencedCodeBlockParser(), 700),
 			util.Prioritized(parser.NewBlockquoteParser(), 800),
 			util.Prioritized(&mathBlockParser{}, 896),
@@ -68,7 +68,7 @@ func init() {
 // same for all text that Logseq reads as Markdown.
 func inlineParsers() []util.PrioritizedValue {
 	return []util.PrioritizedValue{
-		util.Prioritized(parser.NewCodeSpanParser(), 100),
+		util.Prioritized(newCodeSpanSourceParser(), 100),
 		util.Prioritized(&footnoteRefParser{}, 194),
 		util.Prioritized(&mathParser{}, 195),
 		util.Prioritized(&priorityParser{}, 196),
@@ -134,8 +134,14 @@ type parseOptions struct {
 	// pages separated by commas.
 	propertiesSeparatedByCommas map[string]struct{}
 
-	// ignoredPageReferences are the properties whose value never points at a
-	// page, even where it is written as a link.
+	// propertiesWithoutPageReferences are the properties whose value never
+	// points at a page, even where it is written as a link. These are the
+	// built-in properties of Logseq, see builtInPropertiesWithoutPageReferences.
+	propertiesWithoutPageReferences map[string]struct{}
+
+	// ignoredPageReferences are the properties of
+	// `:ignored-page-references-keywords`, whose value is not split into pages
+	// at commas, see WithIgnoredPageReferences.
 	ignoredPageReferences map[string]struct{}
 
 	// page is whether the text is the text of a whole page, see AsPage.
@@ -154,8 +160,9 @@ type parseOptions struct {
 // anything else.
 func defaultParseOptions() parseOptions {
 	options := parseOptions{
-		propertiesSeparatedByCommas: make(map[string]struct{}),
-		ignoredPageReferences:       make(map[string]struct{}),
+		propertiesSeparatedByCommas:     make(map[string]struct{}),
+		propertiesWithoutPageReferences: make(map[string]struct{}),
+		ignoredPageReferences:           make(map[string]struct{}),
 	}
 
 	for _, name := range builtInPropertiesSeparatedByCommas {
@@ -163,7 +170,7 @@ func defaultParseOptions() parseOptions {
 	}
 
 	for _, name := range builtInPropertiesWithoutPageReferences {
-		options.ignoredPageReferences[normalizePropertyName(name)] = struct{}{}
+		options.propertiesWithoutPageReferences[normalizePropertyName(name)] = struct{}{}
 	}
 
 	return options
@@ -180,10 +187,14 @@ func WithPropertiesSeparatedByCommas(names ...string) ParseOption {
 	}
 }
 
-// WithIgnoredPageReferences adds properties whose value does not point at a
-// page, which is `:ignored-page-references-keywords`. The built-in properties
-// whose value Logseq never reads as pages are included without being listed,
-// see builtInPropertiesWithoutPageReferences.
+// WithIgnoredPageReferences adds properties whose value is only text where it
+// is not written as a link, which is `:ignored-page-references-keywords`. The
+// value of such a property is not split into pages at commas, also when the
+// property is separated by commas, so `tags:: a, b` points at no page. Logseq
+// 0.10.9 still reads the links and tags in the value, so `author:: [[Bob]]`
+// points at the page Bob. The built-in properties whose value Logseq never
+// reads as pages, not even as links, are not set here, see
+// builtInPropertiesWithoutPageReferences.
 func WithIgnoredPageReferences(names ...string) ParseOption {
 	return func(o *parseOptions) {
 		for _, name := range names {
@@ -195,8 +206,9 @@ func WithIgnoredPageReferences(names ...string) ParseOption {
 // AsPage reads the text as the text of a whole page, instead of as the text
 // of one block. In a page, Logseq reads each heading line that is not in a
 // bullet, such as `# Title`, as the start of a top-level block, see
-// content.NewHeadingBlock. In the text of a block, such a line is part of
-// the block.
+// content.NewHeadingBlock. In the text of a block, such a line before the
+// first bullet is part of the block. After the first bullet, it starts a
+// block in both, as the text is then an outline of blocks.
 func AsPage() ParseOption {
 	return func(o *parseOptions) {
 		o.page = true
@@ -232,8 +244,16 @@ func (o *parseOptions) isSeparatedByCommas(name string) bool {
 	return ok
 }
 
+// hasNoPageReferences checks if the value of the property with the given name
+// is only text, also where it is written as a link.
+func (o *parseOptions) hasNoPageReferences(name string) bool {
+	_, ok := o.propertiesWithoutPageReferences[normalizePropertyName(name)]
+	return ok
+}
+
 // ignoresPageReferences checks if the value of the property with the given
-// name points at pages or is only text.
+// name is in `:ignored-page-references-keywords`, see
+// WithIgnoredPageReferences.
 func (o *parseOptions) ignoresPageReferences(name string) bool {
 	_, ok := o.ignoredPageReferences[normalizePropertyName(name)]
 	return ok
@@ -272,6 +292,12 @@ func parseWithOptions(src []byte, options *parseOptions) (*content.Block, error)
 	context.Set(parseOptionsKey, options)
 
 	doc := markdownParser.Parse(newLineCachingReader(src), parser.WithContext(context))
+	if lines, ok := context.Get(lazyFootnoteLinesKey).(lazyFootnoteLines); ok {
+		doc.SetAttribute(lazyFootnoteLinesAttribute, lines)
+	}
+	if lines, ok := context.Get(lazyBlockLinesKey).(map[int]bool); ok {
+		doc.SetAttribute(lazyBlockLinesAttribute, lines)
+	}
 	if indentation, ok := context.Get(lineIndentationKey).(lineIndentation); ok {
 		doc.SetAttribute(lineIndentationAttribute, indentation)
 	}
@@ -379,6 +405,8 @@ func convert(src []byte, in ast.Node) (content.Node, error) {
 		return convertTextBlock(src, node)
 	case *ast.Text:
 		return convertText(src, node)
+	case *blockRefText:
+		return content.NewText(string(node.Segment.Value(src))), nil
 	case *ast.Emphasis:
 		return convertEmphasis(src, node)
 	case *east.Strikethrough:
@@ -403,7 +431,9 @@ func convert(src []byte, in ast.Node) (content.Node, error) {
 	case *tag:
 		return content.NewHashtag(node.Page).WithBracketed(node.Extended), nil
 	case *pageLink:
-		return content.NewPageLink(node.Page), nil
+		link := content.NewPageLink(node.Page)
+		link.SetToSource(node.Source)
+		return link, nil
 	case *pageRefText:
 		return content.NewPageRefText(unescapePunctuation(node.Segment.Value(src))), nil
 	case *blockRef:
@@ -459,6 +489,18 @@ func unescapePunctuation(src []byte) string {
 	return string(util.UnescapePunctuations(src))
 }
 
+// setTextValue sets the value of a text from its source in the file. If
+// reading removes backslashes, the source is kept on the text, so that the
+// backslashes are written back, see content.Text.TextSource.
+func setTextValue(text *content.Text, raw []byte) {
+	text.Value = unescapePunctuation(raw)
+	if len(raw) != len(text.Value) {
+		text.SetTextSource(string(raw))
+	} else {
+		text.SetTextSource("")
+	}
+}
+
 // convertChildren converts all children of a node and adds them to the target.
 func convertChildren(src []byte, node ast.Node, target content.HasChildren) error {
 	var previousChild ast.Node
@@ -476,7 +518,7 @@ func convertChildren(src []byte, node ast.Node, target content.HasChildren) erro
 	mergedStop := 0
 	setMergedValue := func() {
 		if merged != nil {
-			merged.Value = unescapePunctuation(src[mergedStart:mergedStop])
+			setTextValue(merged, src[mergedStart:mergedStop])
 			merged = nil
 		}
 	}
@@ -500,6 +542,7 @@ func convertChildren(src []byte, node ast.Node, target content.HasChildren) erro
 				merged.SoftLineBreak = text.SoftLineBreak()
 				merged.TrailingSpace = trailingSpaceOf(src, text)
 				merged.LazyLine = isLazyLineAfter(src, text)
+				merged.LazyBlockLine = isLazyBlockLineAfter(src, text)
 				merged.NextLineIndentation = nextLineIndentationOf(src, text)
 				continue
 			}
@@ -536,13 +579,17 @@ func convertToBlock(src []byte, node ast.Node) (*content.Block, error) {
 
 // convertOutline converts a page, a block or indented bullets into a block.
 // If headingBlocks is true, the node is a page and its heading lines start
-// top-level blocks, see AsPage. If levels is not nil, it gets the level of
+// top-level blocks, see AsPage. In the text of a block, only the heading lines
+// after the first bullet start top-level blocks, the same as in a page. If
+// levels is not nil, it gets the level of
 // each block, see nestByLevels.
 func convertOutline(src []byte, node ast.Node, headingBlocks bool, levels blockLevels) (*content.Block, error) {
 	block := content.NewBlock()
 	if item, ok := node.(*ast.ListItem); ok {
 		if space, empty := emptyBulletLine(src, item); empty {
 			block.WithEmptyFirstLine(true, space)
+		} else {
+			block.WithBulletSpace(bulletSpace(src, item))
 		}
 	}
 
@@ -587,7 +634,7 @@ func convertOutline(src []byte, node ast.Node, headingBlocks bool, levels blockL
 			continue
 		}
 
-		if heading, ok := child.(*ast.Heading); ok && headingBlocks {
+		if heading, ok := child.(*ast.Heading); ok && (headingBlocks || ((hasParsedBlock || target != block) && isATXHeading(src, heading))) {
 			if _, isDocument := node.(*ast.Document); isDocument {
 				// A heading line of a page starts a top-level block. The
 				// content after it goes to the block that comes last in the
@@ -849,11 +896,27 @@ func convertTaskMarker(node content.HasChildren, src []byte, source ast.Node) {
 	if potentialMarkerIdx < 0 {
 		// The marker is the entire text, so there is nothing left of it.
 		textNode.Value = ""
+		textNode.SetTextSource("")
 	} else {
 		textNode.Value = textNode.Value[potentialMarkerIdx+1:]
+
+		// A marker has no backslashes, so the source starts with it too.
+		source := textNode.TextSource()
+		textNode.SetTextSource(strings.TrimPrefix(source, potentialMarker+" "))
 	}
 
-	if textNode.Value == "" && !keepEmptyText {
+	if textNode.Value == "" && !keepEmptyText && potentialMarkerIdx < 0 {
+		textNode.RemoveSelf()
+
+		// If the marker ends the line, the writer writes the space after it,
+		// which is the first of the spaces at the end of the line.
+		switch n := node.(type) {
+		case *content.Paragraph:
+			n.TrailingSpace = trimFirstByte(n.TrailingSpace)
+		case *content.Heading:
+			n.TrailingSpace = trimFirstByte(n.TrailingSpace)
+		}
+	} else if textNode.Value == "" && !keepEmptyText {
 		textNode.RemoveSelf()
 	} else if potentialMarkerIdx < 0 && textNode.TrailingSpace != "" {
 		// The marker is written with a space after it, which is the first
@@ -862,6 +925,15 @@ func convertTaskMarker(node content.HasChildren, src []byte, source ast.Node) {
 	}
 
 	node.PrependChild(content.NewTaskMarker(taskStatus))
+}
+
+// trimFirstByte removes the first byte of a text, if it has one.
+func trimFirstByte(text string) string {
+	if text == "" {
+		return ""
+	}
+
+	return text[1:]
 }
 
 // taskStatusFor maps a task marker to its status, returning TaskStatusNone if
@@ -888,6 +960,8 @@ func taskStatusFor(marker string) content.TaskStatus {
 		return content.TaskStatusWait
 	case "WAITING":
 		return content.TaskStatusWaiting
+	case "STARTED":
+		return content.TaskStatusStarted
 	}
 
 	return content.TaskStatusNone
@@ -896,6 +970,8 @@ func taskStatusFor(marker string) content.TaskStatus {
 func convertParagraph(src []byte, node *ast.Paragraph) (*content.Paragraph, error) {
 	paragraph := content.NewParagraph()
 	paragraph.Indentation = paragraphIndentation(node)
+	paragraph.TrailingSpace = trailingSpaceOfLines(src, node)
+	paragraph.FirstLineIndentation = firstLineIndentationOf(src, node)
 	err := convertChildren(src, node, paragraph)
 	if err != nil {
 		return nil, err
@@ -907,30 +983,44 @@ func convertParagraph(src []byte, node *ast.Paragraph) (*content.Paragraph, erro
 	} else {
 		updatePreviousLine(node, paragraph)
 	}
+	keepBlankQuoteLineBefore(src, node, paragraph)
 	return paragraph, nil
+}
+
+// keepBlankQuoteLineBefore records a blank line before a node in a quote,
+// which Goldmark does not mark, see hasBlankQuoteLineBefore. Without it, two
+// paragraphs of a quote would be written as one.
+func keepBlankQuoteLineBefore(src []byte, node ast.Node, target content.PreviousLineAware) {
+	if node.PreviousSibling() != nil && target.PreviousLineType() == content.PreviousLineTypeNonBlank && hasBlankQuoteLineBefore(src, node) {
+		target.SetPreviousLineType(content.PreviousLineTypeBlank)
+	}
 }
 
 func convertTextBlock(src []byte, node ast.Node) (*content.Paragraph, error) {
 	paragraph := content.NewParagraph()
+	paragraph.TrailingSpace = trailingSpaceOfLines(src, node)
+	paragraph.FirstLineIndentation = firstLineIndentationOf(src, node)
 	err := convertChildren(src, node, paragraph)
 	if err != nil {
 		return nil, err
 	}
 
 	updatePreviousLine(node, paragraph)
+	keepBlankQuoteLineBefore(src, node, paragraph)
 	return paragraph, nil
 }
 
 func convertText(src []byte, node *ast.Text) (*content.Text, error) {
-	value := unescapePunctuation(node.Segment.Value(src))
-	text := content.NewText(value)
+	text := content.NewText("")
+	setTextValue(text, node.Segment.Value(src))
 	if node.SoftLineBreak() {
 		text.SoftLineBreak = true
 	} else if node.HardLineBreak() {
 		text.HardLineBreak = true
 	}
 	text.TrailingSpace = trailingSpaceOf(src, node)
-	text.LazyLine = isLazyLineAfter(src, node)
+	text.LazyLine = isLazyLineAfter(src, node) || isLazyFootnoteLineAfter(src, node)
+	text.LazyBlockLine = isLazyBlockLineAfter(src, node)
 	text.NextLineIndentation = nextLineIndentationOf(src, node)
 	return text, nil
 }
@@ -963,6 +1053,41 @@ func isLazyLineAfter(src []byte, node *ast.Text) bool {
 	return len(next) > 0 && next[0] != '>'
 }
 
+// trailingSpaceOfLines returns the spaces and tabs at the end of the last line
+// of a paragraph. The segments of the paragraph do not hold them, and its
+// lines can also hold the lines of properties that were split from it, so the
+// line of the last text in the paragraph is read. If the paragraph has no text,
+// or its last text has a line break, the paragraph ends with a node that is
+// not text, and the last line of the paragraph is read instead. That line is
+// not known when properties were split from the paragraph, and then no spaces
+// are found.
+func trailingSpaceOfLines(src []byte, node ast.Node) string {
+	var last *ast.Text
+	_ = ast.Walk(node, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if text, ok := n.(*ast.Text); ok && entering {
+			last = text
+		}
+		return ast.WalkContinue, nil
+	})
+
+	if last == nil || last.SoftLineBreak() || last.HardLineBreak() {
+		lines := node.Lines()
+		if _, split := node.NextSibling().(*properties); split || lines.Len() == 0 {
+			return ""
+		}
+
+		return string(spacesAndTabs(src[lines.At(lines.Len()-1).Stop:]))
+	}
+
+	end := last.Segment.Stop
+	for end < len(src) && src[end] != '\n' && src[end] != '\r' {
+		end++
+	}
+
+	line := src[last.Segment.Stop:end]
+	return string(line[len(bytes.TrimRight(line, " \t")):])
+}
+
 // trailingSpaceOf returns the spaces and tabs between a text and its line
 // break. The segment of the text does not hold them, so the source after the
 // segment is read. A backslash hard line break has no trailing space, as the
@@ -982,6 +1107,15 @@ func trailingSpaceOf(src []byte, node *ast.Text) string {
 
 func convertHeading(src []byte, node *ast.Heading) (*content.Heading, error) {
 	heading := content.NewHeading(node.Level)
+	if space, ok := node.AttributeString(headingMarksSpaceAttribute); ok {
+		heading.MarksSpace = space.(string)
+	}
+	if space, ok := node.AttributeString(headingTrailingSpaceAttribute); ok {
+		heading.TrailingSpace = space.(string)
+	}
+	if space, ok := node.AttributeString(headingIndentationAttribute); ok {
+		heading.Indentation = space.(string)
+	}
 	err := convertChildren(src, node, heading)
 	if err != nil {
 		return nil, err
@@ -991,18 +1125,34 @@ func convertHeading(src []byte, node *ast.Heading) (*content.Heading, error) {
 
 // convertLink converts a link. Logseq reads `[label]([[Page]])` as a link to
 // the page and `[label](((uuid)))` as a reference to the block, both with the
-// text of the link as the label. A link with a title is kept as a link, as
-// there is no place for the title in a page link or block reference.
+// text of the link as the label. Logseq also reads them with a title in double
+// quotes, as `[label]([[Page]] "title")`. A link with a title in another form,
+// such as `'title'`, or with an empty title is kept as a link, as Logseq does
+// not read it as a reference, see refLinkTitle.
 func convertLink(src []byte, node *ast.Link) (content.Node, error) {
 	destination := node.Destination
-	if len(node.Title) == 0 {
+	source, hasSource := node.AttributeString(destinationSourceAttribute)
+	sourceText, _ := source.(string)
+
+	if isRefTitleAccepted(node, sourceText, hasSource) {
 		if length := pageRefLength(destination); length > 0 && length == len(destination) {
 			link := content.NewPageLink(unescapePunctuation(destination[2 : length-2]))
+			link.Title = unescapePunctuation(node.Title)
+			if hasSource {
+				link.SetDestinationSource(sourceText)
+				if end := pageLinkClose([]byte(sourceText)); end > 0 && strings.HasPrefix(sourceText, "[[") {
+					link.SetToSource(sourceText[2:end])
+				}
+			}
 			return link, convertChildren(src, node, link)
 		}
 
 		if length := blockRefLength(destination); length > 0 && length == len(destination) {
 			ref := content.NewBlockRef(string(destination[2 : length-2]))
+			ref.Title = unescapePunctuation(node.Title)
+			if hasSource {
+				ref.SetDestinationSource(sourceText)
+			}
 			return ref, convertChildren(src, node, ref)
 		}
 	}
@@ -1013,10 +1163,23 @@ func convertLink(src []byte, node *ast.Link) (content.Node, error) {
 		return nil, err
 	}
 	link.Title = unescapePunctuation(node.Title)
-	if source, ok := node.AttributeString(destinationSourceAttribute); ok {
-		link.SetDestinationSource(source.(string))
+	if hasSource {
+		link.SetDestinationSource(sourceText)
 	}
 	return link, nil
+}
+
+// isRefTitleAccepted checks if the title of a link, if it has one, is in a
+// form that Logseq reads as the title of a page link or block reference. A
+// link that is read from more than one line has no source text, and is a
+// reference only without a title.
+func isRefTitleAccepted(node *ast.Link, source string, hasSource bool) bool {
+	if !hasSource {
+		return len(node.Title) == 0
+	}
+
+	_, ok := refLinkTitle(refTitleSource(source))
+	return ok
 }
 
 // convertMacro converts a macro, and keeps its text so that it can be
@@ -1051,8 +1214,9 @@ func macroNodeOf(node *macro) content.Node {
 			break
 		}
 
+		// A block is embedded only by its uuid, see isBlockID.
 		arg := node.RawArguments
-		if strings.HasPrefix(arg, "((") && strings.HasSuffix(arg, "))") && !strings.Contains(arg[2:len(arg)-2], "))") {
+		if strings.HasPrefix(arg, "((") && strings.HasSuffix(arg, "))") && isBlockID([]byte(arg[2:len(arg)-2])) {
 			return content.NewBlockEmbed(arg[2 : len(arg)-2])
 		} else if page, ok := wholePageLink(arg); ok {
 			return content.NewPageEmbed(page)
@@ -1119,6 +1283,9 @@ func convertHighlight(src []byte, node *highlight) (*content.Highlight, error) {
 
 func convertCodeSpan(src []byte, node *ast.CodeSpan) (*content.CodeSpan, error) {
 	code := content.NewCodeSpan(string(node.Text(src)))
+	if source, ok := node.AttributeString(codeSpanSourceAttribute); ok {
+		code.SetCodeSpanSource(source.(string))
+	}
 	return code, nil
 }
 
@@ -1164,6 +1331,7 @@ func isCodeInfoSpace(r rune) bool {
 
 func convertFootnoteDefinition(src []byte, node *footnoteDefinition) (*content.FootnoteDefinition, error) {
 	definition := content.NewFootnoteDefinition(unescapePunctuation([]byte(node.Label)))
+	definition.LabelSpace = node.LabelSpace
 	err := convertChildren(src, node, definition)
 	if err != nil {
 		return nil, err
@@ -1220,6 +1388,16 @@ func convertList(src []byte, node *ast.List) (*content.List, error) {
 
 func convertListItem(src []byte, node ast.Node) (*content.ListItem, error) {
 	item := content.NewListItem()
+	marker, space := listMarkerSpace(src, node)
+	item.MarkerSpace = space
+	if node.PreviousSibling() != nil && hasBlankLineBeforeBullet(src, node) {
+		item.SetPreviousLineType(content.PreviousLineTypeBlank)
+	}
+	if len(marker) > 1 {
+		// The number of an item of an ordered list, without the `.` or `)`.
+		item.Number = marker[:len(marker)-1]
+	}
+
 	err := convertChildren(src, node, item)
 	if err != nil {
 		return nil, err

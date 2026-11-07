@@ -170,6 +170,19 @@ var _ = Describe("Blocks", func() {
 			Expect(block.ID()).To(Equal("6500e8a3-0000-4000-8000-000000000001"))
 		})
 
+		It("returns an id written in upper case in lower case, the same as Logseq", func() {
+			// Given an id property in upper case
+			block := content.NewBlock(
+				content.NewParagraph(content.NewText("content")),
+				content.NewProperties(
+					content.NewProperty("id", content.NewText("6500E8A3-0000-4000-8000-00000000000A")),
+				),
+			)
+
+			// Then the id is in lower case, as Logseq reads it
+			Expect(block.ID()).To(Equal("6500e8a3-0000-4000-8000-00000000000a"))
+		})
+
 		It("returns an empty id for a block without properties", func() {
 			block := content.NewBlock(content.NewParagraph(content.NewText("content")))
 

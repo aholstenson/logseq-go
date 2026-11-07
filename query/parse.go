@@ -278,9 +278,9 @@ func parseFilter(e *expr) (Filter, error) {
 
 		priorities := make([]content.Priority, 0, len(names))
 		for i, name := range names {
-			priority, ok := priorityValues[strings.ToUpper(name)]
+			priority, ok := priorityNamed(name)
 			if !ok {
-				return nil, errorAt(namePos(args, i, e.pos), "unknown priority %q, expected A, B or C", name)
+				return nil, errorAt(namePos(args, i, e.pos), "unknown priority %q, expected one character such as A, B or C", name)
 			}
 			priorities = append(priorities, priority)
 		}
@@ -743,10 +743,16 @@ var taskStatuses = func() map[string]content.TaskStatus {
 	return statuses
 }()
 
-var priorityValues = map[string]content.Priority{
-	"A": content.PriorityA,
-	"B": content.PriorityB,
-	"C": content.PriorityC,
+// priorityNamed gets the priority with the given name in a query. Logseq
+// makes the name upper case, so `a` is the priority `[#A]`. Any one
+// character is a priority, the same as in Logseq, see content.Priority.
+func priorityNamed(name string) (content.Priority, bool) {
+	name = strings.ToUpper(name)
+	if len(name) != 1 {
+		return content.PriorityNone, false
+	}
+
+	return content.PriorityOf(name[0]), true
 }
 
 // parseLocation reads the location of a block on a page, such as the `0 1`

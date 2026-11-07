@@ -95,7 +95,9 @@ type property struct {
 	Name string
 
 	// PageRefsIgnored is whether the pages named in the value are read as text
-	// instead of as references, as set by `:ignored-page-references-keywords`.
+	// instead of as references, also where they are written as links. Logseq
+	// does this for some of its built-in properties, see
+	// builtInPropertiesWithoutPageReferences.
 	PageRefsIgnored bool
 
 	// Quoted is whether the value is wrapped in double quotes, which Logseq
@@ -211,10 +213,16 @@ func applyOptionsToProperties(node *properties, reader text.Reader, options *par
 			continue
 		}
 
-		if options.ignoresPageReferences(property.Name) {
+		if options.hasNoPageReferences(property.Name) {
 			// The value of this property is only text, so it is left as it was
 			// parsed and marked as not pointing at any page.
 			property.PageRefsIgnored = true
+			continue
+		}
+
+		if options.ignoresPageReferences(property.Name) {
+			// Logseq does not split the value at commas, but it still reads
+			// the links and tags in it, so the value is left as it was parsed.
 			continue
 		}
 

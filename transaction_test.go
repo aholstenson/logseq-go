@@ -373,6 +373,23 @@ var _ = Describe("Transaction", func() {
 			// Then page r is not changed
 			Expect(readPage("r.md")).To(Equal("- see [old](old.md)\n"))
 		})
+		It("points references in another Unicode normal form at the new title", func() {
+			// Given page café (composed é) and page r that links to it with a
+			// decomposed é (e and a combining accent)
+			graph = openGraphWithPages(dir, map[string]string{
+				"caf\u00e9.md": "- content of cafe\n",
+				"r.md":         "- [[cafe\u0301]]\n",
+			})
+
+			// When café is renamed to x
+			tx := graph.NewTransaction()
+			Expect(tx.RenamePage(ctx, "caf\u00e9", "x")).To(Succeed())
+			Expect(tx.Save()).To(Succeed())
+
+			// Then the link points at x, the same as Logseq (which compares
+			// page names in Unicode NFC form)
+			Expect(readPage("r.md")).To(Equal("- [[x]]\n"))
+		})
 	})
 
 	Describe("RenamePage with namespace children", func() {
@@ -393,6 +410,22 @@ var _ = Describe("Transaction", func() {
 
 			Expect(filepath.Join(dir, "pages", "old___child.md")).ToNot(BeAnExistingFile())
 			Expect(filepath.Join(dir, "pages", "old___other.md")).ToNot(BeAnExistingFile())
+		})
+
+		It("renames the pages in the namespace when the title is in another Unicode normal form", func() {
+			// Given page café (composed é) with a child page
+			graph = openGraphWithPages(dir, map[string]string{
+				"caf\u00e9.md":         "- content of cafe\n",
+				"caf\u00e9___child.md": "- content of child\n",
+			})
+
+			// When it is renamed by its title with a decomposed é
+			tx := graph.NewTransaction()
+			Expect(tx.RenamePage(ctx, "cafe\u0301", "new", logseq.WithNamespaceChildren())).To(Succeed())
+			Expect(tx.Save()).To(Succeed())
+
+			// Then the child page is renamed too
+			Expect(readPage("new___child.md")).To(Equal("- content of child\n"))
 		})
 
 		It("renames the pages deeper in the namespace", func() {

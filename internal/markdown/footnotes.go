@@ -1,6 +1,8 @@
 package markdown
 
 import (
+	"bytes"
+
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/text"
@@ -86,6 +88,9 @@ type footnoteDefinition struct {
 	ast.BaseBlock
 
 	Label string
+
+	// LabelSpace is the spaces and tabs after the `:` of the label.
+	LabelSpace string
 }
 
 func (*footnoteDefinition) Kind() ast.NodeKind {
@@ -129,7 +134,8 @@ func (f *footnoteDefinitionParser) Open(parent ast.Node, reader text.Reader, pc 
 	}
 
 	node := &footnoteDefinition{
-		Label: string(line[pos+2 : end-1]),
+		Label:      string(line[pos+2 : end-1]),
+		LabelSpace: string(spacesAndTabs(line[end+1:])),
 	}
 
 	// The content of the footnote starts after the colon, and is parsed as the
@@ -152,9 +158,12 @@ func (f *footnoteDefinitionParser) Continue(node ast.Node, reader text.Reader, p
 	}
 
 	// Only a line that is indented under the definition carries the footnote
-	// on, anything else starts something new.
+	// on, anything else starts something new. Such a line can still be a lazy
+	// continuation line of the paragraph of the footnote, so it is recorded,
+	// see lazyFootnoteLines.
 	pos, padding := util.IndentPosition(line, reader.LineOffset(), 4)
 	if pos < 0 {
+		recordLazyFootnoteLine(reader, pc)
 		return parser.Close
 	}
 
@@ -174,3 +183,61 @@ func (f *footnoteDefinitionParser) CanAcceptIndentedLine() bool {
 }
 
 var _ parser.BlockParser = (*footnoteDefinitionParser)(nil)
+
+// lazyFootnoteLinesKey is where the parser keeps the lazyFootnoteLines of the
+// text that it reads.
+var lazyFootnoteLinesKey = parser.NewContextKey()
+
+// lazyFootnoteLinesAttribute is the name of the document attribute that holds
+// the lazyFootnoteLines of a parsed document.
+var lazyFootnoteLinesAttribute = []byte("logseqLazyFootnoteLines")
+
+// lazyFootnoteLines holds the lines after a footnote definition that are not
+// indented under it. Such a line is a part of the paragraph of the footnote
+// if it carries the paragraph on, as `b` is in "[^1]: a\nb". The key is the
+// offset in the source of the start of the line.
+type lazyFootnoteLines map[int]bool
+
+// recordLazyFootnoteLine records the line at the reader as a line that is not
+// indented under a footnote definition, see lazyFootnoteLines.
+func recordLazyFootnoteLine(reader text.Reader, pc parser.Context) {
+	_, segment := reader.PeekLine()
+	lines, _ := pc.Get(lazyFootnoteLinesKey).(lazyFootnoteLines)
+	if lines == nil {
+		lines = lazyFootnoteLines{}
+		pc.Set(lazyFootnoteLinesKey, lines)
+	}
+
+	lines[bytes.LastIndexByte(reader.Source()[:segment.Start], '\n')+1] = true
+}
+
+// isLazyFootnoteLineAfter checks if the line after the line break of a text
+// in a footnote definition is written without the indentation of the
+// footnote, see content.Text.LazyLine.
+func isLazyFootnoteLineAfter(src []byte, node *ast.Text) bool {
+	if !node.SoftLineBreak() && !node.HardLineBreak() {
+		return false
+	}
+
+	var doc ast.Node = node
+	inFootnote := false
+	for doc.Parent() != nil {
+		if _, ok := doc.(*footnoteDefinition); ok {
+			inFootnote = true
+		}
+		doc = doc.Parent()
+	}
+
+	if !inFootnote {
+		return false
+	}
+
+	value, ok := doc.Attribute(lazyFootnoteLinesAttribute)
+	if !ok {
+		return false
+	}
+
+	lines, _ := value.(lazyFootnoteLines)
+	i := bytes.IndexByte(src[node.Segment.Stop:], '\n')
+	return i >= 0 && lines[node.Segment.Stop+i+1]
+}

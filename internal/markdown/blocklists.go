@@ -40,6 +40,14 @@ func (p *blockListParser) Open(parent ast.Node, reader text.Reader, pc parser.Co
 		return ast.NewList('-'), parser.HasChildren
 	}
 
+	if _, inList := pc.LastOpenedBlock().Node.(*ast.List); !inList && holdsBlocks(parent) && !continuesQuoteParagraph(parent, pc) {
+		if _, _, ok := headingBulletPosition(reader); ok {
+			// blockListItemParser adds the item to the list.
+			pc.Set(emptyItemWithBlankLinesKey, nil)
+			return ast.NewList('-'), parser.HasChildren
+		}
+	}
+
 	node, state := p.BlockParser.Open(parent, reader, pc)
 	if node != nil {
 		// Goldmark clears its flag for an empty item with blank lines.
@@ -68,6 +76,12 @@ func (p *blockListParser) Continue(node ast.Node, reader text.Reader, pc parser.
 	}
 
 	if continuesUnderLastItem(node, reader, pc) {
+		return parser.Continue | parser.HasChildren
+	}
+
+	if _, _, ok := headingBulletPosition(reader); ok && isBlockList(node) {
+		// The line is the next block of the list, or a child of its last
+		// block, see blockListItemParser.
 		return parser.Continue | parser.HasChildren
 	}
 
@@ -254,7 +268,14 @@ func (p *blockListItemParser) Open(parent ast.Node, reader text.Reader, pc parse
 	indent := lineIndentCharacters(reader)
 	start := readerLineStart(reader)
 	expandTabsBeforeBlockMarker(reader)
-	node, state := p.BlockParser.Open(parent, reader, pc)
+	var node ast.Node
+	var state parser.State
+	if !continuesQuoteParagraph(parent, pc) {
+		node, state = openHeadingBulletItem(parent, reader)
+	}
+	if node == nil {
+		node, state = p.BlockParser.Open(parent, reader, pc)
+	}
 	if node != nil {
 		node.SetAttribute(bulletIndentAttribute, indent)
 		node.SetAttribute(bulletLineStartAttribute, start)
@@ -285,8 +306,46 @@ func hasBlankLineBeforeBullet(src []byte, item ast.Node) bool {
 		return false
 	}
 
-	previous := src[lineStart(src, start-1) : start-1]
-	return len(bytes.Trim(previous, " \t\r")) == 0
+	return isBlankLine(src[lineStart(src, start-1):start-1], inQuote(item))
+}
+
+// isBlankLine checks if a line has only spaces and tabs. In a quote, a line
+// with only `>` markers and spaces is blank too, as in the second line of
+// "> a\n>\n> b".
+func isBlankLine(line []byte, quoted bool) bool {
+	cutset := " \t\r"
+	if quoted {
+		cutset += ">"
+	}
+
+	return len(bytes.Trim(line, cutset)) == 0
+}
+
+// inQuote checks if the node is in a quote.
+func inQuote(node ast.Node) bool {
+	for p := node.Parent(); p != nil; p = p.Parent() {
+		if _, ok := p.(*ast.Blockquote); ok {
+			return true
+		}
+	}
+
+	return false
+}
+
+// hasBlankQuoteLineBefore checks if the line before the first line of a node
+// in a quote is blank, such as the line before `b` in "> a\n>\n> b". Goldmark
+// does not mark such a line as a blank line before the node.
+func hasBlankQuoteLineBefore(src []byte, node ast.Node) bool {
+	if node.Lines().Len() == 0 || !inQuote(node) {
+		return false
+	}
+
+	start := lineStart(src, node.Lines().At(0).Start)
+	if start == 0 {
+		return false
+	}
+
+	return isBlankLine(src[lineStart(src, start-1):start-1], true)
 }
 
 // bulletIndentAttribute is the attribute of a list item that holds the
@@ -348,6 +407,86 @@ func emptyBulletLine(src []byte, item ast.Node) (string, bool) {
 	return string(line[1:]), true
 }
 
+// bulletSpace gets the spaces and tabs between the `-` of the bullet of a list
+// item and the text on the line of the bullet, see listMarkerSpace.
+func bulletSpace(src []byte, item ast.Node) string {
+	marker, space := listMarkerSpace(src, item)
+	if marker != "-" {
+		return ""
+	}
+
+	return space
+}
+
+// listMarkerSpace gets the marker of a list item, such as "-", "*" or "1.",
+// and the spaces and tabs between it and the text on the line of the marker.
+// Only spaces and tabs that are at most four columns wide are found, as more
+// of them start the text with indentation of its own. The space is "" when
+// there is one space, no text, or no space, as in "-## Title".
+func listMarkerSpace(src []byte, item ast.Node) (string, string) {
+	value, ok := item.Attribute(bulletLineStartAttribute)
+	if !ok {
+		return "", ""
+	}
+
+	start, ok := value.(int)
+	if !ok {
+		return "", ""
+	}
+
+	line := src[start:]
+	if i := bytes.IndexAny(line, "\r\n"); i >= 0 {
+		line = line[:i]
+	}
+
+	// The column of the marker, where a tab moves to the next multiple of
+	// four.
+	column := 0
+	i := 0
+	for ; i < len(line) && (line[i] == ' ' || line[i] == '\t'); i++ {
+		column = nextColumn(column, line[i])
+	}
+
+	markerEnd := i
+	for markerEnd < len(line) && line[markerEnd] >= '0' && line[markerEnd] <= '9' {
+		markerEnd++
+	}
+
+	switch {
+	case markerEnd > i && markerEnd < len(line) && (line[markerEnd] == '.' || line[markerEnd] == ')'):
+		markerEnd++
+	case markerEnd == i && i < len(line) && (line[i] == '-' || line[i] == '*' || line[i] == '+'):
+		markerEnd++
+	default:
+		return "", ""
+	}
+
+	marker := string(line[i:markerEnd])
+	textColumn := column + markerEnd - i
+	column = textColumn
+	end := markerEnd
+	for ; end < len(line) && (line[end] == ' ' || line[end] == '\t'); end++ {
+		column = nextColumn(column, line[end])
+	}
+
+	space := string(line[markerEnd:end])
+	if space == " " || end >= len(line) || column-textColumn > 4 {
+		return marker, ""
+	}
+
+	return marker, space
+}
+
+// nextColumn gets the column after a space or a tab at the column. A tab
+// moves to the next multiple of four.
+func nextColumn(column int, c byte) int {
+	if c == '\t' {
+		return column + 4 - column%4
+	}
+
+	return column + 1
+}
+
 // readerLineStart gets the offset into the source where the line that the
 // reader is on starts.
 func readerLineStart(reader text.Reader) int {
@@ -385,7 +524,78 @@ func (p *blockListItemParser) Continue(node ast.Node, reader text.Reader, pc par
 		return parser.Continue | parser.HasChildren
 	}
 
+	if indent, _, ok := headingBulletPosition(reader); ok {
+		// The same rule as the list item parser of Goldmark has for a line
+		// with a bullet that it reads: the line starts the next item.
+		if item.ChildCount() == 0 || indent < lastItemOffset(item.Parent()) {
+			return parser.Close
+		}
+	}
+
 	return p.BlockParser.Continue(node, reader, pc)
+}
+
+// headingBulletPosition checks if the line is a bullet that is directly
+// followed by the `#` marks of a heading, see isHeadingBullet, and that has
+// less than four columns of indentation. It returns the width of the
+// indentation in columns, and the position of the dash in the line.
+func headingBulletPosition(reader text.Reader) (int, int, bool) {
+	line, _ := reader.PeekLine()
+	indent, pos := util.IndentWidth(line, reader.LineOffset())
+	if indent >= 4 || pos >= len(line) || !isHeadingBullet(line[pos:]) {
+		return 0, 0, false
+	}
+
+	return indent, pos, true
+}
+
+// openHeadingBulletItem opens a list item for a bullet that is directly
+// followed by the `#` marks of a heading, such as "-## Title", in a list of
+// blocks. The list item parser of Goldmark needs a space after the dash. The
+// item gets the same offset as the item of "- ## Title", and its content
+// starts at the `#` marks. Returns nil if the line is not such a bullet.
+func openHeadingBulletItem(parent ast.Node, reader text.Reader) (ast.Node, parser.State) {
+	if !isBlockList(parent) {
+		return nil, parser.NoChildren
+	}
+
+	indent, pos, ok := headingBulletPosition(reader)
+	if !ok || indent-lastItemOffset(parent) > 3 {
+		return nil, parser.NoChildren
+	}
+
+	reader.Advance(pos + 1)
+	return ast.NewListItem(indent + 2), parser.HasChildren
+}
+
+// continuesQuoteParagraph checks if the line is a lazy continuation line of a
+// paragraph in a quote: the paragraph is open, and it is not a direct child of
+// the parent that a new block would get. Logseq reads a line such as "-## b"
+// right after "> q" as more text of the quote, while a bullet "- b" ends the
+// quote.
+func continuesQuoteParagraph(parent ast.Node, pc parser.Context) bool {
+	last := pc.LastOpenedBlock().Node
+	if !ast.IsParagraph(last) || last.Parent() == parent {
+		return false
+	}
+
+	for p := last.Parent(); p != nil && p != parent; p = p.Parent() {
+		if _, ok := p.(*ast.Blockquote); ok {
+			return true
+		}
+	}
+
+	return false
+}
+
+// lastItemOffset gets the offset of the text of the last item of a list, or 0
+// if the list has no items.
+func lastItemOffset(list ast.Node) int {
+	if item, ok := list.LastChild().(*ast.ListItem); ok {
+		return item.Offset
+	}
+
+	return 0
 }
 
 // continuesItem returns true if the line has text and is indented under the

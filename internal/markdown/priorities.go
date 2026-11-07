@@ -28,7 +28,8 @@ func (n *priority) Dump(src []byte, level int) {
 }
 
 // priorityParser parses the `[#A]` priority Logseq puts at the start of a
-// task.
+// task. Logseq reads any one character between `[#` and `]` as the priority,
+// such as `[#D]`, `[#a]` or `[#1]`, see content.Priority.
 //
 // Bracketed text that looks like a priority but is not one, either because of
 // where it is or because of the letter used, is claimed as plain text. Leaving
@@ -46,6 +47,10 @@ func (t *priorityParser) Parse(parent ast.Node, block text.Reader, pc parser.Con
 
 	if len(line) < 4 || line[0] != '[' || line[1] != '#' {
 		return nil
+	}
+
+	if line[3] == ']' && line[2] != '\n' && line[2] != '\r' && isPriorityPosition(parent, block.Source()) {
+		return newPriority(block, line, content.PriorityOf(line[2]))
 	}
 
 	// Scan for the closing bracket. Anything with a space or a nested bracket
@@ -66,13 +71,16 @@ func (t *priorityParser) Parse(parent ast.Node, block text.Reader, pc parser.Con
 		return nil
 	}
 
-	value := priorityFor(string(line[2:end]))
-	if value == content.PriorityNone || !isPriorityPosition(parent, block.Source()) {
-		block.Advance(end + 1)
-		return ast.NewTextSegment(seg.WithStop(seg.Start + end + 1))
-	}
+	// The text is not a priority, as it has more than one character in the
+	// brackets or is not where Logseq reads a priority.
+	block.Advance(end + 1)
+	return ast.NewTextSegment(seg.WithStop(seg.Start + end + 1))
+}
 
-	length := end + 1
+// newPriority takes the priority at the start of the line, which is written
+// as `[#A]`, from the reader.
+func newPriority(block text.Reader, line []byte, value content.Priority) ast.Node {
+	length := 4
 	spaceAfter := length < len(line) && line[length] == ' '
 	if spaceAfter {
 		// The space after the priority separates it from the content and is
@@ -87,22 +95,9 @@ func (t *priorityParser) Parse(parent ast.Node, block text.Reader, pc parser.Con
 	}
 }
 
-func priorityFor(value string) content.Priority {
-	switch value {
-	case "A":
-		return content.PriorityA
-	case "B":
-		return content.PriorityB
-	case "C":
-		return content.PriorityC
-	}
-
-	return content.PriorityNone
-}
-
 // isPriorityPosition checks if the parser is where Logseq looks for a
 // priority, which is at the start of the content of a block, after the task
-// marker if there is one.
+// marker if there is one. Logseq allows more than one space after the marker.
 func isPriorityPosition(parent ast.Node, source []byte) bool {
 	if parent.PreviousSibling() != nil {
 		// Something else comes before this in the block.
@@ -125,7 +120,7 @@ func isPriorityPosition(parent ast.Node, source []byte) bool {
 			return false
 		}
 
-		return taskStatusFor(strings.TrimSuffix(value, " ")) != content.TaskStatusNone
+		return taskStatusFor(strings.TrimRight(value, " ")) != content.TaskStatusNone
 	}
 
 	return false

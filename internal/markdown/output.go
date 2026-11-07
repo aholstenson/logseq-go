@@ -57,7 +57,13 @@ const lineEdgeRune = rune(-2)
 // escapeText is EscapePotentialMarkdown for a text with known characters
 // directly before and after it. Either can be unknownRune or lineEdgeRune.
 func escapeText(str string, before rune, after rune) string {
-	return escapeTextIn(str, before, after, false, true, nil)
+	return escapeTextIn(str, "", before, after, false, true, nil, blockRefCanFollowRune(before))
+}
+
+// blockRefCanFollowRune returns true if a block reference can start directly
+// after the character when it is read back, see canStartBlockRef.
+func blockRefCanFollowRune(r rune) bool {
+	return r == lineEdgeRune || (r >= 0 && strings.ContainsRune(blockRefPrefixes, r))
 }
 
 // escapeTextIn is escapeText for a text that can be inside formatting, such
@@ -65,14 +71,19 @@ func escapeText(str string, before rune, after rune) string {
 // `#` in it is not escaped. If headings is false, the text is on lines that
 // cannot start a heading when read back, so a `#` at the start of a line is
 // not escaped for that. If outside is not nil, it tells if a marker can be
-// in the nodes before or after the text, see markerOutside.
-func escapeTextIn(str string, before rune, after rune, inFormatting bool, headings bool, outside markerOutside) string {
+// in the nodes before or after the text, see markerOutside. refAtStart is
+// whether a block reference can start at the start of the text when it is
+// read back, see blockRefTextEscapes. If source is not empty, it is the text
+// as it is in the file, and its backslashes are kept, see sourceEscapes.
+func escapeTextIn(str string, source string, before rune, after rune, inFormatting bool, headings bool, outside markerOutside, refAtStart bool) string {
 	escapes := map[int]bool{}
+	sourceEscapes(str, source, escapes)
 	mathEscapes(str, escapes)
 	bracketEscapes(str, escapes)
 	delimiterEscapes(str, before, after, outside, escapes)
-	markupEscapes(str, before, !inFormatting, headings, escapes)
+	markupEscapes(str, before, after, !inFormatting, headings, escapes)
 	backslashEscapes(str, after, escapes)
+	blockRefTextEscapes(str, refAtStart, escapes)
 
 	// The bytes of the text are copied, not the decoded runes, so that bytes
 	// that are not valid UTF-8 are not changed.
@@ -88,6 +99,38 @@ func escapeTextIn(str string, before rune, after rune, inFormatting bool, headin
 	}
 
 	return out.String()
+}
+
+// sourceEscapes finds the characters of the text that are escaped with a
+// backslash in the source of the text, which is the text as it is in the
+// file, see content.Text.TextSource. Escaping them again keeps the text of
+// the file as it is. A backslash before ASCII punctuation always reads as
+// that character, so this does not change how the text is read. Nothing is
+// found if the source does not read as the text, which is the case when the
+// text was changed after it was read.
+func sourceEscapes(str string, source string, escapes map[int]bool) {
+	if source == "" {
+		return
+	}
+
+	found := map[int]bool{}
+	value := make([]byte, 0, len(str))
+	for i := 0; i < len(source); i++ {
+		if source[i] == '\\' && i+1 < len(source) && util.IsPunct(source[i+1]) {
+			found[len(value)] = true
+			i++
+		}
+
+		value = append(value, source[i])
+	}
+
+	if string(value) != str {
+		return
+	}
+
+	for i := range found {
+		escapes[i] = true
+	}
 }
 
 // asCharacter gets the character that a rune next to a text acts as for the
@@ -121,18 +164,18 @@ func backslashEscapes(str string, after rune, escapes map[int]bool) {
 
 		if i+1 < len(str) {
 			next, _ := utf8.DecodeRuneInString(str[i+1:])
-			escapes[i] = isASCIIPunctuation(next) || unicode.IsSpace(next)
+			escapes[i] = escapes[i] || isASCIIPunctuation(next) || unicode.IsSpace(next)
 			continue
 		}
 
-		escapes[i] = after == unknownRune || after == '\n' || isASCIIPunctuation(after)
+		escapes[i] = escapes[i] || after == unknownRune || after == '\n' || isASCIIPunctuation(after)
 	}
 }
 
 // markupEscapes finds the characters in the text that would start a tag, a
 // heading, a block reference, a macro, code or HTML when read back. Tags are
 // only looked for if tags is true, and headings only if headings is true.
-func markupEscapes(str string, before rune, tags bool, headings bool, escapes map[int]bool) {
+func markupEscapes(str string, before rune, after rune, tags bool, headings bool, escapes map[int]bool) {
 	if !strings.ContainsAny(str, "#({`<") {
 		return
 	}
@@ -156,7 +199,7 @@ func markupEscapes(str string, before rune, tags bool, headings bool, escapes ma
 				previous, _ = utf8.DecodeLastRuneInString(str[:i])
 			}
 
-			if (tags && startsTag(str, i, previous, lastPageLinkClose)) || (headings && startsHeading(str, i, previous)) {
+			if (tags && startsTag(str, i, previous, lastPageLinkClose)) || (headings && startsHeading(str, i, previous, after)) {
 				escapes[i] = true
 			}
 		case '(':
@@ -164,7 +207,7 @@ func markupEscapes(str string, before rune, tags bool, headings bool, escapes ma
 				escapes[i] = true
 			}
 		case '{':
-			if strings.HasPrefix(str[i:], "{{") && lastMacroClose >= i+2 {
+			if strings.HasPrefix(str[i:], "{{") && lastMacroClose >= i+2 && macroCanStartAt(str, i, escapes) {
 				escapes[i] = true
 			}
 		case '`':
@@ -195,13 +238,58 @@ func markupEscapes(str string, before rune, tags bool, headings bool, escapes ma
 	}
 }
 
+// blockRefTextEscapes removes the escapes from the text that is read back as
+// a block reference to an id that is not a uuid, such as `((see [[x]]))`. The
+// reader keeps such text as it is, see blockRefParser, so a backslash in it
+// would be read back as a part of the text. Nothing in such text is read as
+// markup, so it needs no escapes. refAtStart is whether such text can start
+// at the start of the text, which is not the case directly after other text
+// that does not end in one of blockRefPrefixes.
+func blockRefTextEscapes(str string, refAtStart bool, escapes map[int]bool) {
+	if !strings.Contains(str, "((") {
+		return
+	}
+
+	for i := 0; i+1 < len(str); i++ {
+		if str[i] != '(' || str[i+1] != '(' || escapes[i] || (i == 0 && !refAtStart) || !blockRefCanStartAt(str, i, escapes) {
+			continue
+		}
+
+		length := blockRefTextLength([]byte(str[i:]))
+		if length == 0 {
+			continue
+		}
+
+		for k := i; k < i+length; k++ {
+			delete(escapes, k)
+		}
+
+		i += length - 1
+	}
+}
+
 // blockRefCanStartAt returns true if a block reference can start at the
 // position in the text when it is read back, using the rules of
 // canStartBlockRef. At the start of the text, the node before can be markup,
 // after which a block reference can start. escapes are the characters that
 // are already escaped, as an escaped character is its own element.
 func blockRefCanStartAt(str string, i int, escapes map[int]bool) bool {
-	if i == 0 || escapes[i-1] || strings.IndexByte(blockRefPrefixes, str[i-1]) >= 0 {
+	return canStartAt(str, i, escapes, blockRefPrefixes)
+}
+
+// macroCanStartAt returns true if a macro can start at the position in the
+// text when it is read back, using the rules of canStartMacro. See
+// blockRefCanStartAt.
+func macroCanStartAt(str string, i int, escapes map[int]bool) bool {
+	return canStartAt(str, i, escapes, macroPrefixes)
+}
+
+// canStartAt returns true if an element that Logseq does not read inside a
+// run of plain text can start at the position in the text when it is read
+// back, see canStartAfterText. At the start of the text, the node before can
+// be markup, after which the element can start.
+func canStartAt(str string, i int, escapes map[int]bool, prefixes string) bool {
+	if i == 0 || escapes[i-1] || strings.IndexByte(prefixes, str[i-1]) >= 0 {
 		return true
 	}
 
@@ -239,7 +327,8 @@ func startsTag(str string, i int, previous rune, lastPageLinkClose int) bool {
 	}
 
 	if strings.HasPrefix(rest, "[[") {
-		return lastPageLinkClose >= i+3
+		// `#[[]]` has no title, so it is not a tag, see pageLinkClose.
+		return !strings.HasPrefix(rest, "[[]]") && lastPageLinkClose >= i+3
 	}
 
 	return tagNameLength([]byte(rest)) > 0
@@ -267,8 +356,12 @@ func isPriorityText(str string) bool {
 }
 
 // startsHeading returns true if the `#` at the position starts a line and
-// would be read back as the marker of a heading.
-func startsHeading(str string, i int, previous rune) bool {
+// would be read back as the marker of a heading. Logseq reads any number of
+// `#` marks as a heading, see atxHeadingParser. after is the character after
+// the text. If the marks end the text, they start a heading only if the line
+// ends or a space comes after them, so the `#` of "##x" is not escaped when
+// the tag "#x" follows it.
+func startsHeading(str string, i int, previous rune, after rune) bool {
 	if previous != unknownRune && previous != lineEdgeRune && previous != '\n' {
 		return false
 	}
@@ -278,7 +371,11 @@ func startsHeading(str string, i int, previous rune) bool {
 		end++
 	}
 
-	return end-i <= 6 && (end == len(str) || str[end] == ' ' || str[end] == '\t')
+	if end == len(str) {
+		return after == unknownRune || after == lineEdgeRune || after == '\n' || after == ' ' || after == '\t'
+	}
+
+	return str[end] == ' ' || str[end] == '\t'
 }
 
 // backtickRunAt finds the first run of exactly the given number of
@@ -332,6 +429,9 @@ func startsHTMLOrAutoLink(rest string) bool {
 //
 // Nothing can come after the text when it ends the paragraph, or when outside
 // tells that the marker is not in the nodes after it. Outside can be nil.
+//
+// A marker that is in escapes already, such as one that is escaped in the
+// file, see sourceEscapes, is text. It does not open or close formatting.
 func delimiterEscapes(str string, before rune, after rune, outside markerOutside, escapes map[int]bool) {
 	if !strings.ContainsAny(str, "*_~^=") {
 		return
@@ -354,13 +454,14 @@ func delimiterEscapes(str string, before rune, after rune, outside markerOutside
 
 	for i := 0; i < len(str); {
 		processor, min := delimiterProcessorFor(str[i])
-		if processor == nil {
+		if processor == nil || escapes[i] {
+			// A marker that is escaped already is read back as text.
 			i++
 			continue
 		}
 
 		end := i
-		for end < len(str) && str[end] == str[i] {
+		for end < len(str) && str[end] == str[i] && !escapes[end] {
 			end++
 		}
 
@@ -530,9 +631,10 @@ func bracketEscapes(str string, escapes map[int]bool) {
 				continue
 			}
 
-			if str[i+1] == '[' && (i == 0 || str[i-1] != '!') {
+			if str[i+1] == '[' && (i == 0 || str[i-1] != '!') && !strings.HasPrefix(str[i+2:], "]]") {
 				// A page link. After `![` the reader starts an image, so
-				// `![[Page]]` is text and is not changed.
+				// `![[Page]]` is text and is not changed. `[[]]` has no
+				// title, so it is not a page link, see pageLinkClose.
 				if end := ends.find(i + 2); end >= 0 {
 					escapes[end+1] = true
 				}
@@ -788,6 +890,15 @@ func EscapeLinkTitle(str string) string {
 	})
 }
 
+// EscapeRefTitle escapes the title of a page link or block reference with a
+// label, which is written in double quotes. Logseq keeps a backslash in the
+// title, so only the quote that would end the title is escaped.
+func EscapeRefTitle(str string) string {
+	return escapeRunes(str, func(prev rune, r rune) bool {
+		return r == '"'
+	})
+}
+
 func EscapeWikiLink(str string) string {
 	return escapeRunes(str, func(prev rune, r rune) bool {
 		return r == ']'
@@ -822,6 +933,19 @@ func EscapePageLinkTitle(str string) string {
 	}
 
 	return out.String()
+}
+
+// pageLinkTargetReadsBack checks if the target of a page link as it is in the
+// file, see content.PageLink.ToSource, is read back as the target. This is not
+// the case when the target was changed after it was read, as when a page is
+// renamed.
+func pageLinkTargetReadsBack(source string, to string) bool {
+	if strings.ContainsAny(source, "\r\n") || unescapePunctuation([]byte(source)) != to {
+		return false
+	}
+
+	link := "[[" + source + "]]"
+	return pageLinkClose([]byte(link)) == len(link)-2
 }
 
 // nestedLinkCloses finds the positions of the `]]` in a page title that close
@@ -937,6 +1061,16 @@ type Output struct {
 	// quoteLevels are the indentation levels of the `>` markers of the quotes
 	// that are being written, from the outermost to the innermost.
 	quoteLevels []int
+
+	// footnoteLevels are the indentation levels of the lines of the footnote
+	// definitions that are being written, from the outermost to the
+	// innermost.
+	footnoteLevels []int
+
+	// blockTextLevels are the indentation levels of the text of the blocks
+	// that are being written, after their bullets, from the outermost to the
+	// innermost.
+	blockTextLevels []int
 }
 
 // NewWriter creates a new Markdown writer.
@@ -1167,8 +1301,15 @@ func (w *Output) writeText(node *content.Text) error {
 		outside = w.markerOutsideOf(node)
 	}
 
-	value := escapeTextIn(node.Value, before, after, isInFormatting(node), !isInIndentedParagraph(node), outside)
-	if strings.HasSuffix(value, "]") && !strings.HasSuffix(value, `\]`) && (after == '(' || after == '[') {
+	// A block reference can start at the start of the text, unless text that
+	// it would continue comes before it.
+	refAtStart := true
+	if prev, ok := node.PreviousSibling().(*content.Text); ok && !prev.SoftLineBreak && !prev.HardLineBreak {
+		refAtStart = blockRefCanFollowRune(before)
+	}
+
+	value := escapeTextIn(node.Value, node.TextSource(), before, after, isInFormatting(node), !isInIndentedParagraph(node), outside, refAtStart)
+	if strings.HasSuffix(value, "]") && !endsWithEscape([]byte(value)) && (after == '(' || after == '[') {
 		// The next node starts with `(` or `[`, which together with the
 		// closing bracket would be read back as a link.
 		value = value[:len(value)-1] + `\]`
@@ -1178,6 +1319,12 @@ func (w *Output) writeText(node *content.Text) error {
 		!node.SoftLineBreak && !node.HardLineBreak && value != "" && !blockRefCanFollow([]byte(value)) && isASCIIPunctuation(rune(value[len(value)-1])) {
 		// A block reference directly after text is read back as text, but
 		// it is read after an escaped character, as in `\)((id))`.
+		value = value[:len(value)-1] + `\` + value[len(value)-1:]
+	}
+
+	if _, ok := node.NextSibling().(content.MacroSourceAware); ok &&
+		!node.SoftLineBreak && !node.HardLineBreak && value != "" && !macroCanFollow([]byte(value)) && isASCIIPunctuation(rune(value[len(value)-1])) {
+		// The same goes for a macro, as in `\){{m}}`.
 		value = value[:len(value)-1] + `\` + value[len(value)-1:]
 	}
 
@@ -1219,10 +1366,24 @@ func (w *Output) writeText(node *content.Text) error {
 		}
 	}
 
-	if node.LazyLine && (node.SoftLineBreak || node.HardLineBreak) && len(w.quoteLevels) > 0 {
-		// The next line is a part of the quote, but was written without the
-		// `>` markers of the quotes.
-		w.out.SkipIndentationOnNextLine(w.quoteLevels[0])
+	if node.LazyLine && (node.SoftLineBreak || node.HardLineBreak) {
+		// The next line is a part of the quote or the footnote, but was
+		// written without the `>` markers of the quotes or the indentation of
+		// the footnote. The outermost of them is left out.
+		level := -1
+		for _, levels := range [][]int{w.quoteLevels, w.footnoteLevels} {
+			if len(levels) > 0 && (level < 0 || levels[0] < level) {
+				level = levels[0]
+			}
+		}
+
+		if level >= 0 {
+			w.out.SkipIndentationOnNextLine(level)
+		}
+	} else if node.LazyBlockLine && (node.SoftLineBreak || node.HardLineBreak) && len(w.blockTextLevels) > 0 {
+		// The next line is a part of the block, but is indented less than
+		// the text of the block.
+		w.out.SkipIndentationOnNextLine(w.blockTextLevels[len(w.blockTextLevels)-1])
 	}
 
 	if (node.SoftLineBreak || node.HardLineBreak) && node.NextLineIndentation != "" {
@@ -1462,7 +1623,13 @@ func (w *Output) writeFootnoteDefinition(node *content.FootnoteDefinition) error
 		return err
 	}
 
-	err = w.writeRaw("[^" + EscapeFootnoteLabel(node.Label) + "]: ")
+	// The spaces after the label are kept as they are in the file.
+	space := node.LabelSpace
+	if space == "" && node.FirstChild() != nil {
+		space = " "
+	}
+
+	err = w.writeRaw("[^" + EscapeFootnoteLabel(node.Label) + "]:" + space)
 	if err != nil {
 		return err
 	}
@@ -1470,13 +1637,19 @@ func (w *Output) writeFootnoteDefinition(node *content.FootnoteDefinition) error
 	// The content of a footnote carries on over the lines that are indented
 	// under the definition.
 	w.out.PushIndentation("    ")
+	w.footnoteLevels = append(w.footnoteLevels, w.out.IndentationLevel()-1)
 
 	err = w.writeChildren(node)
 	if err != nil {
 		return err
 	}
 
+	w.footnoteLevels = w.footnoteLevels[:len(w.footnoteLevels)-1]
 	w.out.PopIndentation()
+
+	// A lazy line is only a line of the footnote, so no line after the
+	// footnote leaves out indentation.
+	w.out.SkipIndentationOnNextLine(-1)
 
 	w.endBlock()
 	return nil
@@ -1546,6 +1719,12 @@ func (w *Output) writeMathBlock(node *content.MathBlock) error {
 }
 
 func (w *Output) writeCodeSpan(node *content.CodeSpan) error {
+	// A code span read from a file is written with the backticks and spaces
+	// it had, if they still give the same code.
+	if source := node.CodeSpanSource(); source != "" && codeSpanReadsBack(source, node.Value) {
+		return w.writeRaw(source)
+	}
+
 	// The marker has to be longer than the longest run of backticks in the
 	// value, or it would end the code span early.
 	longestRun := 0
@@ -1714,7 +1893,11 @@ func (w *Output) writePageLink(node *content.PageLink) error {
 		return err
 	}
 
-	err = w.write(node.To, EscapePageLinkTitle)
+	if source := node.ToSource(); source != "" && pageLinkTargetReadsBack(source, node.To) {
+		err = w.writeRaw(source)
+	} else {
+		err = w.write(node.To, EscapePageLinkTitle)
+	}
 	if err != nil {
 		return err
 	}
@@ -1725,7 +1908,7 @@ func (w *Output) writePageLink(node *content.PageLink) error {
 	}
 
 	if node.HasLabel() {
-		return w.writeRaw(")")
+		return w.writeRefTitleEnd(node, node.Title)
 	}
 
 	return nil
@@ -1803,10 +1986,43 @@ func (w *Output) writeBlockRef(node *content.BlockRef) error {
 	}
 
 	if node.HasLabel() {
-		return w.writeRaw(")")
+		return w.writeRefTitleEnd(node, node.Title)
 	}
 
 	return nil
+}
+
+// writeRefTitleEnd writes the title of a page link or block reference with a
+// label, and the `)` that ends it. If the node was read from a file and the
+// text after its `[[Page]]` or `((id))` reads back as the same title, the
+// text is written as it is. Otherwise a title is written in double quotes,
+// which is the only form that Logseq reads, see refLinkTitle.
+func (w *Output) writeRefTitleEnd(node content.DestinationSourceAware, title string) error {
+	if source := node.DestinationSource(); source != "" {
+		rest := refTitleSource(source)
+		if read, ok := refLinkTitle(rest); ok && read == title && !strings.ContainsAny(rest, "\r\n") {
+			return w.writeRaw(rest + ")")
+		}
+	}
+
+	if title != "" {
+		err := w.writeRaw(" \"")
+		if err != nil {
+			return err
+		}
+
+		err = w.write(title, EscapeRefTitle)
+		if err != nil {
+			return err
+		}
+
+		err = w.writeRaw("\"")
+		if err != nil {
+			return err
+		}
+	}
+
+	return w.writeRaw(")")
 }
 
 func (w *Output) writeImage(node *content.Image) error {
@@ -1994,8 +2210,10 @@ func (w *Output) writeHeading(node *content.Heading) error {
 	// The marks are written as text and not as indentation, as indentation
 	// is only written after a line break. A heading block starts on the line
 	// of its bullet, as in `- ## Section`.
-	marks := strings.Repeat("#", node.Level)
-	if node.FirstChild() != nil {
+	marks := node.Indentation + strings.Repeat("#", node.Level)
+	if node.MarksSpace != "" {
+		marks += node.MarksSpace
+	} else if node.FirstChild() != nil {
 		marks += " "
 	}
 
@@ -2007,6 +2225,13 @@ func (w *Output) writeHeading(node *content.Heading) error {
 	err = w.writeChildren(node)
 	if err != nil {
 		return err
+	}
+
+	if node.FirstChild() != nil && node.TrailingSpace != "" {
+		err = w.writeRaw(node.TrailingSpace)
+		if err != nil {
+			return err
+		}
 	}
 
 	w.endBlock()
@@ -2025,9 +2250,23 @@ func (w *Output) writeParagraph(node *content.Paragraph) error {
 		return err
 	}
 
+	if node.FirstLineIndentation != "" && node.FirstChild() != nil {
+		err = w.writeRaw(node.FirstLineIndentation)
+		if err != nil {
+			return err
+		}
+	}
+
 	err = w.writeChildren(node)
 	if err != nil {
 		return err
+	}
+
+	if node.TrailingSpace != "" && node.FirstChild() != nil {
+		err = w.writeRaw(node.TrailingSpace)
+		if err != nil {
+			return err
+		}
 	}
 
 	w.endBlock()
@@ -2047,19 +2286,45 @@ func (w *Output) writeList(node *content.List) error {
 		}
 
 		i++
+		item := child.(*content.ListItem)
+		if i > 1 && item.PreviousLineType() == content.PreviousLineTypeBlank {
+			// Keep the blank line between the item and the item before it.
+			err := w.out.WriteString("\n")
+			if err != nil {
+				return err
+			}
+		}
+
 		var marker string
 		if node.Type == content.ListTypeOrdered {
-			marker = fmt.Sprintf("%d", i) + string(node.Marker)
+			// The number is kept as it is in the file.
+			number := item.Number
+			if number == "" {
+				number = fmt.Sprintf("%d", i)
+			}
+			marker = number + string(node.Marker)
 		} else {
 			marker = string(node.Marker)
 		}
 
-		err := w.out.WriteString(marker + " ")
+		space := item.MarkerSpace
+		if space == "" {
+			space = " "
+		}
+
+		err := w.out.WriteString(marker + space)
 		if err != nil {
 			return err
 		}
 
-		w.out.PushIndentation(strings.Repeat(" ", len(marker)+1))
+		// The lines after the first line of the item are indented as far
+		// as its text starts.
+		width := len(marker)
+		for i := 0; i < len(space); i++ {
+			width = nextColumn(width, space[i])
+		}
+
+		w.out.PushIndentation(strings.Repeat(" ", width))
 
 		err = w.writeChildren(child.(content.HasChildren))
 		if err != nil {
@@ -2557,6 +2822,7 @@ func (w *Output) writeBlock(node *content.Block) error {
 			}
 
 			w.out.PushIndentation("  ")
+			w.blockTextLevels = append(w.blockTextLevels, w.out.IndentationLevel()-1)
 
 			err = w.Write(child)
 			if err != nil {
@@ -2570,6 +2836,7 @@ func (w *Output) writeBlock(node *content.Block) error {
 				}
 			}
 
+			w.blockTextLevels = w.blockTextLevels[:len(w.blockTextLevels)-1]
 			w.out.PopIndentation()
 		}
 
@@ -2585,12 +2852,18 @@ func (w *Output) writeBlock(node *content.Block) error {
 }
 
 // bulletMarker gets the text that starts the line of the bullet of a block.
-// It is `- ` and the content of the block follows it on the same line. If the
+// It is `- `, or the dash and the spaces after it as they are in the file, see
+// content.Block.BulletSpace, and the content of the block follows it on the
+// same line. If the
 // line of the bullet has no text, the `-` is written with the spaces that
 // followed it, and the content starts on the next line, see
 // content.Block.WithEmptyFirstLine.
 func bulletMarker(block *content.Block) string {
 	if !block.HasEmptyFirstLine() {
+		if space := block.BulletSpace(); space != "" && len(block.Content()) > 0 {
+			return "-" + space
+		}
+
 		return "- "
 	}
 
@@ -3015,20 +3288,16 @@ func (w *Output) writeTaskMarker(node *content.TaskMarker) error {
 }
 
 func (w *Output) writeTaskPriority(node *content.TaskPriority) error {
-	var err error
-	switch node.Priority {
-	case content.PriorityNone:
+	if node.Priority == content.PriorityNone {
 		return nil
-	case content.PriorityA:
-		err = w.writeRaw("[#A]")
-	case content.PriorityB:
-		err = w.writeRaw("[#B]")
-	case content.PriorityC:
-		err = w.writeRaw("[#C]")
-	default:
+	}
+
+	value := node.Priority.String()
+	if value == "" || value == "\n" || value == "\r" {
 		return fmt.Errorf("unsupported priority: %d", node.Priority)
 	}
 
+	err := w.writeRaw("[#" + value + "]")
 	if err != nil {
 		return err
 	}

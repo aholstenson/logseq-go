@@ -34,14 +34,16 @@ func (g *Graph) pageTitlesUnderNamespace(ctx context.Context, namespace string) 
 // namespace is renamed, which is its own title with the part that is the old
 // namespace replaced by the new one. The second return value is false for
 // titles that are not in the namespace.
+//
+// The namespace part of the title can have another length in bytes than from,
+// as titles are compared in the Unicode NFC form, see pageTitlesEqual. So each
+// `/` in the title is tried as the end of the namespace.
 func namespaceRenameTarget(title string, from string, to string) (string, bool) {
-	if len(title) <= len(from) || title[len(from)] != '/' {
-		return "", false
+	for i := 0; i < len(title); i++ {
+		if title[i] == '/' && pageTitlesEqual(title[:i], from) {
+			return to + title[i:], true
+		}
 	}
 
-	if !pageTitlesEqual(title[:len(from)], from) {
-		return "", false
-	}
-
-	return to + title[len(from):], true
+	return "", false
 }

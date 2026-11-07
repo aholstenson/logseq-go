@@ -18,6 +18,7 @@ type Block struct {
 
 	emptyFirstLine      bool
 	emptyFirstLineSpace string
+	bulletSpace         string
 
 	lineEnding string
 }
@@ -113,6 +114,11 @@ func (b *Block) Blocks() BlockList {
 // these properties. It is only used if the value is a uuid such as
 // `6500e8a3-0000-4000-8000-000000000000`. Logseq gives a block with an id
 // that is not a uuid a new random id, so such an id is not returned.
+//
+// The ID is returned in lower case, also when the property is written in
+// upper case. Logseq reads a uuid without regard to case, so
+// `((6500E8A3-...))` refers to the block with `id:: 6500e8a3-...`. Compare
+// the ID of a BlockRef with strings.EqualFold.
 func (b *Block) ID() string {
 	id := b.idProperty()
 	if id == nil {
@@ -120,7 +126,7 @@ func (b *Block) ID() string {
 	}
 
 	if child, ok := id.FirstChild().(*Text); ok && isUUID(child.Value) {
-		return strings.TrimSpace(child.Value)
+		return strings.ToLower(strings.TrimSpace(child.Value))
 	}
 
 	return ""
@@ -284,6 +290,22 @@ func (b *Block) HasEmptyFirstLine() bool {
 // the bullet, when that line has no text. See WithEmptyFirstLine for details.
 func (b *Block) EmptyFirstLineSpace() string {
 	return b.emptyFirstLineSpace
+}
+
+// BulletSpace gets the spaces and tabs between the `-` of the bullet and the
+// text on the line of the bullet, as it is in the file, such as the three
+// spaces of "-   Text". It is empty for a block that was not read from a
+// file, or that has one space there. The block is then written with one
+// space.
+func (b *Block) BulletSpace() string {
+	return b.bulletSpace
+}
+
+// WithBulletSpace sets the spaces and tabs between the `-` of the bullet and
+// the text on the line of the bullet, see BulletSpace.
+func (b *Block) WithBulletSpace(space string) *Block {
+	b.bulletSpace = space
+	return b
 }
 
 func (n *Block) debug(p *debugPrinter) {

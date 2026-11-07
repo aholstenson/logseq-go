@@ -101,8 +101,8 @@ var _ = Describe("Parsing then outputting", func() {
 		FullyEqual("Code text starting with a backtick", "`` `Basic ``")
 		FullyEqual("Code text ending with a backtick", "`` Basic` ``")
 		FullyEqual("Code text of a single backtick", "`` ` ``")
-		// Padding is only kept where it is needed to read the value back.
-		Varies("Code text containing double backticks", "``` Basic ``content ```", "```Basic ``content```")
+		// The backticks and padding are kept as they are written.
+		FullyEqual("Code text containing double backticks", "``` Basic ``content ```")
 		FullyEqual("Code text surrounded by spaces", "`  Basic  `")
 		FullyEqual("Code text of only spaces", "`  `")
 	})
@@ -111,6 +111,7 @@ var _ = Describe("Parsing then outputting", func() {
 		FullyEqual("Tag", "#tag and content")
 		FullyEqual("Tag at end of line", "content #tag")
 		FullyEqual("Tag with spaces", "#[[tag with spaces]] and content")
+		FullyEqual("Tag with a non-breaking space in the name", "- #x\u00a0y z")
 		FullyEqual("Page link with a label", "See [Goals]([[Workshop/Goals]]) here")
 		FullyEqual("Page link with a label to a page with spaces", "See [the goals]([[Workshop Goals]]) here")
 		FullyEqual("Page link with a label that has formatting", "[**Goals** of it]([[Workshop Goals]])")
@@ -289,8 +290,9 @@ var _ = Describe("Parsing then outputting", func() {
 			FullyEqual("IN-PROGRESS Task", "IN-PROGRESS Task")
 			FullyEqual("WAIT Task", "WAIT Task")
 			FullyEqual("WAITING Task", "WAITING Task")
+			FullyEqual("STARTED Task", "- STARTED Task")
 
-			Varies("Task with leading space", " TODO Task", "TODO Task")
+			FullyEqual("Task with leading space", " TODO Task")
 		})
 
 		Describe("Markers without text", func() {
@@ -317,11 +319,28 @@ var _ = Describe("Parsing then outputting", func() {
 			FullyEqual("Priority in sub blocks", "- TODO [#A] Task\n- TODO [#B] Other")
 			FullyEqual("Priority followed by a tag and a page link", "TODO [#A] #tag and [[page]]")
 			FullyEqual("Priority with a scheduled date", "TODO [#A] Task\nSCHEDULED: <2024-01-15 Mon>")
+			FullyEqual("Priority with a letter after C", "- TODO [#D] x")
+			FullyEqual("Priority with a lower case letter", "- [#a] x")
+			FullyEqual("Priority with a digit", "- TODO [#1] x")
+			FullyEqual("Priority after two spaces", "- TODO  [#A]  x")
 
 			// Brackets that Logseq does not read as a priority stay as text.
 			FullyEqual("Priority that is not at the start", "Task [#A] more")
-			FullyEqual("Unknown priority", "TODO [#D] Task")
+			FullyEqual("Priority with two characters", "TODO [#AB] Task")
 			FullyEqual("Priority not followed by a space", "Task [#A]more")
+
+			DescribeTable("reads a priority with any one character, the same as Logseq",
+				func(input string, expected content.Priority) {
+					root, err := markdown.ParseString(input)
+					Expect(err).ToNot(HaveOccurred())
+
+					Expect(root.Blocks()[0].Priority()).To(Equal(expected))
+				},
+				Entry("the letter D", "- TODO [#D] x", content.PriorityOf('D')),
+				Entry("a lower case letter", "- [#a] x", content.PriorityOf('a')),
+				Entry("a digit", "- TODO [#1] x", content.PriorityOf('1')),
+				Entry("A after two spaces", "- TODO  [#A]  x", content.PriorityA),
+			)
 		})
 
 		Describe("Logbooks", func() {
@@ -374,6 +393,51 @@ var _ = Describe("Parsing then outputting", func() {
 			// Syntax that is not modelled stays as text so nothing is lost.
 			FullyEqual("Scheduled with a time range", "TODO Task\nSCHEDULED: <2024-01-15 Mon 10:00-11:00>")
 			FullyEqual("Scheduled with a plain date", "TODO Task\nSCHEDULED: 2024-01-15")
+		})
+	})
+
+	Describe("Empty page links", func() {
+		// Given `[[]]`, When it is written, Then it is unchanged
+		FullyEqual("Empty page link", "- [[]]")
+	})
+
+	Describe("Macros directly after a word", func() {
+		FullyEqual("Macro after a word", "- x{{m [[q]]}}")
+		FullyEqual("Macro after a word and a macro after a space", "- a{{m}} {{n}}")
+		FullyEqual("Macro after an escaped character", `- \){{m a}}`)
+		FullyEqual("Empty tag", "- #[[]]")
+		FullyEqual("Page link with a space", "- [[ ]]")
+		FullyEqual("Empty page link before a page link", "- [[]] [[x]]")
+		FullyEqual("Labelled empty page link", "- [l]([[]])")
+		FullyEqual("Embed of an empty page link", "- {{embed [[]]}}")
+	})
+
+	Describe("Double parentheses without a block id", func() {
+		// Given `((abc))`, When it is written, Then it is unchanged
+		FullyEqual("Text in double parentheses", "- ((abc))")
+		FullyEqual("Text with a page link and a tag in double parentheses", "- ((see [[x]] and #y))")
+		FullyEqual("Labelled link to an id that is not a uuid", "- [l](((abc)))")
+		FullyEqual("Embed of an id that is not a uuid", "- {{embed ((abc))}}")
+		FullyEqual("Text in double parentheses after a page link", "- [[a]]((see [[x]]))")
+		FullyEqual("Text in double parentheses in bold", "- **((see [[x]] and _y_))**")
+		FullyEqual("Text in double parentheses with a backslash", `- ((C:\Users\_x))`)
+
+		It("keeps the page link in text in double parentheses after a word as text", func() {
+			// Given text that ends in a letter, and text in double
+			// parentheses with a page link after it
+			block := content.NewBlock(content.NewParagraph(
+				content.NewText("a"),
+				content.NewText("((see [[x]]))"),
+			))
+
+			// When it is written and read back
+			out, err := markdown.AsString(block)
+			Expect(err).ToNot(HaveOccurred())
+			read, err := markdown.ParseString(out)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Then the page link is still text, not a reference
+			Expect(read.Children().PageReferences()).To(BeEmpty())
 		})
 	})
 })

@@ -155,3 +155,119 @@ var _ = Describe("Backslashes in saved text", func() {
 		})
 	})
 })
+
+// A backslash before ASCII punctuation, as in `\*`, is read as that character,
+// the same as Logseq does. The backslash is not needed in all places, but it
+// is in the file, so it must stay there when a page is saved.
+var _ = Describe("Backslashes that are not needed to stop markup", func() {
+	// Given a block with a backslash that is not needed, When it is parsed
+	// and written, Then the text is the same as the input.
+	FullyEqual("Escaped asterisk between spaces", `- a \* b`)
+	FullyEqual("Escaped full stop", `- a \. b`)
+	FullyEqual("Escaped parenthesis", `- a \( b`)
+	FullyEqual("Escaped hash before a space", `- a \# b`)
+	FullyEqual("Escaped hash at the end of the text", `- x \#`)
+	FullyEqual("Escaped hash marks at the end of a heading", `- ## x \##`)
+	FullyEqual("Escaped asterisk after a task marker", `- TODO a \* b`)
+	FullyEqual("Escaped asterisk in bold text", `- **a \* b**`)
+	FullyEqual("Escaped characters on two lines of a block", "- a \\*\n  b \\_ c")
+	FullyEqual("Escaped opening asterisk of text that looks like emphasis", `- a \*b*`)
+	FullyEqual("Escaped opening asterisk at the start of a block", `- \*a*`)
+	FullyEqual("Escaped opening underscore of text that looks like emphasis", `- a \_b_`)
+	FullyEqual("Escaped opening tilde of text that looks like strikethrough", `- \~~a~~`)
+	FullyEqual("Escaped opening equal sign of text that looks like a highlight", `- \==a==`)
+	FullyEqual("Escaped asterisk before emphasis in the same line", `- a \*b* *c*`)
+
+	It("still escapes both asterisks of text made with the API", func() {
+		// Given a block with text that would read back as emphasis
+		page := content.NewBlock(
+			content.NewBlock(content.NewParagraph(content.NewText("a *b*"))),
+		)
+
+		// When it is written
+		v, err := markdown.AsString(page)
+		Expect(err).ToNot(HaveOccurred())
+
+		// Then both asterisks are escaped
+		Expect(v).To(Equal(`- a \*b\*`))
+	})
+
+	FullyEqual("Escaped asterisk in a page link", `- [[a \* b]]`)
+	FullyEqual("Escaped asterisk in a page link with a label", `- [x]([[a \* b]])`)
+	FullyEqual("Escaped asterisk in a page link with a label and a title", `- [x]([[a \* b]] "t")`)
+	FullyEqual("Escaped asterisk in a nested page link", `- [[x [[a \* b]]]]`)
+	FullyEqual("Escaped asterisk in an embedded page link", `- ![[a \* b]]`)
+	FullyEqual("Escaped asterisk in a page link in a property value", `- k:: [[a \* b]]`)
+
+	It("reads a page link with an escaped character as a ref to the page without the backslash", func() {
+		// Given a block with a page link with an escaped asterisk
+		root, err := markdown.ParseString(`- [[a \* b]]`)
+		Expect(err).ToNot(HaveOccurred())
+
+		// Then the link points at the page `a * b`, the same as Logseq
+		refs := root.Blocks()[0].Children().PageReferences()
+		Expect(refs).To(HaveLen(1))
+		Expect(refs[0].(content.PageRef).GetTo()).To(Equal("a * b"))
+	})
+
+	It("writes a page link whose target was changed with the new target", func() {
+		// Given a page link with an escaped asterisk, whose target is then
+		// changed, as when the page is renamed
+		root, err := markdown.ParseString(`- [[a \* b]]`)
+		Expect(err).ToNot(HaveOccurred())
+		links := root.Children().FilterDeep(content.IsOfType[*content.PageLink]())
+		Expect(links).To(HaveLen(1))
+		links[0].(*content.PageLink).To = "c"
+
+		// When it is written
+		v, err := markdown.AsString(root)
+		Expect(err).ToNot(HaveOccurred())
+
+		// Then the link has the new target
+		Expect(v).To(Equal("- [[c]]"))
+	})
+
+	It("reads an escaped character without its backslash, the same as Logseq", func() {
+		// Given a block with an escaped asterisk
+		root, err := markdown.ParseString(`- a \* b`)
+		Expect(err).ToNot(HaveOccurred())
+
+		// Then the text has the asterisk and no backslash
+		text, ok := root.Blocks()[0].Content()[0].(*content.Paragraph).FirstChild().(*content.Text)
+		Expect(ok).To(BeTrue(), "first node of the paragraph is text")
+		Expect(text.Value).To(Equal("a * b"))
+	})
+
+	It("writes a text that was changed after it was read without the old backslashes", func() {
+		// Given a block with an escaped asterisk, whose text is then changed
+		root, err := markdown.ParseString(`- a \* b`)
+		Expect(err).ToNot(HaveOccurred())
+		text := root.Blocks()[0].Content()[0].(*content.Paragraph).FirstChild().(*content.Text)
+		text.Value = "c * d"
+
+		// When it is written
+		v, err := markdown.AsString(root)
+		Expect(err).ToNot(HaveOccurred())
+
+		// Then the new text is written as it is
+		Expect(v).To(Equal("- c * d"))
+	})
+})
+
+// The `#` marks before a tag are text, as in "##x", which is the text `#`
+// and the tag `#x`. The text must not get a backslash when it is written.
+var _ = Describe("Hash marks directly before a tag", func() {
+	FullyEqual("Hash mark before a tag at the start of a block", "- ##x")
+	FullyEqual("Hash mark before a tag after text", "- x ##y")
+
+	It("keeps the tag after the hash mark", func() {
+		// Given a block whose text starts with a hash mark and a tag
+		root, err := markdown.ParseString("- ##x")
+		Expect(err).ToNot(HaveOccurred())
+
+		// Then the block has a ref to the page of the tag
+		refs := root.Blocks()[0].Children().PageReferences()
+		Expect(refs).To(HaveLen(1))
+		Expect(refs[0].(content.PageRef).GetTo()).To(Equal("x"))
+	})
+})

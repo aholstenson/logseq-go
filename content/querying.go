@@ -1,5 +1,7 @@
 package content
 
+import "strings"
+
 type NodePredicate func(node Node) bool
 
 type NodeList []Node
@@ -113,6 +115,9 @@ func IsPageReference() NodePredicate {
 // The label of a link, an image, a page link or a block reference is not
 // searched, as Logseq reads no references from it. Thus `[a [[b]]](url)`
 // refers to no page, and `[a [[b]]]([[c]])` only refers to `c`.
+//
+// A reference to a page whose title is only spaces, such as `[[ ]]` or
+// `#[[ ]]`, is left out, as Logseq does not read it.
 func (n NodeList) PageReferences() NodeList {
 	refs := make(NodeList, 0)
 	afterTaskDate := false
@@ -142,7 +147,7 @@ func (n NodeList) PageReferences() NodeList {
 			afterTaskDate = false
 		}
 
-		if IsPageReference()(node) {
+		if IsPageReference()(node) && !isBlankPageRef(node) {
 			refs = append(refs, node)
 			refs = append(refs, nestedPageRefsOf(node.(PageRef))...)
 		}
@@ -161,6 +166,77 @@ func (n NodeList) PageReferences() NodeList {
 	return refs
 }
 
+// BlockReferenceIDs finds the ids of the blocks that these nodes and the
+// nodes below them refer to, in the same way as Logseq. Each id is returned
+// once, in lower case, in the order it is first found. A node refers to a
+// block when it is:
+//
+//   - a BlockRef, such as `((id))` or `[label](((id)))`
+//   - a BlockEmbed, such as `{{embed ((id))}}`
+//   - a link or an autolink to `id://id`, such as `[label](id://id)`
+//   - a link, an image or a page link whose target is only the id, such as
+//     `[label](id)` or `[[id]]`. A page link to an id still refers to the
+//     page with that title too, see PageReferences.
+//
+// Only an id that is a uuid refers to a block. Logseq also finds these in
+// labels and in the values of properties, so they are searched too.
+func (n NodeList) BlockReferenceIDs() []string {
+	ids := make([]string, 0)
+	seen := make(map[string]struct{})
+	for _, node := range n.FilterDeep(func(node Node) bool { return true }) {
+		id := blockReferenceIDOf(node)
+		if id == "" {
+			continue
+		}
+
+		if _, ok := seen[id]; ok {
+			continue
+		}
+
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+
+	return ids
+}
+
+// blockReferenceIDOf gets the id of the block that the node refers to, in
+// lower case, or an empty string if it does not refer to a block. See
+// BlockReferenceIDs.
+func blockReferenceIDOf(node Node) string {
+	var target string
+	switch n := node.(type) {
+	case *BlockRef:
+		target = n.ID
+	case *BlockEmbed:
+		target = n.ID
+	case *Link:
+		target = strings.TrimPrefix(n.URL, "id://")
+	case *AutoLink:
+		if strings.HasPrefix(n.URL, "id://") {
+			target = n.URL[len("id://"):]
+		}
+	case *Image:
+		target = n.URL
+	case *PageLink:
+		target = n.To
+	}
+
+	if len(target) != 36 || !isUUID(target) {
+		return ""
+	}
+
+	return strings.ToLower(target)
+}
+
+// isBlankPageRef checks if the node is a reference to a page whose title is
+// empty or only spaces, such as `[[ ]]`. Logseq does not read such a
+// reference, as no page has such a title.
+func isBlankPageRef(node Node) bool {
+	ref, ok := node.(PageRef)
+	return ok && strings.TrimSpace(ref.GetTo()) == ""
+}
+
 // propertyValueRefs finds the references to pages in the value of a property.
 // Logseq takes only the references at the top level of the value, so the
 // link in `foo:: **[[x]]**` is not a reference, but the link in
@@ -168,7 +244,7 @@ func (n NodeList) PageReferences() NodeList {
 func propertyValueRefs(property *Property) NodeList {
 	refs := make(NodeList, 0)
 	for _, node := range property.Children() {
-		if IsPageReference()(node) {
+		if IsPageReference()(node) && !isBlankPageRef(node) {
 			refs = append(refs, node)
 			refs = append(refs, nestedPageRefsOf(node.(PageRef))...)
 		}
