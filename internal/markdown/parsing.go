@@ -543,6 +543,7 @@ func convertChildren(src []byte, node ast.Node, target content.HasChildren) erro
 				merged.HardLineBreak = text.HardLineBreak()
 				merged.SoftLineBreak = text.SoftLineBreak()
 				merged.TrailingSpace = trailingSpaceOf(src, text)
+				merged.BackslashLineBreak = isBackslashLineBreak(src, text)
 				merged.LazyLine = isLazyLineAfter(src, text)
 				merged.LazyBlockLine = isLazyBlockLineAfter(src, text)
 				merged.NextLineIndentation = nextLineIndentationOf(src, text)
@@ -1043,6 +1044,7 @@ func convertText(src []byte, node *ast.Text) (*content.Text, error) {
 		text.HardLineBreak = true
 	}
 	text.TrailingSpace = trailingSpaceOf(src, node)
+	text.BackslashLineBreak = isBackslashLineBreak(src, node)
 	text.LazyLine = isLazyLineAfter(src, node) || isLazyFootnoteLineAfter(src, node)
 	text.LazyBlockLine = isLazyBlockLineAfter(src, node)
 	text.NextLineIndentation = nextLineIndentationOf(src, node)
@@ -1116,6 +1118,12 @@ func trailingSpaceOfLines(src []byte, node ast.Node) string {
 // break. The segment of the text does not hold them, so the source after the
 // segment is read. A backslash hard line break has no trailing space, as the
 // spaces before the backslash are part of the segment.
+// isBackslashLineBreak checks if the hard line break of a text is written as
+// a backslash at the end of the line.
+func isBackslashLineBreak(src []byte, node *ast.Text) bool {
+	return node.HardLineBreak() && node.Segment.Stop < len(src) && src[node.Segment.Stop] == '\\'
+}
+
 func trailingSpaceOf(src []byte, node *ast.Text) string {
 	if !node.SoftLineBreak() && !node.HardLineBreak() {
 		return ""

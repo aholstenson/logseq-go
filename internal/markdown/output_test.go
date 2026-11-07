@@ -39,7 +39,9 @@ var _ = Describe("Output", func() {
 			err := writer.Write(content.NewText("abc").WithHardLineBreak())
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(buf.String()).To(Equal("abc\\\n"))
+			// Logseq shows a backslash at the end of a line as text, so a
+			// new hard break is written with two spaces.
+			Expect(buf.String()).To(Equal("abc  \n"))
 		})
 
 		It("can write text with characters that should be escaped", func() {

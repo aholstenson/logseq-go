@@ -1449,17 +1449,24 @@ func (w *Output) writeText(node *content.Text) error {
 		value = `\` + value
 	}
 
+	if node.SoftLineBreak && strings.HasSuffix(value, "  ") {
+		// Two spaces before a soft line break would make it a hard line
+		// break. The reader drops the spaces at the end of a line anyway.
+		value = strings.TrimRight(value, " ") + " "
+	}
+
 	err := w.writeRaw(value)
 	if err != nil {
 		return err
 	}
 
 	if node.SoftLineBreak {
-		lineEnd := "\n"
-		if !strings.HasSuffix(node.TrailingSpace, "  ") {
-			// Two spaces at the end of the line would be read back as a
-			// hard line break, so only fewer spaces are kept.
-			lineEnd = node.TrailingSpace + lineEnd
+		// Two spaces at the end of the line would be read back as a hard
+		// line break, so only fewer spaces are kept. The value of a changed
+		// text can end with spaces too.
+		lineEnd := node.TrailingSpace + "\n"
+		if strings.HasSuffix(value+node.TrailingSpace, "  ") {
+			lineEnd = "\n"
 		}
 
 		err = w.writeRaw(lineEnd)
@@ -1468,9 +1475,12 @@ func (w *Output) writeText(node *content.Text) error {
 		}
 	} else if node.HardLineBreak {
 		// Logseq shows a backslash at the end of a line as text, so a break
-		// that was written with spaces is written with the same spaces.
-		lineEnd := "\\\n"
-		if node.TrailingSpace != "" {
+		// is written with two spaces, or with the spaces or the backslash
+		// that it has in the file.
+		lineEnd := "  \n"
+		if node.BackslashLineBreak && node.TrailingSpace == "" {
+			lineEnd = "\\\n"
+		} else if strings.HasSuffix(node.TrailingSpace, "  ") {
 			lineEnd = node.TrailingSpace + "\n"
 		}
 

@@ -17,9 +17,16 @@ type Text struct {
 	// TrailingSpace is the whitespace between the text and its line break,
 	// as it is in the file. It is written back so that saving does not
 	// change the line. For a hard line break it holds the spaces that make
-	// the break. If it is empty, a hard line break is written as a
-	// backslash. It is not used if the text has no line break.
+	// the break. A hard line break is written with two spaces if it does not
+	// end with two spaces, and BackslashLineBreak is false. It is not used
+	// if the text has no line break.
 	TrailingSpace string
+
+	// BackslashLineBreak is whether the hard line break of the text is
+	// written as a backslash at the end of the line, as it is in the file.
+	// Logseq shows the backslash as text, so a new hard line break is
+	// written with two spaces.
+	BackslashLineBreak bool
 
 	// LazyLine is whether the line after the line break of the text is in a
 	// quote but is written without the `>` marker, as `b` is in "> a\nb", or
