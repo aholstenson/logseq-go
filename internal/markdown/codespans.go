@@ -1,6 +1,8 @@
 package markdown
 
 import (
+	"bytes"
+
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/text"
@@ -35,6 +37,10 @@ func (p *codeSpanSourceParser) Parse(parent ast.Node, block text.Reader, pc pars
 		source := block.Source()
 		if startLine == stopLine {
 			code.SetAttributeString(codeSpanSourceAttribute, string(source[start.Start:stop.Start]))
+		} else if item := codeSpanBlockItem(parent); item != nil {
+			if value, ok := blockRelativeCodeSpanSource(source, item, start.Start, stop.Start); ok {
+				code.SetAttributeString(codeSpanSourceAttribute, value)
+			}
 		} else if lines := blockLinesOf(parent); lines != nil && stopLine < lines.Len() {
 			// A code span over more than one line keeps its line breaks.
 			// The lines are taken without the indentation and the markers
@@ -61,6 +67,57 @@ func (p *codeSpanSourceParser) Parse(parent ast.Node, block text.Reader, pc pars
 	}
 
 	return result
+}
+
+// codeSpanBlockItem gets the list item of the block that holds an inline
+// node, if only paragraphs and list items are between them. The lines of a
+// code span over more than one line in such a block are kept with their
+// indentation from the text of the block, see blockRelativeCodeSpanSource.
+// Returns nil if the node is not in a block, or is in a quote or a footnote.
+func codeSpanBlockItem(node ast.Node) ast.Node {
+	for ; node != nil; node = node.Parent() {
+		switch n := node.(type) {
+		case *ast.Blockquote, *footnoteDefinition:
+			return nil
+		case *ast.ListItem:
+			if item, ok := blockItemOf(n); ok {
+				return item
+			}
+		}
+	}
+
+	return nil
+}
+
+// blockRelativeCodeSpanSource gets the text of a code span over more than one
+// line from start to stop, where each line after the first has the
+// indentation that it has after the column of the text of the block. A lazy
+// line of a list item in the block keeps its column in this way. Returns
+// false if a line is indented less than the text of the block.
+func blockRelativeCodeSpanSource(src []byte, item ast.Node, start int, stop int) (string, bool) {
+	var buf []byte
+	pos := start
+	for {
+		end := bytes.IndexByte(src[pos:stop], '\n')
+		if end < 0 {
+			buf = append(buf, src[pos:stop]...)
+			return string(buf), true
+		}
+
+		buf = append(buf, src[pos:pos+end+1]...)
+		lineStart := pos + end + 1
+		indentation, lazy, ok := blockLineIndentation(src, item, lineStart)
+		if !ok || lazy {
+			return "", false
+		}
+
+		pos = lineStart
+		for pos < stop && (src[pos] == ' ' || src[pos] == '\t') {
+			pos++
+		}
+
+		buf = append(buf, indentation...)
+	}
 }
 
 // blockLinesOf gets the lines of the block that holds the inline node, such

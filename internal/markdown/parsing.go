@@ -545,6 +545,7 @@ func convertChildren(src []byte, node ast.Node, target content.HasChildren) erro
 				merged.TrailingSpace = trailingSpaceOf(src, text)
 				merged.BackslashLineBreak = isBackslashLineBreak(src, text)
 				merged.LazyLine, merged.LazyLineMarkers = lazyLineAfter(src, text)
+				merged.LazyLine = merged.LazyLine || isLazyListItemLineAfter(src, text)
 				merged.LazyBlockLine = isLazyBlockLineAfter(src, text)
 				merged.NextLineIndentation = nextLineIndentationOf(src, text)
 				continue
@@ -1046,10 +1047,68 @@ func convertText(src []byte, node *ast.Text) (*content.Text, error) {
 	text.TrailingSpace = trailingSpaceOf(src, node)
 	text.BackslashLineBreak = isBackslashLineBreak(src, node)
 	text.LazyLine, text.LazyLineMarkers = lazyLineAfter(src, node)
-	text.LazyLine = text.LazyLine || isLazyFootnoteLineAfter(src, node)
+	text.LazyLine = text.LazyLine || isLazyFootnoteLineAfter(src, node) || isLazyListItemLineAfter(src, node)
 	text.LazyBlockLine = isLazyBlockLineAfter(src, node)
 	text.NextLineIndentation = nextLineIndentationOf(src, node)
 	return text, nil
+}
+
+// isLazyListItemLineAfter checks if the line after the line break of a text
+// in a list item is indented less than the text of the item, as `b` is in
+// "* a\nb", see content.Text.LazyLine. A text in a quote is left to
+// lazyLineAfter.
+func isLazyListItemLineAfter(src []byte, node *ast.Text) bool {
+	if !node.SoftLineBreak() && !node.HardLineBreak() {
+		return false
+	}
+
+	var item *ast.ListItem
+	for p := node.Parent(); p != nil; p = p.Parent() {
+		switch n := p.(type) {
+		case *ast.Blockquote:
+			return false
+		case *ast.ListItem:
+			if item == nil && !isBlockList(n.Parent()) {
+				item = n
+			}
+		}
+	}
+
+	if item == nil {
+		return false
+	}
+
+	value, ok := item.Attribute(listMarkerStartAttribute)
+	markerAt, isInt := value.(int)
+	if !ok || !isInt {
+		return false
+	}
+
+	marker, space := listMarkerSpace(src, item)
+	if marker == "" {
+		return false
+	}
+
+	start := lineStart(src, markerAt)
+	column := 0
+	for i := start; i < markerAt; i++ {
+		column = nextColumn(column, src[i])
+	}
+
+	textColumn := column + len(marker)
+	if space == "" {
+		textColumn++
+	}
+	for i := 0; i < len(space); i++ {
+		textColumn = nextColumn(textColumn, space[i])
+	}
+
+	i := bytes.IndexByte(src[node.Segment.Stop:], '\n')
+	if i < 0 {
+		return false
+	}
+
+	return indentationWidth(src, node.Segment.Stop+i+1) < textColumn
 }
 
 // lazyLineAfter checks if the line after the line break of a text in a

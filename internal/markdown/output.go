@@ -1195,6 +1195,10 @@ type Output struct {
 	// innermost.
 	footnoteLevels []int
 
+	// listItemLevels are the indentation levels of the text of the list
+	// items that are being written, from the outermost to the innermost.
+	listItemLevels []int
+
 	// blockTextLevels are the indentation levels of the text of the blocks
 	// that are being written, after their bullets, from the outermost to the
 	// innermost.
@@ -1524,7 +1528,7 @@ func (w *Output) writeText(node *content.Text) error {
 		// written without the `>` markers of the quotes or the indentation of
 		// the footnote. The outermost of them is left out.
 		level := -1
-		for _, levels := range [][]int{w.quoteLevels, w.footnoteLevels} {
+		for _, levels := range [][]int{w.quoteLevels, w.footnoteLevels, w.listItemLevels} {
 			if len(levels) > 0 && (level < 0 || levels[0] < level) {
 				level = levels[0]
 			}
@@ -1938,10 +1942,58 @@ func (w *Output) writeMathBlock(node *content.MathBlock) error {
 	return nil
 }
 
+// codeSpanBlock gets the block that holds a code span, if only paragraphs,
+// lists and inline nodes are between them. The lines of such a code span are
+// kept with their indentation from the text of the block, see
+// blockRelativeCodeSpanSource.
+func codeSpanBlock(node content.Node) (*content.Block, bool) {
+	for p := node.Parent(); p != nil; p = p.Parent() {
+		switch n := p.(type) {
+		case *content.Block:
+			return n, n.Parent() != nil && !writesWithoutBullet(n)
+		case *content.Blockquote, *content.FootnoteDefinition:
+			return nil, false
+		}
+	}
+
+	return nil, false
+}
+
+// writeBlockRelativeLines writes text over more than one line, where each
+// line after the first has its indentation from the text of the block. The
+// indentation of the containers in the block, such as list items, is left
+// out of these lines.
+func (w *Output) writeBlockRelativeLines(text string, block *content.Block) error {
+	level := w.blockTextLevels[len(w.blockTextLevels)-1]
+	lines := strings.Split(text, "\n")
+	for i, line := range lines {
+		if i > 0 {
+			err := w.writeRaw("\n")
+			if err != nil {
+				return err
+			}
+
+			w.out.SkipIndentationOnNextLine(level)
+			line = blockTextIndentation(block) + line
+		}
+
+		err := w.writeRaw(line)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (w *Output) writeCodeSpan(node *content.CodeSpan) error {
 	// A code span read from a file is written with the backticks and spaces
 	// it had, if they still give the same code.
 	if source := node.CodeSpanSource(); source != "" && codeSpanReadsBack(source, node.Value) {
+		if block, ok := codeSpanBlock(node); ok && strings.Contains(source, "\n") && len(w.blockTextLevels) > 0 {
+			return w.writeBlockRelativeLines(source, block)
+		}
+
 		return w.writeRaw(source)
 	}
 
@@ -2678,6 +2730,7 @@ func (w *Output) writeList(node *content.List) error {
 		}
 
 		w.out.PushIndentation(strings.Repeat(" ", width))
+		w.listItemLevels = append(w.listItemLevels, w.out.IndentationLevel()-1)
 
 		err = w.writeChildren(child.(content.HasChildren))
 		if err != nil {
@@ -2691,6 +2744,7 @@ func (w *Output) writeList(node *content.List) error {
 			}
 		}
 
+		w.listItemLevels = w.listItemLevels[:len(w.listItemLevels)-1]
 		w.out.PopIndentation()
 	}
 

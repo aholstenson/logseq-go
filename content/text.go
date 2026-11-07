@@ -30,11 +30,12 @@ type Text struct {
 
 	// LazyLine is whether the line after the line break of the text is in a
 	// quote but is written without the `>` marker, as `b` is in "> a\nb", or
-	// is in a footnote definition but is not indented under it, as `b` is in
-	// "[^1]: a\nb". Logseq and CommonMark read such a line as a part of the
-	// quote or the footnote. It is written back without the marker or the
-	// indentation, so that saving does not change the line. It is not used if
-	// the text has no line break.
+	// is in a footnote definition or a list item but is not indented under
+	// it, as `b` is in "[^1]: a\nb" and in "* a\nb". Logseq and CommonMark
+	// read such a line as a part of the quote, the footnote or the list item.
+	// It is written back without the marker or the indentation, so that
+	// saving does not change the line. It is not used if the text has no line
+	// break.
 	LazyLine bool
 
 	// LazyLineMarkers is the number of `>` markers that a lazy line of a
