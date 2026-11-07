@@ -2348,8 +2348,20 @@ func escapeBackslashes(str string) string {
 	return out.String()
 }
 
+// readsBackAsBareURL checks if a URL written without angle brackets is read
+// back as the whole URL. The reader leaves punctuation at the end of a bare
+// URL, such as the `.` that ends a sentence, and a `)` without a `(`, out of
+// the URL.
+func readsBackAsBareURL(url string) bool {
+	if url == "" || urlRegexp.FindString(url) != url {
+		return false
+	}
+
+	return !strings.ContainsRune("?!.,:*_~'\"", rune(url[len(url)-1])) && balancedParentheses(url)
+}
+
 func (w *Output) writeAutoLink(node *content.AutoLink) error {
-	if !node.Bracketed && urlRegexp.Match([]byte(node.URL)) {
+	if !node.Bracketed && readsBackAsBareURL(node.URL) {
 		// No need for brackets, Logseq will automatically linkify the URL.
 		return w.writeRaw(node.URL)
 	}
