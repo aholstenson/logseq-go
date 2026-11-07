@@ -548,7 +548,8 @@ func convertChildren(src []byte, node ast.Node, target content.HasChildren) erro
 				merged.TrailingSpace = trailingSpaceOf(src, text)
 				merged.BackslashLineBreak = isBackslashLineBreak(src, text)
 				merged.LazyLine, merged.LazyLineMarkers = lazyLineAfter(src, text)
-				merged.LazyLine = merged.LazyLine || isLazyListItemLineAfter(src, text)
+				merged.LazyListItemLine = isLazyListItemLineAfter(src, text)
+				merged.LazyLine = merged.LazyLine || merged.LazyListItemLine
 				merged.LazyBlockLine = isLazyBlockLineAfter(src, text)
 				merged.NextLineIndentation = nextLineIndentationOf(src, text)
 				continue
@@ -1097,7 +1098,9 @@ func convertText(src []byte, node *ast.Text) (*content.Text, error) {
 	text.TrailingSpace = trailingSpaceOf(src, node)
 	text.BackslashLineBreak = isBackslashLineBreak(src, node)
 	text.LazyLine, text.LazyLineMarkers = lazyLineAfter(src, node)
-	text.LazyLine = text.LazyLine || isLazyFootnoteLineAfter(src, node) || isLazyListItemLineAfter(src, node)
+	text.LazyFootnoteLine = isLazyFootnoteLineAfter(src, node)
+	text.LazyListItemLine = isLazyListItemLineAfter(src, node)
+	text.LazyLine = text.LazyLine || text.LazyFootnoteLine || text.LazyListItemLine
 	text.LazyBlockLine = isLazyBlockLineAfter(src, node)
 	text.NextLineIndentation = nextLineIndentationOf(src, node)
 	return text, nil
@@ -1199,7 +1202,9 @@ func lazyLineAfter(src []byte, node *ast.Text) (bool, int) {
 	}
 
 	if len(next) == 0 || next[0] == '\n' || next[0] == '\r' || markers >= depth {
-		return false, 0
+		// The number of markers is kept for a line that is lazy for a
+		// footnote in the quote.
+		return false, markers
 	}
 
 	return true, markers

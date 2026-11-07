@@ -1556,17 +1556,7 @@ func (w *Output) writeText(node *content.Text) error {
 		// The next line is a part of the quote or the footnote, but was
 		// written without the `>` markers of the quotes or the indentation of
 		// the footnote. The outermost of them is left out.
-		level := -1
-		for _, levels := range [][]int{w.quoteLevels, w.footnoteLevels, w.listItemLevels} {
-			if len(levels) > 0 && (level < 0 || levels[0] < level) {
-				level = levels[0]
-			}
-		}
-
-		if markers := node.LazyLineMarkers; markers > 0 && markers < len(w.quoteLevels) {
-			// The line keeps the markers of the outer quotes.
-			level = w.quoteLevels[markers]
-		}
+		level := w.lazyLineLevel(node)
 
 		if level >= 0 {
 			w.out.SkipIndentationOnNextLine(level)
@@ -1665,6 +1655,47 @@ func joinMarkerOutside(first markerOutside, last markerOutside) markerOutside {
 
 		return outside == nil || outside(c, after)
 	}
+}
+
+// lazyLineLevel gets the indentation level from which a lazy line after the
+// text is written without indentation, see content.Text.LazyLine. Only the
+// containers that the line is lazy for are left out: the quotes whose `>` it
+// does not have, and the footnote or the list item if it is not indented
+// under them. Returns -1 if no level is left out.
+func (w *Output) lazyLineLevel(node *content.Text) int {
+	markers := node.LazyLineMarkers
+	kept := -1
+	if markers > 0 && markers <= len(w.quoteLevels) {
+		kept = w.quoteLevels[markers-1]
+	}
+
+	level := -1
+	add := func(candidate int) {
+		if candidate > kept && (level < 0 || candidate < level) {
+			level = candidate
+		}
+	}
+
+	if markers < len(w.quoteLevels) {
+		add(w.quoteLevels[markers])
+	}
+	if node.LazyFootnoteLine && len(w.footnoteLevels) > 0 {
+		add(w.footnoteLevels[0])
+	}
+	if node.LazyListItemLine && len(w.listItemLevels) > 0 {
+		add(w.listItemLevels[0])
+	}
+
+	if level < 0 && !node.LazyFootnoteLine && !node.LazyListItemLine {
+		// The containers are not known, so the outermost is left out.
+		for _, levels := range [][]int{w.quoteLevels, w.footnoteLevels, w.listItemLevels} {
+			if len(levels) > 0 && (level < 0 || levels[0] < level) {
+				level = levels[0]
+			}
+		}
+	}
+
+	return level
 }
 
 // endsLineOfContainer returns true if the text is the last node of a

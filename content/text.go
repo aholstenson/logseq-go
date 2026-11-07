@@ -38,12 +38,21 @@ type Text struct {
 	// break.
 	LazyLine bool
 
-	// LazyLineMarkers is the number of `>` markers that a lazy line of a
-	// nested quote still has, as the one marker before `b` in "> > a\n> b".
-	// The markers of the outer quotes are written, and the others are left
-	// out. If it is zero, the line is written without any marker. It is not
-	// used if LazyLine is false.
+	// LazyLineMarkers is the number of `>` markers that a lazy line still
+	// has, as the one marker before `b` in "> > a\n> b". The markers of the
+	// outer quotes are written, and the others are left out. If it is zero,
+	// the line is written without any marker. It is not used if LazyLine is
+	// false.
 	LazyLineMarkers int
+
+	// LazyFootnoteLine and LazyListItemLine are whether a lazy line is not
+	// indented under the footnote definition or the list item that holds
+	// the text, as `b` is in "> [^1]: a\n> b". Only the containers that the
+	// line is lazy for are left out of it. When none of them is set, the
+	// line is written without the outermost quote, footnote or list item.
+	// They are not used if LazyLine is false.
+	LazyFootnoteLine bool
+	LazyListItemLine bool
 
 	// NextLineIndentation is the spaces and tabs at the start of the line
 	// after the line break of the text, as in the two spaces before `b` in
