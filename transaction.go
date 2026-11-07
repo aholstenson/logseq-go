@@ -701,19 +701,44 @@ func (t *Transaction) keepUnchangedLines(page *pageImpl, data string) string {
 		return string(page.original)
 	}
 
+	// The changed lines get the indentation of the file, so that a page that
+	// is indented with spaces is not changed to tabs around an edit.
+	if unit := spaceIndentationUnit(string(page.original)); unit != "" {
+		base = tabsToSpaces(base, unit)
+		merged, ok := textmerge.Merge(base, string(page.original), tabsToSpaces(data, unit))
+		if ok {
+			if result, ok := t.checkMerge(merged, data); ok {
+				return result
+			}
+		}
+
+		return data
+	}
+
 	merged, ok := textmerge.Merge(base, string(page.original), data)
 	if !ok {
 		return data
 	}
 
+	if result, ok := t.checkMerge(merged, data); ok {
+		return result
+	}
+
+	return data
+}
+
+// checkMerge checks that the merged text reads as the same page as the text
+// from the writer, also for Logseq.
+func (t *Transaction) checkMerge(merged string, data string) (string, bool) {
+
 	mergedRoot, err := parseRootBlock([]byte(merged), t.graph.markdownParseOptions()...)
 	if err != nil {
-		return data
+		return "", false
 	}
 
 	check, err := t.pageText(mergedRoot)
 	if err != nil || check != data {
-		return data
+		return "", false
 	}
 
 	mergedParents, consistent := bulletParents(merged)
@@ -721,10 +746,65 @@ func (t *Transaction) keepUnchangedLines(page *pageImpl, data string) string {
 	if !consistent || !equalInts(mergedParents, dataParents) {
 		// The merged text mixes the indentation of the file with the tabs
 		// of the writer, and Logseq can read another outline from it.
-		return data
+		return "", false
 	}
 
-	return merged
+	return merged, true
+}
+
+// spaceIndentationUnit finds the spaces that indent one level of bullets in a
+// page, such as two spaces in "- a\n  - b". It is empty if a bullet is
+// indented with a tab, if no bullet is indented, or if the indentation of the
+// bullets is not a multiple of one unit.
+func spaceIndentationUnit(text string) string {
+	unit := 0
+	var widths []int
+	for _, line := range strings.Split(text, "\n") {
+		trimmed := strings.TrimLeft(line, " \t")
+		rest := strings.TrimSuffix(trimmed, "\r")
+		if rest != "-" && !strings.HasPrefix(rest, "- ") && !strings.HasPrefix(rest, "-\t") {
+			continue
+		}
+
+		indent := line[:len(line)-len(trimmed)]
+		if strings.Contains(indent, "\t") {
+			return ""
+		}
+
+		if len(indent) > 0 {
+			widths = append(widths, len(indent))
+			if unit == 0 || len(indent) < unit {
+				unit = len(indent)
+			}
+		}
+	}
+
+	if unit == 0 {
+		return ""
+	}
+
+	for _, width := range widths {
+		if width%unit != 0 {
+			return ""
+		}
+	}
+
+	return strings.Repeat(" ", unit)
+}
+
+// tabsToSpaces changes the tabs at the start of each line of the text to the
+// unit of spaces. The writer indents blocks with tabs, and the text of a
+// block after them with spaces.
+func tabsToSpaces(text string, unit string) string {
+	lines := strings.Split(text, "\n")
+	for i, line := range lines {
+		tabs := len(line) - len(strings.TrimLeft(line, "\t"))
+		if tabs > 0 {
+			lines[i] = strings.Repeat(unit, tabs) + line[tabs:]
+		}
+	}
+
+	return strings.Join(lines, "\n")
 }
 
 // equalInts returns true if both slices hold the same numbers in the same
