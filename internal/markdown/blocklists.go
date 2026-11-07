@@ -40,8 +40,20 @@ func (p *blockListParser) Open(parent ast.Node, reader text.Reader, pc parser.Co
 		return ast.NewList('-'), parser.HasChildren
 	}
 
-	return p.BlockParser.Open(parent, reader, pc)
+	node, state := p.BlockParser.Open(parent, reader, pc)
+	if node != nil {
+		// Goldmark clears its flag for an empty item with blank lines.
+		pc.Set(emptyItemWithBlankLinesKey, nil)
+	}
+
+	return node, state
 }
+
+// emptyItemWithBlankLinesKey is set when a list of Goldmark gets a blank line
+// after an empty item, in the same way as Goldmark sets a flag of its own. The
+// flag of Goldmark cannot be read, and while it is set, a list ends at the next
+// line with text.
+var emptyItemWithBlankLinesKey = parser.NewContextKey()
 
 func (p *blockListParser) Continue(node ast.Node, reader text.Reader, pc parser.Context) parser.State {
 	if !isBlockList(node) && inBlockContent(node) && startsWithBlockMarker(reader) {
@@ -53,6 +65,14 @@ func (p *blockListParser) Continue(node ast.Node, reader text.Reader, pc parser.
 
 	if isBlockList(node) {
 		expandTabsBeforeBlockMarker(reader)
+	}
+
+	if continuesUnderLastItem(node, reader, pc) {
+		return parser.Continue | parser.HasChildren
+	}
+
+	if restOfLineIsBlank(reader) && node.LastChild() != nil && node.LastChild().ChildCount() == 0 {
+		pc.Set(emptyItemWithBlankLinesKey, true)
 	}
 
 	state := p.BlockParser.Continue(node, reader, pc)
@@ -76,6 +96,21 @@ func (p *blockListParser) Continue(node ast.Node, reader text.Reader, pc parser.
 	return state
 }
 
+// continuesUnderLastItem returns true if the list continues at a line with
+// text that is indented under the text of its last item, which is not empty.
+// The list parser of Goldmark gives the same result, but reads all of the
+// indentation to find it, which is slow for deeply nested outlines.
+func continuesUnderLastItem(list ast.Node, reader text.Reader, pc parser.Context) bool {
+	item, ok := list.LastChild().(*ast.ListItem)
+	if !ok || item.ChildCount() == 0 || pc.Get(emptyItemWithBlankLinesKey) != nil || restOfLineIsBlank(reader) {
+		return false
+	}
+
+	line, _ := reader.PeekLine()
+	indent, _ := indentWidthUpTo(line, reader.LineOffset(), item.Offset)
+	return indent >= item.Offset
+}
+
 // expandTabsBeforeBlockMarker moves the reader past the spaces and tabs
 // before a bullet "- ", and keeps their width as padding. The list parsers
 // of Goldmark do not read a bullet after a tab, so "\t- b" in the text of a
@@ -84,7 +119,7 @@ func (p *blockListParser) Continue(node ast.Node, reader text.Reader, pc parser.
 // Goldmark nests the bullet in the same way as with spaces.
 func expandTabsBeforeBlockMarker(reader text.Reader) {
 	line, _ := reader.PeekLine()
-	indent, pos := util.IndentWidth(line, reader.LineOffset())
+	indent, pos := indentWidthUpTo(line, reader.LineOffset(), 4)
 	if indent >= 4 || pos >= len(line) || !isBlockMarker(line[pos:]) {
 		return
 	}
@@ -223,6 +258,9 @@ func (p *blockListItemParser) Open(parent ast.Node, reader text.Reader, pc parse
 	if node != nil {
 		node.SetAttribute(bulletIndentAttribute, indent)
 		node.SetAttribute(bulletLineStartAttribute, start)
+
+		// Goldmark clears its flag for an empty item with blank lines.
+		pc.Set(emptyItemWithBlankLinesKey, nil)
 	}
 
 	return node, state
@@ -326,14 +364,43 @@ func readerLineStart(reader text.Reader) int {
 
 func (p *blockListItemParser) Continue(node ast.Node, reader text.Reader, pc parser.Context) parser.State {
 	item, ok := node.(*ast.ListItem)
-	if !ok || !keepsLine(item, reader) {
+	if !ok {
 		return p.BlockParser.Continue(node, reader, pc)
 	}
 
+	if keepsLine(item, reader) {
+		line, _ := reader.PeekLine()
+		pos, padding := util.IndentPosition(line, reader.LineOffset(), item.Offset)
+		reader.AdvanceAndSetPadding(pos, padding)
+		return parser.Continue | parser.HasChildren
+	}
+
+	if offset, ok := continuesItem(item, reader); ok {
+		// The same result as the list item parser of Goldmark, which reads
+		// all of the indentation to find it. That is slow for deeply nested
+		// outlines.
+		line, _ := reader.PeekLine()
+		pos, padding := util.IndentPosition(line, reader.LineOffset(), offset)
+		reader.AdvanceAndSetPadding(pos, padding)
+		return parser.Continue | parser.HasChildren
+	}
+
+	return p.BlockParser.Continue(node, reader, pc)
+}
+
+// continuesItem returns true if the line has text and is indented under the
+// text of the last item of the list of the item, and the item is not empty.
+// The item holds such a line. Also returns the offset of the text of that
+// last item.
+func continuesItem(item *ast.ListItem, reader text.Reader) (int, bool) {
+	last, ok := item.Parent().LastChild().(*ast.ListItem)
+	if !ok || item.ChildCount() == 0 || restOfLineIsBlank(reader) {
+		return 0, false
+	}
+
 	line, _ := reader.PeekLine()
-	pos, padding := util.IndentPosition(line, reader.LineOffset(), item.Offset)
-	reader.AdvanceAndSetPadding(pos, padding)
-	return parser.Continue | parser.HasChildren
+	indent, _ := indentWidthUpTo(line, reader.LineOffset(), last.Offset)
+	return last.Offset, indent >= last.Offset
 }
 
 // keepsLine returns true if the item is a block without text, and the line is

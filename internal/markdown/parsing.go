@@ -12,7 +12,6 @@ import (
 	"github.com/yuin/goldmark/extension"
 	east "github.com/yuin/goldmark/extension/ast"
 	"github.com/yuin/goldmark/parser"
-	"github.com/yuin/goldmark/text"
 	"github.com/yuin/goldmark/util"
 )
 
@@ -272,7 +271,7 @@ func parseWithOptions(src []byte, options *parseOptions) (*content.Block, error)
 	context := parser.NewContext()
 	context.Set(parseOptionsKey, options)
 
-	doc := markdownParser.Parse(text.NewReader(src), parser.WithContext(context))
+	doc := markdownParser.Parse(newLineCachingReader(src), parser.WithContext(context))
 	if indentation, ok := context.Get(lineIndentationKey).(lineIndentation); ok {
 		doc.SetAttribute(lineIndentationAttribute, indentation)
 	}
