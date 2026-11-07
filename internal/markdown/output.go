@@ -3671,6 +3671,11 @@ func (w *Output) writeProperties(node *content.Properties) error {
 		return w.writePropertyDrawer(node)
 	}
 
+	if node.FirstChild() == nil {
+		// The last property was removed, so there is no line to write.
+		return nil
+	}
+
 	err := w.startBlockWithAutomaticBehavior(node, "", false)
 	if err != nil {
 		return err
