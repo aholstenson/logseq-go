@@ -1397,6 +1397,11 @@ func convertBlockquote(src []byte, node *ast.Blockquote) (*content.Blockquote, e
 // convertList converts an ast.List into either a list or a block.
 func convertList(src []byte, node *ast.List) (*content.List, error) {
 	list := content.NewListFromMarker(node.Marker)
+	if node.Marker == '-' {
+		// A `-` list is not a list of blocks here, such as in a quote, so
+		// it keeps its marker.
+		list.Marker = '-'
+	}
 	for child := node.FirstChild(); child != nil; child = child.NextSibling() {
 		item, err := convertListItem(src, child)
 		if err != nil {

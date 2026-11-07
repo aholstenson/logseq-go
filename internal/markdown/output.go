@@ -2506,6 +2506,12 @@ func (w *Output) writeList(node *content.List) error {
 			marker = numbers[i-1] + string(node.Marker)
 		} else {
 			marker = string(node.Marker)
+			if node.Marker == '-' {
+				if _, ok := node.Parent().(*content.Block); ok {
+					// A `-` line in the content of a block starts a block.
+					marker = "*"
+				}
+			}
 		}
 
 		space := item.MarkerSpace

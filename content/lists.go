@@ -14,7 +14,11 @@ type List struct {
 	// Type is the type of the list.
 	Type ListType
 
-	// Marker is the marker of the list.
+	// Marker is the marker of the list: `*`, `+` or `-` for an unordered
+	// list, and `.` or `)` for an ordered list. A `-` list is read only in
+	// places where `-` does not start a block, such as in a quote, a
+	// footnote or a list item. In the content of a block, a list with the
+	// marker `-` is written with `*`.
 	Marker byte
 }
 
