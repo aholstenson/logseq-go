@@ -93,6 +93,9 @@ type footnoteDefinition struct {
 
 	// LabelSpace is the spaces and tabs after the `:` of the label.
 	LabelSpace string
+
+	// EmptyFirstLine is whether the line of the label has no text after it.
+	EmptyFirstLine bool
 }
 
 func (*footnoteDefinition) Kind() ast.NodeKind {
@@ -136,8 +139,9 @@ func (f *footnoteDefinitionParser) Open(parent ast.Node, reader text.Reader, pc 
 	}
 
 	node := &footnoteDefinition{
-		Label:      string(line[pos+2 : end-1]),
-		LabelSpace: string(spacesAndTabs(line[end+1:])),
+		Label:          string(line[pos+2 : end-1]),
+		LabelSpace:     string(spacesAndTabs(line[end+1:])),
+		EmptyFirstLine: util.IsBlank(line[end+1:]),
 	}
 
 	// The content of the footnote starts after the colon, and is parsed as the

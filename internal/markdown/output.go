@@ -1959,8 +1959,9 @@ func (w *Output) writeFootnoteDefinition(node *content.FootnoteDefinition) error
 	}
 
 	// The spaces after the label are kept as they are in the file.
+	emptyFirstLine := node.EmptyFirstLine && node.FirstChild() != nil
 	space := node.LabelSpace
-	if space == "" && node.FirstChild() != nil {
+	if space == "" && node.FirstChild() != nil && !emptyFirstLine {
 		space = " "
 	}
 
@@ -1973,6 +1974,14 @@ func (w *Output) writeFootnoteDefinition(node *content.FootnoteDefinition) error
 	// under the definition.
 	w.out.PushIndentation("    ")
 	w.footnoteLevels = append(w.footnoteLevels, w.out.IndentationLevel()-1)
+
+	if emptyFirstLine {
+		// The text starts on the line after the label.
+		err = w.out.WriteLineBreak()
+		if err != nil {
+			return err
+		}
+	}
 
 	err = w.writeChildren(node)
 	if err != nil {
@@ -2828,9 +2837,17 @@ func (w *Output) writeList(node *content.List) error {
 			space = " "
 		}
 
-		err := w.out.WriteString(marker + space)
-		if err != nil {
-			return err
+		emptyFirstLine := item.EmptyFirstLine && item.FirstChild() != nil
+		if emptyFirstLine {
+			err := w.out.WriteString(marker)
+			if err != nil {
+				return err
+			}
+		} else {
+			err := w.out.WriteString(marker + space)
+			if err != nil {
+				return err
+			}
 		}
 
 		// The lines after the first line of the item are indented as far
@@ -2842,6 +2859,14 @@ func (w *Output) writeList(node *content.List) error {
 
 		w.out.PushIndentation(strings.Repeat(" ", width))
 		w.listItemLevels = append(w.listItemLevels, w.out.IndentationLevel()-1)
+
+		if emptyFirstLine {
+			// The text of the item starts on the line after the marker.
+			err := w.out.WriteLineBreak()
+			if err != nil {
+				return err
+			}
+		}
 
 		err = w.writeChildren(child.(content.HasChildren))
 		if err != nil {

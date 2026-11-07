@@ -1501,6 +1501,7 @@ func isCodeInfoSpace(r rune) bool {
 func convertFootnoteDefinition(src []byte, node *footnoteDefinition) (*content.FootnoteDefinition, error) {
 	definition := content.NewFootnoteDefinition(unescapePunctuation([]byte(node.Label)))
 	definition.LabelSpace = node.LabelSpace
+	definition.EmptyFirstLine = node.EmptyFirstLine
 	err := convertChildren(src, node, definition)
 	if err != nil {
 		return nil, err
@@ -1569,10 +1570,28 @@ func convertList(src []byte, node *ast.List) (*content.List, error) {
 	return list, nil
 }
 
+// hasEmptyMarkerLine checks if the line of the marker of a list item has no
+// text after the marker.
+func hasEmptyMarkerLine(src []byte, node ast.Node, marker string) bool {
+	value, ok := node.Attribute(listMarkerStartAttribute)
+	start, isInt := value.(int)
+	if !ok || !isInt || marker == "" || start+len(marker) > len(src) {
+		return false
+	}
+
+	rest := src[start+len(marker):]
+	if i := bytes.IndexByte(rest, '\n'); i >= 0 {
+		rest = rest[:i]
+	}
+
+	return util.IsBlank(rest)
+}
+
 func convertListItem(src []byte, node ast.Node) (*content.ListItem, error) {
 	item := content.NewListItem()
 	marker, space := listMarkerSpace(src, node)
 	item.MarkerSpace = space
+	item.EmptyFirstLine = node.FirstChild() != nil && hasEmptyMarkerLine(src, node, marker)
 	if node.PreviousSibling() != nil && hasBlankLineBeforeBullet(src, node) {
 		item.SetPreviousLineType(content.PreviousLineTypeBlank)
 	}

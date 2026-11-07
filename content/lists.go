@@ -142,6 +142,10 @@ type ListItem struct {
 	// file, such as "1" for every item of "1. a\n1. b". If it is empty, the
 	// items are numbered from one when they are written.
 	Number string
+
+	// EmptyFirstLine is whether the text of the item starts on the line after
+	// its marker, as in "*\n  text", as it is in the file.
+	EmptyFirstLine bool
 }
 
 func NewListItem(items ...Node) *ListItem {

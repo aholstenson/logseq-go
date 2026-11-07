@@ -47,6 +47,10 @@ type FootnoteDefinition struct {
 	// the text of the footnote, as it is in the file. If it is empty, one
 	// space is written before the text.
 	LabelSpace string
+
+	// EmptyFirstLine is whether the text of the footnote starts on the line
+	// after the label, as in "[^1]:\n    text", as it is in the file.
+	EmptyFirstLine bool
 }
 
 func NewFootnoteDefinition(label string, children ...Node) *FootnoteDefinition {
