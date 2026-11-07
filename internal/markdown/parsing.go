@@ -1647,6 +1647,7 @@ func convertProperties(src []byte, node *properties) (*content.Properties, error
 			WithSpaceBeforeValue(p.SpaceBeforeValue).
 			WithTrailingSpace(p.TrailingSpace).
 			WithNoSpaceAfterSeparator(p.NoSpaceAfterSeparator)
+		prop.Indentation = p.Indentation
 		err := convertChildren(src, p, prop)
 		if err != nil {
 			return nil, err
@@ -1733,10 +1734,10 @@ func convertTaskDate(src []byte, node *taskDate) (content.Node, error) {
 	date.Repeater = node.Repeater
 	date.Indentation = node.indentation
 	if item, ok := blockItemOf(node.Parent()); ok {
+		// The date of a block has its indentation from the column of the
+		// `-` of the block, as tabs are kept in this way.
 		lineStart := bytes.LastIndexByte(src[:node.Segment.Start], '\n') + 1
-		if indentation, ok := wideBulletLineIndentation(src, item, lineStart); ok {
-			date.Indentation = indentation
-		}
+		date.Indentation = blockDashIndentation(src, item, lineStart)
 	}
 	date.SetDateSource(string(node.Segment.Value(src)))
 

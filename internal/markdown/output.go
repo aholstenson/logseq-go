@@ -3449,6 +3449,73 @@ func bulletMarker(block *content.Block) string {
 	return marker
 }
 
+// writePropertyIndentation writes the indentation of the line of a property,
+// see content.Property.Indentation. lazyLevel is the result of
+// bulletColumnLevel for the properties. Nothing is written for a property
+// that does not start a line, or that has no indentation of its own and is
+// written at the column of the text of the block.
+func (w *Output) writePropertyIndentation(node *content.Properties, property *content.Property, lazyLevel int) error {
+	if !w.out.AtLineStart() {
+		return nil
+	}
+
+	indentation := property.Indentation
+	block, inBlock := node.Parent().(*content.Block)
+	if inBlock && len(w.blockTextLevels) > 0 {
+		_, err := w.writeBlockLineIndentation(block, indentation, lazyLevel)
+		return err
+	}
+
+	if indentation == "" || strings.Trim(indentation, " \t") != "" || w.out.IndentationFrom(0) != "" {
+		return nil
+	}
+
+	if inBlock && block.Parent() != nil && !writesWithoutBullet(block) {
+		// The properties of a block that is not written with its bullet,
+		// as when they are written on their own.
+		return nil
+	}
+
+	// A property outside a block, such as a property of the page.
+	return w.writeRaw(indentation)
+}
+
+// writeBlockLineIndentation writes the indentation of a line of the block,
+// such as the line of a property or of the date of a task, that has the
+// indentation from the column of the `-` of the block. lazyLevel is the result
+// of bulletColumnLevel for the node of the line. Returns false if nothing was
+// written, and the line is written at the column of the text of the block.
+func (w *Output) writeBlockLineIndentation(block *content.Block, indentation string, lazyLevel int) (bool, error) {
+	if len(w.blockTextLevels) == 0 || !w.out.AtLineStart() {
+		return false, nil
+	}
+
+	level := w.blockTextLevels[len(w.blockTextLevels)-1]
+	text := blockTextIndentation(block)
+	if w.out.IndentationFrom(level) != text {
+		return false, nil
+	}
+
+	// A line indented less than the text of the block ends a list or a
+	// quote in the block, so it is only written where nothing but
+	// properties, dates and child blocks follow, see bulletColumnLevel.
+	width, _ := util.IndentWidth([]byte(indentation), 0)
+	textWidth, _ := util.IndentWidth([]byte(text), 0)
+	if indentation == "" || (width < textWidth && lazyLevel < 0) {
+		indentation = ""
+		if lazyLevel >= 0 {
+			indentation = "  "
+		}
+	}
+
+	if indentation == "" {
+		return false, nil
+	}
+
+	w.out.SkipIndentationOnNextLine(level)
+	return true, w.writeRaw(indentation)
+}
+
 // bulletColumnLevel gets the indentation level of the text of the block that
 // holds the node, if the lines of the node are written two columns after the
 // `-` of the block instead of at the column of the text of the block. This is
@@ -3562,16 +3629,13 @@ func (w *Output) writeProperties(node *content.Properties) error {
 			return fmt.Errorf("unsupported properties child: %T", child)
 		}
 
-		if lazyLevel >= 0 {
-			w.out.SkipIndentationOnNextLine(lazyLevel)
-			err := w.writeRaw("  ")
-			if err != nil {
-				return err
-			}
+		property := child.(*content.Property)
+		err := w.writePropertyIndentation(node, property, lazyLevel)
+		if err != nil {
+			return err
 		}
 
-		property := child.(*content.Property)
-		err := w.writePropertyName(property)
+		err = w.writePropertyName(property)
 		if err != nil {
 			return err
 		}
@@ -4005,15 +4069,20 @@ func (w *Output) writeTaskDate(node *content.TaskDate) error {
 		return err
 	}
 
-	if level := w.bulletColumnLevel(node); level >= 0 {
-		w.out.SkipIndentationOnNextLine(level)
-		err = w.writeRaw("  ")
+	indentation := node.Indentation
+	if block, ok := node.Parent().(*content.Block); ok {
+		// The date of a block has its indentation from the column of the
+		// `-` of the block.
+		written, err := w.writeBlockLineIndentation(block, indentation, w.bulletColumnLevel(node))
 		if err != nil {
 			return err
 		}
+		if written || len(w.blockTextLevels) > 0 || (block.Parent() != nil && !writesWithoutBullet(block)) {
+			indentation = ""
+		}
 	}
 
-	err = w.writeRaw(node.Indentation + value.String())
+	err = w.writeRaw(indentation + value.String())
 	if err != nil {
 		return err
 	}

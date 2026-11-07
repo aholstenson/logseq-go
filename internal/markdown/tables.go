@@ -103,7 +103,7 @@ func (t *tableParagraphTransformer) Transform(node *ast.Paragraph, reader text.R
 		addExtraTableCells(table, tableLines[2:], reader.Source())
 		table.SetAttributeString(tableSourceAttribute, tableSource(tableLines, reader.Source()))
 	}
-	addPropertyLinesAfterTable(parent, previous, next, node, properties)
+	addPropertyLinesAfterTable(parent, previous, next, node, properties, reader.Source())
 
 	// A table is put next to the paragraph it was found in without taking over
 	// whether there was a blank line before that paragraph. When the whole
@@ -285,7 +285,7 @@ func trailingPropertyLines(node *ast.Paragraph, source []byte) []text.Segment {
 // addPropertyLinesAfterTable puts the property lines that were taken off a
 // paragraph back. If the paragraph became a table they are put in a paragraph
 // of their own after it, otherwise they are put back in the paragraph.
-func addPropertyLinesAfterTable(parent ast.Node, previous ast.Node, next ast.Node, node *ast.Paragraph, properties []text.Segment) {
+func addPropertyLinesAfterTable(parent ast.Node, previous ast.Node, next ast.Node, node *ast.Paragraph, properties []text.Segment, source []byte) {
 	if len(properties) == 0 {
 		return
 	}
@@ -312,8 +312,15 @@ func addPropertyLinesAfterTable(parent ast.Node, previous ast.Node, next ast.Nod
 		return
 	}
 
+	// The paragraph parser takes the spaces off the start of the lines of a
+	// paragraph, and off the end of its last line, so the same is done
+	// here. Otherwise the lines are not read as properties.
 	paragraph := ast.NewParagraph()
-	for _, line := range properties {
+	for i, line := range properties {
+		line = line.TrimLeftSpace(source)
+		if i == len(properties)-1 {
+			line = line.TrimRightSpace(source)
+		}
 		paragraph.Lines().Append(line)
 	}
 

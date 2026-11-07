@@ -119,6 +119,10 @@ type property struct {
 	// the line of the property. See propertyLineSpace.
 	TrailingSpace         string
 	NoSpaceAfterSeparator bool
+
+	// Indentation is the spaces and tabs before the name of the property,
+	// see propertyLineIndentation.
+	Indentation string
 }
 
 func (*property) Kind() ast.NodeKind {
@@ -508,6 +512,7 @@ func (t *propertiesASTTransformer) transformTextBlockOrParagraph(node ast.Node, 
 				currentProperty.SpaceBeforeValue = spaceBeforeValue
 				currentProperty.TrailingSpace, currentProperty.NoSpaceAfterSeparator =
 					propertyLineSpace(reader.Source(), lineStart, directive)
+				currentProperty.Indentation = propertyLineIndentation(reader.Source(), node, lineStart)
 
 				currentProperties.AppendChild(currentProperties, currentProperty)
 
@@ -569,6 +574,34 @@ func (t *propertiesASTTransformer) transformTextBlockOrParagraph(node ast.Node, 
 //
 // The name is found in the same way as mldoc, see findPropertyKey, so it can
 // be a name that Logseq does not keep. Use validPropertyName to check it.
+// propertyLineIndentation gets the spaces and tabs before the name of a
+// property that starts at the offset, see content.Property.Indentation. For a
+// property of a block they are measured from the column of the `-` of the
+// block. It is empty for a property on the line of the bullet, in a quote, or
+// after other text on its line.
+func propertyLineIndentation(source []byte, node ast.Node, start int) string {
+	lineStart := bytes.LastIndexByte(source[:start], '\n') + 1
+	prefix := source[lineStart:start]
+	if len(bytes.Trim(prefix, " \t")) > 0 {
+		return ""
+	}
+
+	for p := node; p != nil; p = p.Parent() {
+		if _, ok := p.(*ast.Blockquote); ok {
+			return ""
+		}
+
+		item, ok := blockItemOf(p)
+		if !ok {
+			continue
+		}
+
+		return blockDashIndentation(source, item, lineStart)
+	}
+
+	return string(prefix)
+}
+
 func findPropertyAt(source []byte, start int) (name string, valueStart int, ok bool) {
 	line := source[start:]
 	if i := bytes.IndexByte(line, '\n'); i >= 0 {

@@ -295,6 +295,15 @@ type Property struct {
 	// used for a property with a value, or for a directive, which is written
 	// as `#+name:` when its value is empty.
 	NoSpaceAfterSeparator bool
+
+	// Indentation is the spaces and tabs before the name of the property on
+	// its line, as it is in the file. For a property of a block it is
+	// measured from the column of the `-` of the block, such as the two
+	// spaces of "- a\n  b:: c", and outside a block from the start of the
+	// line. If it is empty, the property is written at the column of the
+	// text of the block. It is not used for a property on the line of the
+	// bullet.
+	Indentation string
 }
 
 // NewProperty creates a new Property node with the given name and values.

@@ -521,8 +521,12 @@ type TaskDate struct {
 	Repeater *Repeater
 
 	// Indentation is the spaces and tabs at the start of the line of the
-	// date, after the indentation of the block or quote that holds it. It is
-	// written back so that saving does not change the line.
+	// date, as it is in the file. For a date of a block it is measured from
+	// the column of the `-` of the block, such as the two spaces of
+	// "- TODO a\n  SCHEDULED: <2024-01-01 Mon>", and in a quote from the
+	// indentation of the quote. It is written back so that saving does not
+	// change the line. If it is empty, the date of a block is written at the
+	// column of the text of the block.
 	Indentation string
 
 	// dateSource is the text of the line in the file, see DateSource.

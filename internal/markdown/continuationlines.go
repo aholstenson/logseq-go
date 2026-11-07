@@ -116,24 +116,22 @@ func blockLineIndentation(src []byte, item ast.Node, lineStart int) (string, boo
 	return indentationAfterColumn(src, lineStart, dash), true, true
 }
 
-// wideBulletLineIndentation gets the indentation of a line in the text of a
-// block whose bullet has more than one space, as in "-   a", measured from two
-// columns after the `-` of the block. Property lines and the dates of tasks
-// are written from that column, as Logseq writes them. Returns false if the
-// block has no such bullet, or if the line is indented less than that column.
-func wideBulletLineIndentation(src []byte, item ast.Node, lineStart int) (string, bool) {
+// blockDashIndentation gets the spaces and tabs at the start of a line of a
+// block, after the column of the `-` of the block. It is empty for the line of
+// the bullet, or for a line that is not indented further than the `-`.
+func blockDashIndentation(src []byte, item ast.Node, lineStart int) string {
 	value, ok := item.Attribute(bulletLineStartAttribute)
 	bulletStart, isInt := value.(int)
-	if !ok || !isInt || bulletStart == lineStart || bulletSpace(src, item) == "" {
-		return "", false
+	if !ok || !isInt || bulletStart == lineStart {
+		return ""
 	}
 
 	dash := indentationWidth(src, bulletStart)
-	if indentationWidth(src, lineStart) < dash+2 {
-		return "", false
+	if indentationWidth(src, lineStart) <= dash {
+		return ""
 	}
 
-	return indentationAfterColumn(src, lineStart, dash+2), true
+	return indentationAfterColumn(src, lineStart, dash)
 }
 
 // indentationWidth gets the width in columns of the spaces and tabs at the
