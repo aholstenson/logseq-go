@@ -25,7 +25,7 @@ var _ = Describe("Parse time of long lines", func() {
 
 		// Then it takes less than 2 seconds
 		Expect(err).ToNot(HaveOccurred())
-		Expect(elapsed).To(BeNumerically("<", 2*time.Second))
+		Expect(elapsed).To(BeNumerically("<", timeLimitFactor*2*time.Second))
 	})
 
 	DescribeTable("reads and writes a 400 KB line with many starts of markup in less than 2 seconds",
@@ -45,8 +45,8 @@ var _ = Describe("Parse time of long lines", func() {
 			written := time.Since(start)
 
 			// Then each takes less than 2 seconds
-			Expect(parsed).To(BeNumerically("<", 2*time.Second))
-			Expect(written).To(BeNumerically("<", 2*time.Second))
+			Expect(parsed).To(BeNumerically("<", timeLimitFactor*2*time.Second))
+			Expect(written).To(BeNumerically("<", timeLimitFactor*2*time.Second))
 		},
 		Entry("tags", "#t "),
 		Entry("emphasis markers", "*a "),

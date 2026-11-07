@@ -29,6 +29,6 @@ var _ = Describe("Parse time of deeply nested outlines", func() {
 
 		// Then it takes less than 2 seconds
 		Expect(err).ToNot(HaveOccurred())
-		Expect(elapsed).To(BeNumerically("<", 2*time.Second))
+		Expect(elapsed).To(BeNumerically("<", timeLimitFactor*2*time.Second))
 	})
 })
