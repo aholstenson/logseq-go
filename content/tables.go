@@ -54,6 +54,10 @@ type Table struct {
 	Alignments []TableAlignment
 
 	sourceText string
+
+	// sourceLineMarkers is the number of `>` markers of each line of the
+	// source of a table in a quote, see SourceLineMarkers.
+	sourceLineMarkers []int
 }
 
 // SourceText gets the text of the table as it is in the file, with one line
@@ -67,6 +71,21 @@ func (t *Table) SourceText() string {
 // SetSourceText sets the text of the table as it is in the file.
 func (t *Table) SetSourceText(source string) {
 	t.sourceText = source
+}
+
+// SourceLineMarkers gets the number of `>` markers that each line of the
+// source of a table in a quote has in the file, see SourceText. A line with
+// fewer markers than the quotes that hold the table is a lazy line of the
+// quote, and is written with only those markers. It is nil for a table that
+// is not in a quote, or that was not read from a file.
+func (t *Table) SourceLineMarkers() []int {
+	return t.sourceLineMarkers
+}
+
+// SetSourceLineMarkers sets the number of `>` markers of each line of the
+// source, see SourceLineMarkers.
+func (t *Table) SetSourceLineMarkers(markers []int) {
+	t.sourceLineMarkers = markers
 }
 
 // NewTable creates a table out of its rows, the first of which names the

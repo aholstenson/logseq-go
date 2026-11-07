@@ -2968,9 +2968,26 @@ func (w *Output) writeTable(node *content.Table) error {
 			return err
 		}
 
-		err = w.writeRaw(source)
-		if err != nil {
-			return err
+		lines := strings.Split(source, "\n")
+		markers := node.SourceLineMarkers()
+		for i, line := range lines {
+			if i > 0 {
+				err = w.writeRaw("\n")
+				if err != nil {
+					return err
+				}
+			}
+
+			if i < len(markers) && markers[i] < len(w.quoteLevels) && w.out.AtLineStart() {
+				// A lazy line of the quote, written without the markers
+				// that it does not have.
+				w.out.SkipIndentationOnNextLine(w.quoteLevels[markers[i]])
+			}
+
+			err = w.writeRaw(line)
+			if err != nil {
+				return err
+			}
 		}
 
 		w.endBlock()

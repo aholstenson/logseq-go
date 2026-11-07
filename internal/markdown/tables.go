@@ -101,7 +101,21 @@ func (t *tableParagraphTransformer) Transform(node *ast.Paragraph, reader text.R
 	t.transformer.Transform(node, reader, pc)
 	if table := tableBetween(parent, previous, next); table != nil {
 		addExtraTableCells(table, tableLines[2:], reader.Source())
-		table.SetAttributeString(tableSourceAttribute, tableSource(tableLines, reader.Source()))
+		source := tableSource(tableLines, reader.Source())
+
+		// The paragraph parser takes the indentation off the first line,
+		// and keeps it for the line, see paragraphParser.
+		if len(tableLines) > 0 && tableLines[0].Padding == 0 {
+			lineStart := bytes.LastIndexByte(reader.Source()[:tableLines[0].Start], '\n') + 1
+			if indentation, _ := pc.Get(lineIndentationKey).(lineIndentation); indentation != nil {
+				source = append([]byte(indentation[lineStart]), source...)
+			}
+		}
+
+		table.SetAttributeString(tableSourceAttribute, source)
+		if markers := quoteMarkersOfLines(table, tableLines, reader.Source()); markers != nil {
+			table.SetAttribute(tableLineMarkersAttribute, markers)
+		}
 	}
 	addPropertyLinesAfterTable(parent, previous, next, node, properties, reader.Source())
 
@@ -119,6 +133,37 @@ func (t *tableParagraphTransformer) Transform(node *ast.Paragraph, reader text.R
 	if table, ok := first.(*east.Table); ok {
 		table.SetBlankPreviousLines(blankPreviousLines)
 	}
+}
+
+// tableLineMarkersAttribute is the name of the attribute that holds the
+// number of `>` markers of each line of a table in a quote, see
+// content.Table.SourceLineMarkers.
+var tableLineMarkersAttribute = []byte("logseq-line-markers")
+
+// quoteMarkersOfLines gets the number of `>` markers at the start of each
+// line of a table in a quote. Returns nil for a table that is not in a quote.
+func quoteMarkersOfLines(table ast.Node, lines []text.Segment, source []byte) []int {
+	if !inQuote(table) {
+		return nil
+	}
+
+	markers := make([]int, len(lines))
+	for i, line := range lines {
+		pos := bytes.LastIndexByte(source[:line.Start], '\n') + 1
+		for pos < line.Start {
+			switch source[pos] {
+			case '>':
+				markers[i]++
+			case ' ', '\t':
+			default:
+				pos = line.Start
+				continue
+			}
+			pos++
+		}
+	}
+
+	return markers
 }
 
 // tableSourceAttribute is the name of the attribute that holds the text of a

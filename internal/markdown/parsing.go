@@ -1639,6 +1639,11 @@ func convertTable(src []byte, node *east.Table) (*content.Table, error) {
 	if source, ok := node.AttributeString(tableSourceAttribute); ok {
 		table.SetSourceText(string(source.([]byte)))
 	}
+	if value, ok := node.Attribute(tableLineMarkersAttribute); ok {
+		if markers, ok := value.([]int); ok {
+			table.SetSourceLineMarkers(markers)
+		}
+	}
 
 	updatePreviousLine(src, node, table)
 
