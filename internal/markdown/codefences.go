@@ -2,6 +2,7 @@ package markdown
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
@@ -40,6 +41,14 @@ type openFence struct {
 
 var openFenceKey = parser.NewContextKey()
 
+// codeFenceAttribute is the name of the attribute that holds the characters
+// of the opening fence of a code block, when they are not "```".
+const codeFenceAttribute = "logseq-code-fence"
+
+// codeInfoSourceAttribute is the name of the attribute that holds the text
+// after the opening fence of a code block, as it is in the file.
+const codeInfoSourceAttribute = "logseq-code-info"
+
 func (p *fencedCodeBlockParser) Open(parent ast.Node, reader text.Reader, pc parser.Context) (ast.Node, parser.State) {
 	line, _ := reader.PeekLine()
 	pos := pc.BlockOffset()
@@ -71,6 +80,15 @@ func (p *fencedCodeBlockParser) Open(parent ast.Node, reader text.Reader, pc par
 
 	fence.node = node
 	pc.Set(openFenceKey, fence)
+
+	// The fence and the text after it are kept, so that the code block is
+	// written back with them unchanged.
+	if marker := string(line[pos : pos+length]); marker != "```" {
+		node.SetAttributeString(codeFenceAttribute, marker)
+	}
+	info := strings.TrimRight(string(line[pos+length:]), "\r\n")
+	node.SetAttributeString(codeInfoSourceAttribute, info)
+
 	return node, state
 }
 

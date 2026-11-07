@@ -2298,17 +2298,15 @@ func (w *Output) writeCodeBlock(node *content.CodeBlock) error {
 		return err
 	}
 
-	fence := codeBlockFence(node.Code)
+	fence := codeBlockFence(node.Code, node.Fence)
 	err = w.writeRaw(fence)
 	if err != nil {
 		return err
 	}
 
-	if node.Language != "" {
-		err = w.writeRaw(node.Language)
-		if err != nil {
-			return err
-		}
+	err = w.writeRaw(codeBlockInfo(node))
+	if err != nil {
+		return err
 	}
 
 	err = w.writeRaw("\n")
@@ -2338,21 +2336,56 @@ func (w *Output) writeCodeBlock(node *content.CodeBlock) error {
 	return nil
 }
 
-// codeBlockFence gets the fence to write around a code block. It is ```
-// unless a line of the code starts with three or more backticks, which would
-// close the code block when the page is read again. Then the fence is one
-// backtick longer than the longest such run, the same as CommonMark requires.
-func codeBlockFence(code string) string {
-	length := 3
+// codeBlockFence gets the fence to write around a code block. It is the
+// fence that the code block has, or ``` when it has none or the fence is not
+// three or more "`" or "~". When a line of the code starts with as many or
+// more of the fence character, that line would close the code block when the
+// page is read again. Then the fence is one character longer than the
+// longest such run, the same as CommonMark requires.
+func codeBlockFence(code string, fence string) string {
+	if !isCodeFence(fence) {
+		fence = "```"
+	}
+
+	char := fence[:1]
+	length := len(fence)
 	for _, line := range strings.Split(code, "\n") {
 		line = strings.TrimLeft(line, " \t")
-		run := len(line) - len(strings.TrimLeft(line, "`"))
+		run := len(line) - len(strings.TrimLeft(line, char))
 		if run >= length {
 			length = run + 1
 		}
 	}
 
-	return strings.Repeat("`", length)
+	return strings.Repeat(char, length)
+}
+
+// isCodeFence checks if text is three or more "`" or three or more "~".
+func isCodeFence(fence string) bool {
+	if len(fence) < 3 || (fence[0] != '`' && fence[0] != '~') {
+		return false
+	}
+
+	return strings.Trim(fence, fence[:1]) == ""
+}
+
+// codeBlockInfo gets the text to write after the opening fence of a code
+// block. This is the text as it is in the file when it still gives the same
+// language and options, else the language and the options with one space
+// between them. The options are only written when there is a language.
+func codeBlockInfo(node *content.CodeBlock) string {
+	if source := node.InfoSource(); source != "" && !strings.ContainsAny(source, "\r\n") {
+		language, options := splitCodeInfo(source)
+		if language == node.Language && options == node.Options {
+			return source
+		}
+	}
+
+	if node.Language == "" || node.Options == "" {
+		return node.Language
+	}
+
+	return node.Language + " " + node.Options
 }
 
 func (w *Output) writeThematicBreak(node *content.ThematicBreak) error {

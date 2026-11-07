@@ -1123,11 +1123,34 @@ func convertFencedCodeBlock(src []byte, node *ast.FencedCodeBlock) (*content.Cod
 	}
 
 	code := content.NewCodeBlock(codeBuf.String())
-	code.Language = string(node.Language(src))
+	if node.Info != nil {
+		code.Language, code.Options = splitCodeInfo(string(node.Info.Segment.Value(src)))
+	}
+	if fence, ok := node.AttributeString(codeFenceAttribute); ok {
+		code.Fence = fence.(string)
+	}
+	if source, ok := node.AttributeString(codeInfoSourceAttribute); ok {
+		code.SetInfoSource(source.(string))
+	}
 
 	updatePreviousLine(node, code)
 
 	return code, nil
+}
+
+// splitCodeInfo splits the text after the opening fence of a code block into
+// the language and the options after it, the same way Goldmark finds the
+// language: the language ends at the first space.
+func splitCodeInfo(info string) (string, string) {
+	info = strings.TrimFunc(info, isCodeInfoSpace)
+	language, options, _ := strings.Cut(info, " ")
+	return language, strings.TrimLeftFunc(options, isCodeInfoSpace)
+}
+
+// isCodeInfoSpace checks if a character is a space that Goldmark trims from
+// the text after the opening fence of a code block.
+func isCodeInfoSpace(r rune) bool {
+	return r < 0x80 && util.IsSpace(byte(r))
 }
 
 func convertFootnoteDefinition(src []byte, node *footnoteDefinition) (*content.FootnoteDefinition, error) {
