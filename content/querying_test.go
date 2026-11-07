@@ -37,6 +37,22 @@ var _ = Describe("Querying", func() {
 			))
 		})
 
+		It("leaves out the references inside markup in the value of a property", func() {
+			block := content.NewBlock(
+				content.NewProperties(
+					content.NewProperty("related",
+						content.NewPageLink("Top"),
+						content.NewText(" "),
+						content.NewStrong(content.NewPageLink("Inside")),
+					),
+				),
+			)
+
+			Expect(block.Children().PageReferences()).To(EqualsNodes(
+				content.NewPageLink("Top"),
+			))
+		})
+
 		It("leaves out the value of a property whose references are ignored", func() {
 			block := content.NewBlock(
 				content.NewProperties(

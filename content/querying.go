@@ -96,7 +96,10 @@ func IsPageReference() NodePredicate {
 // see NestedPageRef. The values of the properties that ignore references are left out,
 // as Logseq reads those as text rather than as pointing at a page. The same
 // goes for a value that is wrapped in quotes, and for a group of properties
-// that ignores references, see Properties.PageRefsIgnored.
+// that ignores references, see Properties.PageRefsIgnored. In the value of a
+// property, only the references at the top level are found, as Logseq does
+// not search markup such as bold text in a value: `foo:: **[[x]]**` refers to
+// no page.
 //
 // The content after a SCHEDULED or DEADLINE date is left out too: the children
 // of the date, and the text on the lines after it, until a node that is not
@@ -119,6 +122,11 @@ func (n NodeList) PageReferences() NodeList {
 		}
 
 		if properties, ok := node.(*Properties); ok && properties.PageRefsIgnored {
+			continue
+		}
+
+		if property, ok := node.(*Property); ok {
+			refs = append(refs, propertyValueRefs(property)...)
 			continue
 		}
 
@@ -147,6 +155,22 @@ func (n NodeList) PageReferences() NodeList {
 
 		if children, ok := node.(HasChildren); ok && !hasLabel(node) {
 			refs = append(refs, children.Children().PageReferences()...)
+		}
+	}
+
+	return refs
+}
+
+// propertyValueRefs finds the references to pages in the value of a property.
+// Logseq takes only the references at the top level of the value, so the
+// link in `foo:: **[[x]]**` is not a reference, but the link in
+// `foo:: [[x]] **b**` is.
+func propertyValueRefs(property *Property) NodeList {
+	refs := make(NodeList, 0)
+	for _, node := range property.Children() {
+		if IsPageReference()(node) {
+			refs = append(refs, node)
+			refs = append(refs, nestedPageRefsOf(node.(PageRef))...)
 		}
 	}
 

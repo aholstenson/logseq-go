@@ -55,7 +55,9 @@ their values read as references to those pages, so `tags:: Book, Reading`
 points at two pages without either being written as a link. The graph decides
 which other properties are read that way via `:property/separated-by-commas`,
 and which properties never point at a page via
-`:ignored-page-references-keywords`.
+`:ignored-page-references-keywords`. In the value of any property, only the
+links at the top level point at pages, the same as in Logseq: `[[x]]` in
+`related:: **[[x]]**` is text in bold, not a reference.
 
 The name of a property also points at the page with that name, the same as in
 Logseq, so a block with `type:: book` is a linked reference of the page

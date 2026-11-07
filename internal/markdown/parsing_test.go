@@ -4799,6 +4799,43 @@ var _ = Describe("References in quoted property values", func() {
 	})
 })
 
+var _ = Describe("References inside markup in property values", func() {
+	// refTargets parses the input and returns the targets of all page
+	// references in the first block.
+	refTargets := func(input string) []string {
+		root, err := markdown.ParseString(input)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(root.Blocks()).ToNot(BeEmpty())
+
+		targets := make([]string, 0)
+		for _, ref := range root.Blocks()[0].Children().PageReferences() {
+			targets = append(targets, ref.(content.PageRef).GetTo())
+		}
+		return targets
+	}
+
+	It("makes no reference from a link inside bold text in a value, the same as Logseq", func() {
+		// Given a property value with a link inside bold text
+		input := "- a\n  foo:: **[[x]]**"
+
+		// Then Logseq only takes links at the top level of the value
+		Expect(refTargets(input)).To(BeEmpty())
+		Expect(parseAndOutput(input)).To(Equal(input))
+	})
+
+	It("makes a reference from a link at the top level of a value", func() {
+		// Given a value with a top level link and bold text
+		// Then the block refs x
+		Expect(refTargets("- a\n  foo:: [[x]] **b**")).To(ConsistOf("x"))
+	})
+
+	It("still makes a reference from a link inside bold text in the block text", func() {
+		// Given a block whose text has a link inside bold text
+		// Then the block refs x, as Logseq searches markup in block text
+		Expect(refTargets("- **[[x]]**\n  foo:: bar")).To(ConsistOf("x"))
+	})
+})
+
 var _ = Describe("Property drawers", func() {
 	It("reads the id of a block from a property drawer", func() {
 		// Given a block with its id in a :PROPERTIES: drawer
