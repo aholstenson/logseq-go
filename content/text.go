@@ -87,7 +87,8 @@ func (t *Text) WithNoLineBreak() *Text {
 
 // TextSource gets the text as it is in the file, with the backslashes that
 // escape punctuation, such as `a \* b` for the value `a * b`. It is empty for
-// a text that was not read from a file, or that has no such backslashes. A
+// a text that was not read from a file, or that has no such backslashes and
+// does not look like block syntax at the start of a line, such as `3. a`. A
 // text whose value is still the value of this text is written with its
 // backslashes, so that they do not change on save.
 func (t *Text) TextSource() string {

@@ -82,6 +82,9 @@ func escapeTextIn(str string, source string, before rune, after rune, inFormatti
 	bracketEscapes(str, escapes)
 	delimiterEscapes(str, before, after, outside, escapes)
 	markupEscapes(str, before, after, !inFormatting, headings, escapes)
+	if headings && !readsAsSource(str, source) {
+		lineStartEscapes(str, before, after, escapes)
+	}
 	backslashEscapes(str, after, escapes)
 	blockRefTextEscapes(str, refAtStart, escapes)
 
@@ -131,6 +134,107 @@ func sourceEscapes(str string, source string, escapes map[int]bool) {
 	for i := range found {
 		escapes[i] = true
 	}
+}
+
+// readsAsSource returns true if the source of a text, see
+// content.Text.TextSource, reads as the text. Text from a file that was not
+// changed is written with its source, and needs no more escapes for block
+// syntax.
+func readsAsSource(str string, source string) bool {
+	return source != "" && unescapePunctuation([]byte(source)) == str
+}
+
+// lineStartEscapes finds the characters that would start block syntax when
+// the text starts a line: a bullet or the marker of a list item, a quote, a
+// thematic break, a property, a math block or the date of a task. A backslash
+// before the marker keeps the text as text for both Logseq and logseq-go.
+//
+// A `#` that starts a heading is found by markupEscapes.
+func lineStartEscapes(str string, before rune, after rune, escapes map[int]bool) {
+	for start := 0; start < len(str); {
+		end := strings.IndexByte(str[start:], '\n')
+		if end < 0 {
+			end = len(str)
+		} else {
+			end += start
+		}
+
+		if start > 0 || before == unknownRune || before == lineEdgeRune || before == '\n' {
+			lineEnd := after
+			if end < len(str) {
+				lineEnd = '\n'
+			}
+
+			if i := lineStartEscape(str[start:end], lineEnd); i >= 0 {
+				escapes[start+i] = true
+			}
+		}
+
+		start = end + 1
+	}
+}
+
+// lineStartEscape gets the position in a line that must be escaped so that
+// the line does not start block syntax, or -1 if there is none. after is the
+// character after the line, see lineStartEscapes.
+func lineStartEscape(line string, after rune) int {
+	// Up to three spaces can come before a marker.
+	i := 0
+	for i < len(line) && i < 3 && line[i] == ' ' {
+		i++
+	}
+
+	rest := line[i:]
+	if rest == "" {
+		return -1
+	}
+
+	endsLine := after == unknownRune || after == lineEdgeRune || after == '\n'
+	isMarkerEnd := func(j int) bool {
+		if j < len(rest) {
+			return rest[j] == ' ' || rest[j] == '\t'
+		}
+
+		return endsLine
+	}
+
+	if isThematicBreak([]byte(rest)) && endsLine {
+		return i
+	}
+
+	switch rest[0] {
+	case '-', '*', '+':
+		if isMarkerEnd(1) {
+			return i
+		}
+	case '>':
+		return i
+	case '$':
+		if strings.HasPrefix(rest, "$$") && strings.TrimRight(rest[2:], " \t") == "" && endsLine {
+			return i
+		}
+	}
+
+	digits := 0
+	for digits < len(rest) && digits < 10 && rest[digits] >= '0' && rest[digits] <= '9' {
+		digits++
+	}
+	if digits > 0 && digits < 10 && digits < len(rest) && (rest[digits] == '.' || rest[digits] == ')') && isMarkerEnd(digits+1) {
+		return i + digits
+	}
+
+	if name, _, ok := findPropertyKey(rest); ok {
+		// The second colon, so that the line has no `::`.
+		return i + len(name) + 1
+	}
+
+	for _, keyword := range []string{"SCHEDULED:", "DEADLINE:"} {
+		if len(rest) >= len(keyword) && strings.EqualFold(rest[:len(keyword)], keyword) {
+			return i + len(keyword) - 1
+		}
+	}
+
+	return -1
 }
 
 // asCharacter gets the character that a rune next to a text acts as for the

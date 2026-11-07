@@ -981,6 +981,7 @@ func convertParagraph(src []byte, node *ast.Paragraph) (*content.Paragraph, erro
 	if err != nil {
 		return nil, err
 	}
+	keepLineStartSources(paragraph)
 	if _, afterProperties := node.PreviousSibling().(*properties); afterProperties {
 		// A paragraph directly after properties is written on the next line,
 		// so a blank line between them has to be recorded explicitly.
@@ -1009,10 +1010,28 @@ func convertTextBlock(src []byte, node ast.Node) (*content.Paragraph, error) {
 	if err != nil {
 		return nil, err
 	}
+	keepLineStartSources(paragraph)
 
 	updatePreviousLine(node, paragraph)
 	keepBlankQuoteLineBefore(src, node, paragraph)
 	return paragraph, nil
+}
+
+// keepLineStartSources sets the source of each text that starts a line of
+// the paragraph and looks like block syntax, such as `3. a` on the second
+// line of "- a\n  3. a", where it is text. The writer escapes such text when
+// its value is changed, see lineStartEscapes, but text that still has the
+// value it was read with is written as it was.
+func keepLineStartSources(paragraph *content.Paragraph) {
+	lineStart := true
+	for child := paragraph.FirstChild(); child != nil; child = child.NextSibling() {
+		text, ok := child.(*content.Text)
+		if ok && lineStart && text.TextSource() == "" && lineStartEscape(text.Value, unknownRune) >= 0 {
+			text.SetTextSource(text.Value)
+		}
+
+		lineStart = ok && (text.SoftLineBreak || text.HardLineBreak)
+	}
 }
 
 func convertText(src []byte, node *ast.Text) (*content.Text, error) {
