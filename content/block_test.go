@@ -61,6 +61,19 @@ var _ = Describe("Blocks", func() {
 			Expect(properties.Get("MY_PROP")).To(EqualsNodes(content.NewText("value")))
 		})
 
+		It("makes the name lower case in the same way as Logseq", func() {
+			// Given names with a capital sigma and a dotted capital I
+			// Then the lower case form is the one that JavaScript makes
+			Expect(content.NormalizePropertyName("ΑΣ")).To(Equal("ας"))
+			Expect(content.NormalizePropertyName("ΣΑ")).To(Equal("σα"))
+			Expect(content.NormalizePropertyName("İ")).To(Equal("i\u0307"))
+
+			block := content.NewBlock(content.NewProperties(
+				content.NewProperty("ΟΔΟΣ", content.NewText("value")),
+			))
+			Expect(block.Properties().Get("οδος")).To(EqualsNodes(content.NewText("value")))
+		})
+
 		It("keeps the written name when it sets a property by a normalized name", func() {
 			block := content.NewBlock(content.NewProperties(
 				content.NewProperty("My_Prop", content.NewText("value")),

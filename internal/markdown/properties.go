@@ -51,8 +51,9 @@ func findPropertyKey(line string) (name string, end int, ok bool) {
 
 // validPropertyName checks if Logseq keeps a property with the given name.
 // Logseq turns the name into a keyword, so the name must be one that reads as
-// a keyword in EDN, the data format of Logseq. A name can hold letters of any
-// language, digits and most punctuation, but some characters are not allowed.
+// a keyword in EDN, the data format of Logseq, see validEDNKeyword. A name can
+// hold letters of any language, digits and most punctuation, but some
+// characters are not allowed.
 func validPropertyName(name string) bool {
 	name = normalizePropertyName(name)
 	if name == "" || name[0] == '#' {
@@ -60,28 +61,12 @@ func validPropertyName(name string) bool {
 		return false
 	}
 
-	// The characters that Logseq does not allow and the characters that end or
-	// cannot be part of a keyword in EDN.
-	if strings.ContainsAny(name, "\"|^(){}[],;\\@~`") {
+	// The characters that Logseq does not allow before it reads the name
+	if strings.ContainsAny(name, "\"|^(){}") {
 		return false
 	}
 
-	// A keyword can have a namespace in front of a slash, as in `ns/name`.
-	slash := strings.IndexByte(name, '/')
-	if slash == -1 || name == "/" {
-		return true
-	}
-
-	local := name[slash+1:]
-	if slash == 0 || local == "" {
-		return false
-	}
-
-	if local == "/" {
-		return true
-	}
-
-	return !strings.Contains(local, "/") && (local[0] < '0' || local[0] > '9')
+	return validEDNKeyword(name)
 }
 
 var propertiesKind = ast.NewNodeKind("Properties")

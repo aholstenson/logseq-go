@@ -1,6 +1,9 @@
 package content
 
-import "strings"
+import (
+	"strings"
+	"unicode"
+)
 
 // Properties is a collection of Property nodes.
 type Properties struct {
@@ -122,8 +125,84 @@ var _ BlockNode = (*Properties)(nil)
 // NormalizePropertyName returns the form of a property name that Logseq uses
 // to identify the property. Logseq makes the name lower case and reads an
 // underscore as a dash, so `My_Prop::` and `my-prop::` are the same property.
+//
+// The name is made lower case in the same way as in JavaScript, where Logseq
+// does it. That is different from strings.ToLower for two letters: `İ`
+// becomes `i̇`, an `i` with a combining dot, and a `Σ` at the end of a word
+// becomes the final form `ς`.
 func NormalizePropertyName(name string) string {
-	return strings.ReplaceAll(strings.ToLower(name), "_", "-")
+	return strings.ReplaceAll(lowerCaseAsJavaScript(name), "_", "-")
+}
+
+// lowerCaseAsJavaScript makes the text lower case in the same way as
+// toLowerCase in JavaScript. It uses the mappings of Unicode that do not
+// depend on the language, which are the simple mappings of strings.ToLower,
+// the mapping of `İ` to two characters, and the final form of sigma.
+func lowerCaseAsJavaScript(s string) string {
+	if !strings.ContainsAny(s, "\u0130\u03a3") {
+		return strings.ToLower(s)
+	}
+
+	runes := []rune(s)
+	var lower strings.Builder
+	for i, r := range runes {
+		switch {
+		case r == '\u0130':
+			lower.WriteString("i\u0307")
+		case r == '\u03a3' && isFinalSigma(runes, i):
+			lower.WriteRune('\u03c2')
+		default:
+			lower.WriteRune(unicode.ToLower(r))
+		}
+	}
+
+	return lower.String()
+}
+
+// isFinalSigma checks if the sigma at the given index is at the end of a
+// word, which is the Final_Sigma condition of Unicode: a cased letter comes
+// before it and no cased letter comes after it, when the characters that
+// case ignores are skipped.
+func isFinalSigma(runes []rune, i int) bool {
+	before := false
+	for j := i - 1; j >= 0; j-- {
+		if !isCaseIgnorable(runes[j]) {
+			before = isCased(runes[j])
+			break
+		}
+	}
+
+	if !before {
+		return false
+	}
+
+	for j := i + 1; j < len(runes); j++ {
+		if !isCaseIgnorable(runes[j]) {
+			return !isCased(runes[j])
+		}
+	}
+
+	return true
+}
+
+// isCased checks if a character is cased in Unicode: it is an upper case, a
+// lower case or a title case letter.
+func isCased(r rune) bool {
+	return unicode.IsUpper(r) || unicode.IsLower(r) || unicode.IsTitle(r) ||
+		unicode.In(r, unicode.Other_Lowercase, unicode.Other_Uppercase)
+}
+
+// isCaseIgnorable checks if case ignores a character in Unicode, such as
+// marks, format characters, modifiers and the apostrophe, the period and
+// the colon.
+func isCaseIgnorable(r rune) bool {
+	switch r {
+	case '\'', '.', ':', '\u00b7', '\u0387', '\u055f', '\u05f4', '\u2018', '\u2019',
+		'\u2024', '\u2027', '\ufe13', '\ufe52', '\ufe55', '\uff07', '\uff0e', '\uff1a':
+		return true
+	}
+
+	return unicode.In(r, unicode.Mn, unicode.Me, unicode.Cf, unicode.Lm, unicode.Sk)
 }
 
 // Property is a node that represents a property, which is a key that can have multiple values.

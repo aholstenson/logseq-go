@@ -124,6 +124,9 @@ drops a property with a name that it does not allow, such as `a@b::` or
 `#tag::`, and the pages in its value are not references. The line is still a
 part of the group of properties, so the properties after it are kept. Such a
 property has `Property.InvalidName` set, and `Properties.Get` does not find it.
+Logseq checks a name by reading `{:name nil}` with its EDN reader, so a comma
+or a Unicode space in a name splits it into more forms: `b,::` and `b,c,d::`
+are valid, but `b,c::` and a name with a no-break space are not.
 Logseq makes names lower case and reads an underscore as a dash, so
 `Properties.Get("my-prop")` and the query `(property my-prop)` both find
 `My_Prop::`. The name is written back as it was read.
