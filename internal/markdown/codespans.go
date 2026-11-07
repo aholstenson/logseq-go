@@ -91,9 +91,9 @@ func codeSpanBlockItem(node ast.Node) ast.Node {
 
 // blockRelativeCodeSpanSource gets the text of a code span over more than one
 // line from start to stop, where each line after the first has the
-// indentation that it has after the column of the text of the block. A lazy
-// line of a list item in the block keeps its column in this way. Returns
-// false if a line is indented less than the text of the block.
+// indentation that it has after the column of the `-` of the block. A lazy
+// line of a list item or of the block keeps its column in this way. Returns
+// false if a line is indented less than the `-` of the block.
 func blockRelativeCodeSpanSource(src []byte, item ast.Node, start int, stop int) (string, bool) {
 	var buf []byte
 	pos := start
@@ -106,10 +106,17 @@ func blockRelativeCodeSpanSource(src []byte, item ast.Node, start int, stop int)
 
 		buf = append(buf, src[pos:pos+end+1]...)
 		lineStart := pos + end + 1
-		indentation, lazy, ok := blockLineIndentation(src, item, lineStart)
-		if !ok || lazy {
+		value, _ := item.Attribute(bulletLineStartAttribute)
+		bulletStart, ok := value.(int)
+		dash := 0
+		if ok {
+			dash = indentationWidth(src, bulletStart)
+		}
+		if !ok || indentationWidth(src, lineStart) < dash {
 			return "", false
 		}
+
+		indentation := indentationAfterColumn(src, lineStart, dash)
 
 		pos = lineStart
 		for pos < stop && (src[pos] == ' ' || src[pos] == '\t') {

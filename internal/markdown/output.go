@@ -2125,28 +2125,53 @@ func (w *Output) writeMathBlock(node *content.MathBlock) error {
 	return nil
 }
 
-// codeSpanBlock gets the block that holds a code span, if only paragraphs,
-// lists and inline nodes are between them. The lines of such a code span are
-// kept with their indentation from the text of the block, see
-// blockRelativeCodeSpanSource.
-func codeSpanBlock(node content.Node) (*content.Block, bool) {
+// codeSpanInBlock checks if a code span is in a block that is written with
+// its bullet, with only paragraphs, lists and inline nodes between them. The
+// lines of such a code span are kept with their indentation from the `-` of
+// the block, see blockRelativeCodeSpanSource.
+func codeSpanInBlock(node content.Node) bool {
 	for p := node.Parent(); p != nil; p = p.Parent() {
 		switch n := p.(type) {
 		case *content.Block:
-			return n, n.Parent() != nil && !writesWithoutBullet(n)
+			return n.Parent() != nil && !writesWithoutBullet(n)
 		case *content.Blockquote, *content.FootnoteDefinition:
-			return nil, false
+			return false
+		}
+	}
+
+	return false
+}
+
+// headingBlockParentOf gets the block that holds the heading block that
+// holds the node, if the node is in such a heading block, see
+// writesWithoutBullet.
+func headingBlockParentOf(node content.Node) (*content.Block, bool) {
+	for p := node.Parent(); p != nil; p = p.Parent() {
+		if block, ok := p.(*content.Block); ok {
+			parent, ok := block.Parent().(*content.Block)
+			return parent, ok && writesWithoutBullet(block) && parent.Parent() != nil
 		}
 	}
 
 	return nil, false
 }
 
+// trimLinePrefixes takes the prefix off each line of the text after the
+// first, where the line starts with it.
+func trimLinePrefixes(text string, prefix string) string {
+	lines := strings.Split(text, "\n")
+	for i := 1; i < len(lines); i++ {
+		lines[i] = strings.TrimPrefix(lines[i], prefix)
+	}
+
+	return strings.Join(lines, "\n")
+}
+
 // writeBlockRelativeLines writes text over more than one line, where each
-// line after the first has its indentation from the text of the block. The
-// indentation of the containers in the block, such as list items, is left
-// out of these lines.
-func (w *Output) writeBlockRelativeLines(text string, block *content.Block) error {
+// line after the first has its indentation from the column of the `-` of the
+// block. The indentation of the text of the block and of the containers in
+// the block, such as list items, is left out of these lines.
+func (w *Output) writeBlockRelativeLines(text string) error {
 	level := w.blockTextLevels[len(w.blockTextLevels)-1]
 	lines := strings.Split(text, "\n")
 	for i, line := range lines {
@@ -2157,7 +2182,6 @@ func (w *Output) writeBlockRelativeLines(text string, block *content.Block) erro
 			}
 
 			w.out.SkipIndentationOnNextLine(level)
-			line = blockTextIndentation(block) + line
 		}
 
 		err := w.writeRaw(line)
@@ -2173,8 +2197,16 @@ func (w *Output) writeCodeSpan(node *content.CodeSpan) error {
 	// A code span read from a file is written with the backticks and spaces
 	// it had, if they still give the same code.
 	if source := node.CodeSpanSource(); source != "" && codeSpanReadsBack(source, node.Value) {
-		if block, ok := codeSpanBlock(node); ok && strings.Contains(source, "\n") && len(w.blockTextLevels) > 0 {
-			return w.writeBlockRelativeLines(source, block)
+		if strings.Contains(source, "\n") {
+			if codeSpanInBlock(node) && len(w.blockTextLevels) > 0 {
+				return w.writeBlockRelativeLines(source)
+			}
+
+			if parent, ok := headingBlockParentOf(node); ok {
+				// A heading block is written at the column of the text of
+				// its parent, so the lines lose that indentation.
+				source = trimLinePrefixes(source, blockTextIndentation(parent))
+			}
 		}
 
 		return w.writeRaw(source)
