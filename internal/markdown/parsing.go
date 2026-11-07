@@ -600,6 +600,7 @@ func convertOutline(src []byte, node ast.Node, headingBlocks bool, levels blockL
 	if item, ok := node.(*ast.ListItem); ok {
 		if space, empty := emptyBulletLine(src, item); empty {
 			block.WithEmptyFirstLine(true, space)
+			defer keepBlankLineAfterEmptyBullet(src, item, block)
 		} else {
 			block.WithBulletSpace(bulletSpace(src, item))
 		}
@@ -776,6 +777,39 @@ func convertOutline(src []byte, node ast.Node, headingBlocks bool, levels blockL
 	}
 
 	return block, nil
+}
+
+// keepBlankLineAfterEmptyBullet records a blank line between the line of an
+// empty bullet and the first content of the block, as in "-\n\n  text", as a
+// blank line before that content.
+func keepBlankLineAfterEmptyBullet(src []byte, item ast.Node, block *content.Block) {
+	value, ok := item.Attribute(bulletLineStartAttribute)
+	start, isInt := value.(int)
+	if !ok || !isInt {
+		return
+	}
+
+	end := bytes.IndexByte(src[start:], '\n')
+	if end < 0 {
+		return
+	}
+
+	next := src[start+end+1:]
+	if i := bytes.IndexByte(next, '\n'); i >= 0 {
+		next = next[:i]
+	} else {
+		return
+	}
+
+	if len(bytes.Trim(next, " \t\r")) > 0 {
+		return
+	}
+
+	if first, ok := block.FirstChild().(content.PreviousLineAware); ok {
+		if _, isBlock := first.(*content.Block); !isBlock {
+			first.SetPreviousLineType(content.PreviousLineTypeBlank)
+		}
+	}
 }
 
 // isATXHeading checks if a heading is written with `#` marks, such as

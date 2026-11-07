@@ -3611,6 +3611,13 @@ func bulletMarker(block *content.Block) string {
 	marker := "-" + block.EmptyFirstLineSpace()
 	if len(block.Content()) > 0 {
 		marker += "\n"
+
+		// Keep a blank line between the bullet and the content.
+		if first, ok := block.FirstChild().(content.PreviousLineAware); ok && first.PreviousLineType() == content.PreviousLineTypeBlank {
+			if _, isBlock := first.(*content.Block); !isBlock {
+				marker += "\n"
+			}
+		}
 	}
 
 	return marker
