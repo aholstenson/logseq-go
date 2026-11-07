@@ -1483,6 +1483,12 @@ func convertHTMLBlock(src []byte, node *ast.HTMLBlock) (*content.RawHTMLBlock, e
 		_, _ = codeBuf.Write(line.Value(src))
 	}
 
+	// Goldmark keeps the line that ends the block, such as `-->` or
+	// `</pre>`, out of the lines of the block.
+	if node.HasClosure() {
+		_, _ = codeBuf.Write(node.ClosureLine.Value(src))
+	}
+
 	raw := content.NewRawHTMLBlock(codeBuf.String())
 	updatePreviousLine(node, raw)
 	return raw, nil
