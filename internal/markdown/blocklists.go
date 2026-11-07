@@ -267,6 +267,7 @@ func newBlockListItemParser() *blockListItemParser {
 func (p *blockListItemParser) Open(parent ast.Node, reader text.Reader, pc parser.Context) (ast.Node, parser.State) {
 	indent := lineIndentCharacters(reader)
 	start := readerLineStart(reader)
+	marker := markerStart(reader)
 	expandTabsBeforeBlockMarker(reader)
 	var node ast.Node
 	var state parser.State
@@ -279,6 +280,7 @@ func (p *blockListItemParser) Open(parent ast.Node, reader text.Reader, pc parse
 	if node != nil {
 		node.SetAttribute(bulletIndentAttribute, indent)
 		node.SetAttribute(bulletLineStartAttribute, start)
+		node.SetAttribute(listMarkerStartAttribute, marker)
 
 		// Goldmark clears its flag for an empty item with blank lines.
 		pc.Set(emptyItemWithBlankLinesKey, nil)
@@ -290,6 +292,25 @@ func (p *blockListItemParser) Open(parent ast.Node, reader text.Reader, pc parse
 // bulletLineStartAttribute is the attribute of a list item that holds the
 // offset into the source where the line of its bullet starts.
 var bulletLineStartAttribute = []byte("logseq-bullet-line-start")
+
+// listMarkerStartAttribute is the attribute of a list item that holds the
+// offset into the source where its marker starts. The marker is not always
+// the first text on its line, as in "- 2. a" or "> 1. a".
+var listMarkerStartAttribute = []byte("logseq-list-marker-start")
+
+// markerStart gets the offset into the source of the first character that is
+// not a space or a tab at or after the position of the reader.
+func markerStart(reader text.Reader) int {
+	source := reader.Source()
+	_, segment := reader.Position()
+
+	start := segment.Start
+	for start < len(source) && (source[start] == ' ' || source[start] == '\t') {
+		start++
+	}
+
+	return start
+}
 
 // hasBlankLineBeforeBullet checks if the line before the bullet of a list
 // item is blank, so that the blank line can be kept when the block is
@@ -440,9 +461,17 @@ func listMarkerSpace(src []byte, item ast.Node) (string, string) {
 	}
 
 	// The column of the marker, where a tab moves to the next multiple of
-	// four.
+	// four. The marker can come after other markers on the line, such as
+	// the bullet of a block or the `>` of a quote.
 	column := 0
 	i := 0
+	if value, ok := item.Attribute(listMarkerStartAttribute); ok {
+		if markerAt, ok := value.(int); ok && markerAt >= start && markerAt-start <= len(line) {
+			for ; i < markerAt-start; i++ {
+				column = nextColumn(column, line[i])
+			}
+		}
+	}
 	for ; i < len(line) && (line[i] == ' ' || line[i] == '\t'); i++ {
 		column = nextColumn(column, line[i])
 	}
