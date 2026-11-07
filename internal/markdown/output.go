@@ -1398,6 +1398,12 @@ func (w *Output) writePageRefText(node *content.PageRefText) error {
 		after = lineEdgeRune
 	}
 
+	if strings.IndexFunc(node.To, isValueSeparator) >= 0 {
+		// A title with a separator, such as a page renamed to "Smith, John",
+		// would be read back as two titles, so it is written as a link.
+		return w.writeRaw("[[" + EscapePageLinkTitle(node.To) + "]]")
+	}
+
 	return w.writeRaw(escapeText(node.To, before, after))
 }
 
