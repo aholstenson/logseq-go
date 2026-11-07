@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -2382,10 +2383,97 @@ func (w *Output) writeParagraph(node *content.Paragraph) error {
 	return nil
 }
 
+// listNumbers gets the numbers that the items of an ordered list are written
+// with. The numbers of a list read from a file are kept as they are, see
+// content.ListItem.Number. If items were added, or the first number can no
+// longer start the list, the items are numbered again in the style of the
+// list: the same number for each item if all numbered items have the same
+// number, or else one more for each item from the number of the first
+// numbered item.
+//
+// A list directly after a line of text can only start with 1, as the text
+// would otherwise go on with the line of the item.
+func listNumbers(list *content.List) []string {
+	var items []*content.ListItem
+	for child := list.FirstChild(); child != nil; child = child.NextSibling() {
+		if item, ok := child.(*content.ListItem); ok {
+			items = append(items, item)
+		}
+	}
+
+	interrupts := false
+	if _, ok := list.PreviousSibling().(*content.Paragraph); ok && list.PreviousLineType() == content.PreviousLineTypeNonBlank {
+		interrupts = true
+	}
+
+	keep := len(items) > 0
+	for _, item := range items {
+		if item.Number == "" {
+			keep = false
+		}
+	}
+
+	if keep && (!interrupts || isListNumberOne(items[0].Number)) {
+		numbers := make([]string, len(items))
+		for i, item := range items {
+			numbers[i] = item.Number
+		}
+
+		return numbers
+	}
+
+	start := 1
+	same := true
+	numbered := 0
+	first := ""
+	for _, item := range items {
+		if item.Number == "" {
+			continue
+		}
+
+		numbered++
+		if first == "" {
+			first = item.Number
+			if n, err := strconv.Atoi(item.Number); err == nil {
+				start = n
+			}
+		} else if item.Number != first {
+			same = false
+		}
+	}
+
+	if interrupts {
+		start = 1
+	}
+
+	numbers := make([]string, len(items))
+	for i := range items {
+		if same && numbered > 1 {
+			numbers[i] = strconv.Itoa(start)
+		} else {
+			numbers[i] = strconv.Itoa(start + i)
+		}
+	}
+
+	return numbers
+}
+
+// isListNumberOne returns true if the number of a list item is one, which can
+// be written with leading zeros.
+func isListNumberOne(number string) bool {
+	n, err := strconv.Atoi(number)
+	return err == nil && n == 1
+}
+
 func (w *Output) writeList(node *content.List) error {
 	err := w.startBlock(node, "")
 	if err != nil {
 		return err
+	}
+
+	var numbers []string
+	if node.Type == content.ListTypeOrdered {
+		numbers = listNumbers(node)
 	}
 
 	i := 0
@@ -2406,12 +2494,7 @@ func (w *Output) writeList(node *content.List) error {
 
 		var marker string
 		if node.Type == content.ListTypeOrdered {
-			// The number is kept as it is in the file.
-			number := item.Number
-			if number == "" {
-				number = fmt.Sprintf("%d", i)
-			}
-			marker = number + string(node.Marker)
+			marker = numbers[i-1] + string(node.Marker)
 		} else {
 			marker = string(node.Marker)
 		}
