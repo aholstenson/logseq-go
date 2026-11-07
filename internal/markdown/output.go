@@ -2790,9 +2790,26 @@ func (w *Output) writeBlock(node *content.Block) error {
 				// marker to indent under. It gets an indentation level of its
 				// own, so that what was written before it does not count as
 				// content of the block.
+				//
+				// A heading block of a parent block is written at the column
+				// of the text of the parent, where it was read. The tab that
+				// indents the sub blocks is wider than the text of the parent,
+				// and a heading at a deeper column reads as text after a few
+				// saves.
+				replaceIndent := hasParentBlock && previousIndent != ""
+				if replaceIndent {
+					w.out.PopIndentation()
+					w.out.PushIndentation(previousIndent)
+				}
+
 				w.out.PushIndentation("")
 				err := w.Write(child)
 				w.out.PopIndentation()
+
+				if replaceIndent {
+					w.out.PopIndentation()
+					w.out.PushIndentation("\t")
+				}
 				if err != nil {
 					return err
 				}
@@ -2890,7 +2907,7 @@ func writesWithoutBullet(node *content.Block) bool {
 	if parent.Parent() != nil {
 		// A heading line in a block starts a child block only after the
 		// first line of the block, see convertOutline.
-		if !node.IsHeadingBlock() || writesWithoutBullet(parent) || len(parent.Content()) == 0 {
+		if !node.IsHeadingBlock() || writesWithoutBullet(parent) {
 			return false
 		}
 

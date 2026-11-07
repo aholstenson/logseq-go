@@ -674,6 +674,9 @@ func convertOutline(src []byte, node ast.Node, headingBlocks bool, levels blockL
 				convertTaskMarker(headingNode, src, heading)
 
 				headingBlock := content.NewHeadingBlock(headingNode)
+				if heading.HasBlankPreviousLines() {
+					headingBlock.SetPreviousLineType(content.PreviousLineTypeBlank)
+				}
 				if indent, ok := headingIndent(src, heading); ok {
 					levels.set(headingBlock, indent+1)
 				} else if indent, ok := bulletIndent(node); ok {
