@@ -80,10 +80,9 @@ func blockItemOf(node ast.Node) (ast.Node, bool) {
 
 // blockLineIndentation gets the indentation of a line in the text of a
 // block, other than the line of its bullet. The text of a block is written
-// two columns after the column of its `-`, so the indentation is measured
-// from there. Goldmark measures it from where the text of the bullet line
-// starts, which is further for a bullet with more than one space, as in
-// "-   a".
+// at the column of the text on the line of its bullet, which is two columns
+// after its `-`, or further for a bullet with more spaces as in "-   a", see
+// bulletSpace. The indentation is measured from there.
 //
 // A line indented less than that is lazy: it is a part of the block, but is
 // written without the indentation of the text of the block, and its
@@ -102,11 +101,39 @@ func blockLineIndentation(src []byte, item ast.Node, lineStart int) (string, boo
 		dash = nextColumn(dash, src[i])
 	}
 
-	if indentationWidth(src, lineStart) >= dash+2 {
-		return indentationAfterColumn(src, lineStart, dash+2), false, true
+	textColumn := dash + 2
+	if space := bulletSpace(src, item); space != "" {
+		textColumn = dash + 1
+		for j := 0; j < len(space); j++ {
+			textColumn = nextColumn(textColumn, space[j])
+		}
+	}
+
+	if indentationWidth(src, lineStart) >= textColumn {
+		return indentationAfterColumn(src, lineStart, textColumn), false, true
 	}
 
 	return indentationAfterColumn(src, lineStart, dash), true, true
+}
+
+// wideBulletLineIndentation gets the indentation of a line in the text of a
+// block whose bullet has more than one space, as in "-   a", measured from two
+// columns after the `-` of the block. Property lines and the dates of tasks
+// are written from that column, as Logseq writes them. Returns false if the
+// block has no such bullet, or if the line is indented less than that column.
+func wideBulletLineIndentation(src []byte, item ast.Node, lineStart int) (string, bool) {
+	value, ok := item.Attribute(bulletLineStartAttribute)
+	bulletStart, isInt := value.(int)
+	if !ok || !isInt || bulletStart == lineStart || bulletSpace(src, item) == "" {
+		return "", false
+	}
+
+	dash := indentationWidth(src, bulletStart)
+	if indentationWidth(src, lineStart) < dash+2 {
+		return "", false
+	}
+
+	return indentationAfterColumn(src, lineStart, dash+2), true
 }
 
 // indentationWidth gets the width in columns of the spaces and tabs at the

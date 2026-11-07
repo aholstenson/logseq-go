@@ -1607,6 +1607,12 @@ func convertTaskDate(src []byte, node *taskDate) (content.Node, error) {
 	}
 	date.Repeater = node.Repeater
 	date.Indentation = node.indentation
+	if item, ok := blockItemOf(node.Parent()); ok {
+		lineStart := bytes.LastIndexByte(src[:node.Segment.Start], '\n') + 1
+		if indentation, ok := wideBulletLineIndentation(src, item, lineStart); ok {
+			date.Indentation = indentation
+		}
+	}
 	date.SetDateSource(string(node.Segment.Value(src)))
 
 	err := convertChildren(src, node, date)

@@ -39,6 +39,22 @@ func (w *writer) SkipIndentationOnNextLine(level int) {
 	w.lazyLevel = level
 }
 
+// AtLineStart returns true if the last write ended with a line break, so that
+// the next write starts a new line.
+func (w *writer) AtLineStart() bool {
+	return w.lastWasLineBreak
+}
+
+// IndentationFrom gets the indentation of the given level and of the levels
+// after it.
+func (w *writer) IndentationFrom(level int) string {
+	if level >= len(w.indentLengths) {
+		return ""
+	}
+
+	return string(w.currentIndent[w.indentLengths[level]:])
+}
+
 func (w *writer) OnlyIndent() []byte {
 	return w.currentIndent[:w.trailingSpaceIndex]
 }

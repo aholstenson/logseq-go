@@ -2843,7 +2843,7 @@ func (w *Output) writeBlock(node *content.Block) error {
 				return err
 			}
 
-			w.out.PushIndentation("  ")
+			w.out.PushIndentation(blockTextIndentation(child))
 			w.blockTextLevels = append(w.blockTextLevels, w.out.IndentationLevel()-1)
 
 			err = w.Write(child)
@@ -2897,6 +2897,55 @@ func bulletMarker(block *content.Block) string {
 	return marker
 }
 
+// bulletColumnLevel gets the indentation level of the text of the block that
+// holds the node, if the lines of the node are written two columns after the
+// `-` of the block instead of at the column of the text of the block. This is
+// the case for property lines and the dates of tasks in a block whose bullet
+// has more than one space, as in "-   x", as Logseq writes them there. The
+// writer then leaves out the indentation from this level, see
+// writer.SkipIndentationOnNextLine. Returns -1 in other cases.
+func (w *Output) bulletColumnLevel(node content.Node) int {
+	block, ok := node.Parent().(*content.Block)
+	if !ok || len(w.blockTextLevels) == 0 || !w.out.AtLineStart() {
+		return -1
+	}
+
+	level := w.blockTextLevels[len(w.blockTextLevels)-1]
+	indentation := blockTextIndentation(block)
+	if indentation == "  " || w.out.IndentationFrom(level) != indentation {
+		return -1
+	}
+
+	return level
+}
+
+// blockTextIndentation gets the indentation of the lines of a block after the
+// line of its bullet. The lines are indented to the column of the text on the
+// line of the bullet, which is two columns after the `-`, or further for a
+// bullet with more spaces, see content.Block.BulletSpace. Lines that are less
+// indented than this column end a code block, a quote, a list or a table that
+// starts on the line of the bullet.
+//
+// The `-` is taken to be at a column that is a multiple of four, as the
+// bullets of blocks are indented with tabs.
+func blockTextIndentation(block *content.Block) string {
+	space := block.BulletSpace()
+	if space == "" || block.HasEmptyFirstLine() || len(block.Content()) == 0 {
+		return "  "
+	}
+
+	column := 1
+	for i := 0; i < len(space); i++ {
+		column = nextColumn(column, space[i])
+	}
+
+	if strings.Contains(space, "\t") && column%4 == 0 {
+		return strings.Repeat("\t", column/4)
+	}
+
+	return strings.Repeat(" ", column)
+}
+
 // writesWithoutBullet checks if a block is written without a bullet. This is
 // the case in the positions where the bullet-less form parses back into the
 // same structure: a pre-block as the first block of a page, a heading block
@@ -2942,9 +2991,19 @@ func (w *Output) writeProperties(node *content.Properties) error {
 		return err
 	}
 
+	lazyLevel := w.bulletColumnLevel(node)
+
 	for child := node.FirstChild(); child != nil; child = child.NextSibling() {
 		if _, ok := child.(*content.Property); !ok {
 			return fmt.Errorf("unsupported properties child: %T", child)
+		}
+
+		if lazyLevel >= 0 {
+			w.out.SkipIndentationOnNextLine(lazyLevel)
+			err := w.writeRaw("  ")
+			if err != nil {
+				return err
+			}
 		}
 
 		property := child.(*content.Property)
@@ -3361,6 +3420,14 @@ func (w *Output) writeTaskDate(node *content.TaskDate) error {
 	err := w.startBlockWithAutomaticBehavior(node, "", false)
 	if err != nil {
 		return err
+	}
+
+	if level := w.bulletColumnLevel(node); level >= 0 {
+		w.out.SkipIndentationOnNextLine(level)
+		err = w.writeRaw("  ")
+		if err != nil {
+			return err
+		}
 	}
 
 	err = w.writeRaw(node.Indentation + value.String())
