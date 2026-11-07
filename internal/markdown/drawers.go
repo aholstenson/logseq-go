@@ -72,7 +72,15 @@ func (p *drawerParser) Open(parent ast.Node, reader text.Reader, pc parser.Conte
 		return nil, parser.NoChildren
 	}
 
-	if !hasDrawerEnd(reader.Source()[segment.Stop:], pos) {
+	source := reader.Source()
+	lineStart := bytes.LastIndexByte(source[:segment.Start], '\n') + 1
+	if markerAt := segment.Start + pos - segment.Padding; markerAt >= lineStart && len(bytes.Trim(source[lineStart:markerAt], " \t")) == 0 {
+		// The line has only spaces and tabs before the drawer, so the lines
+		// after it are compared in columns, see hasDrawerEndAtColumn.
+		if !hasDrawerEndAtColumn(source[segment.Stop:], indentationWidth(source, lineStart), isDrawerEnd) {
+			return nil, parser.NoChildren
+		}
+	} else if !hasDrawerEnd(source[segment.Stop:], pos) {
 		return nil, parser.NoChildren
 	}
 
@@ -104,6 +112,36 @@ func hasDrawerEnd(source []byte, indent int) bool {
 		}
 
 		if isDrawerEnd(trimmed) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// hasDrawerEndAtColumn checks if a line that ends a drawer at the given
+// column comes before the block that holds the drawer ends. The block ends at
+// a line that is indented less than the drawer. A bullet line that is
+// indented as far as the drawer, or further, is a line of the drawer, as
+// Logseq ends a drawer only at its end line.
+func hasDrawerEndAtColumn(source []byte, column int, isEnd func(line []byte) bool) bool {
+	for len(source) > 0 {
+		line := source
+		if i := bytes.IndexByte(source, '\n'); i >= 0 {
+			line = source[:i+1]
+		}
+		source = source[len(line):]
+
+		trimmed := bytes.TrimLeft(line, " \t")
+		if util.IsBlank(trimmed) {
+			continue
+		}
+
+		if indentationWidth(line, 0) < column {
+			return false
+		}
+
+		if isEnd(trimmed) {
 			return true
 		}
 	}

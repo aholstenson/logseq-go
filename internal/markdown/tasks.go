@@ -237,8 +237,9 @@ func (b *logbookParser) Open(parent ast.Node, reader text.Reader, pc parser.Cont
 	if markerAt := segment.Start + pos - segment.Padding; markerAt >= lineStart && len(bytes.Trim(source[lineStart:markerAt], " \t")) == 0 {
 		// The line has only spaces and tabs before `:LOGBOOK:`, so the
 		// lines after it are compared in columns, as a tab can be split
-		// by the column of the block, as in "- a\n\t:LOGBOOK:".
-		if !hasLogbookEndAtColumn(source[segment.Stop:], indentationWidth(source, lineStart)) {
+		// by the column of the block, as in "- a\n\t:LOGBOOK:". See
+		// hasDrawerEndAtColumn.
+		if !hasDrawerEndAtColumn(source[segment.Stop:], indentationWidth(source, lineStart), isLogbookEnd) {
 			return nil, parser.NoChildren
 		}
 	} else if !hasLogbookEnd(source[segment.Stop:], indent) {
@@ -290,32 +291,9 @@ func hasLogbookEnd(source []byte, indent int) bool {
 	return false
 }
 
-// hasLogbookEndAtColumn is hasLogbookEnd for a `:LOGBOOK:` line at the given
-// column, where the indentation of the lines after it is compared in
-// columns.
-func hasLogbookEndAtColumn(source []byte, column int) bool {
-	for len(source) > 0 {
-		line := source
-		if i := bytes.IndexByte(source, '\n'); i >= 0 {
-			line = source[:i+1]
-		}
-		source = source[len(line):]
-
-		trimmed := bytes.TrimLeft(line, " \t")
-		if util.IsBlank(trimmed) {
-			continue
-		}
-
-		if indentationWidth(line, 0) < column || isBulletLine(trimmed) {
-			return false
-		}
-
-		if bytes.HasPrefix(trimmed, []byte(":END:")) && util.IsBlank(trimmed[len(":END:"):]) {
-			return true
-		}
-	}
-
-	return false
+// isLogbookEnd checks if a line, without its indentation, ends a logbook.
+func isLogbookEnd(line []byte) bool {
+	return bytes.HasPrefix(line, []byte(":END:")) && util.IsBlank(line[len(":END:"):])
 }
 
 func (b *logbookParser) Continue(node ast.Node, reader text.Reader, pc parser.Context) parser.State {
