@@ -627,12 +627,15 @@ func delimiterEscapes(str string, before rune, after rune, outside markerOutside
 // run of markers in the text can pair with a run outside it.
 type markerOutside func(c byte, after bool) bool
 
-// markerOutsideOf gets the markerOutside of a text in a paragraph. The marker
-// can not be on a side if no node on that side has the marker character: in
-// the value of a text, or in the Markdown that another node is written as.
-// Returns nil for a text that is not in a paragraph.
+// markerOutsideOf gets the markerOutside of a text in a paragraph, a heading
+// or the value of a property. The marker can not be on a side if no node on
+// that side has the marker character: in the value of a text, or in the
+// Markdown that another node is written as. Returns nil for a text in other
+// nodes.
 func (w *Output) markerOutsideOf(node *content.Text) markerOutside {
-	if _, ok := node.Parent().(*content.Paragraph); !ok {
+	switch node.Parent().(type) {
+	case *content.Paragraph, *content.Property, *content.Heading:
+	default:
 		return nil
 	}
 
@@ -3320,6 +3323,25 @@ func (w *Output) writePropertyDrawer(node *content.Properties) error {
 // writeFrontMatter writes YAML front matter. The text is written as it was
 // read, unless the properties in it were changed. Then the front matter is
 // written from the properties, with one `name: value` line for each property.
+// writeFrontMatterValue writes the value of a property of front matter. Front
+// matter is YAML, where a backslash is not an escape of Markdown, so the text
+// of the value is written as it is. Logseq reads the value as it is too.
+func (w *Output) writeFrontMatterValue(property *content.Property) error {
+	for child := property.FirstChild(); child != nil; child = child.NextSibling() {
+		var err error
+		if text, ok := child.(*content.Text); ok {
+			err = w.writeRaw(text.Value)
+		} else {
+			err = w.Write(child)
+		}
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (w *Output) writeFrontMatter(node *content.FrontMatter) error {
 	err := w.startBlock(node, "")
 	if err != nil {
@@ -3353,7 +3375,7 @@ func (w *Output) writeFrontMatter(node *content.FrontMatter) error {
 				return err
 			}
 
-			err = w.writeChildren(property)
+			err = w.writeFrontMatterValue(property)
 			if err != nil {
 				return err
 			}
