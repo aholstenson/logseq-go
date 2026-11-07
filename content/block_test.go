@@ -87,6 +87,37 @@ var _ = Describe("Blocks", func() {
 			Expect(properties.Get("my-prop")).To(EqualsNodes(content.NewText("changed")))
 		})
 
+		It("gets and sets the last property when a name is written twice", func() {
+			block := content.NewBlock(content.NewProperties(
+				content.NewProperty("foo", content.NewText("1")),
+				content.NewProperty("FOO", content.NewText("2")),
+			))
+
+			properties := block.Properties()
+			Expect(properties.Get("foo")).To(EqualsNodes(content.NewText("2")))
+			Expect(properties.IsOverridden(properties.Children()[0].(*content.Property))).To(BeTrue())
+			Expect(properties.IsOverridden(properties.Children()[1].(*content.Property))).To(BeFalse())
+
+			properties.Set("foo", content.NewText("3"))
+			Expect(properties.Children()).To(HaveLen(2))
+			Expect(properties.Children()[0].(*content.Property).Children()).To(EqualsNodes(content.NewText("1")))
+			Expect(properties.Get("foo")).To(EqualsNodes(content.NewText("3")))
+		})
+
+		It("removes all the properties with a name that is written twice", func() {
+			block := content.NewBlock(content.NewProperties(
+				content.NewProperty("foo", content.NewText("1")),
+				content.NewProperty("other", content.NewText("x")),
+				content.NewProperty("foo", content.NewText("2")),
+			))
+
+			properties := block.Properties()
+			properties.Remove("foo")
+
+			Expect(properties.Get("foo")).To(BeEmpty())
+			Expect(properties.Children()).To(HaveLen(1))
+		})
+
 		It("removes a property by a normalized name", func() {
 			block := content.NewBlock(content.NewProperties(
 				content.NewProperty("My_Prop", content.NewText("value")),
@@ -153,6 +184,26 @@ var _ = Describe("Blocks", func() {
 
 			Expect(block.ID()).To(Equal(""))
 			Expect(block.FindProperties()).To(BeNil())
+		})
+
+		It("gives a new id to the id property that Logseq reads", func() {
+			// Given an id that is a uuid followed by a custom-id that is not
+			block := content.NewBlock(
+				content.NewParagraph(content.NewText("content")),
+				content.NewProperties(
+					content.NewProperty("id", content.NewText("6500e8a3-0000-4000-8000-000000000001")),
+					content.NewProperty("custom-id", content.NewText("not-a-uuid")),
+				),
+			)
+			Expect(block.ID()).To(BeEmpty())
+
+			// When the block gets an id
+			block.WithID()
+
+			// Then the custom-id gets the new id, as Logseq reads it last
+			Expect(block.ID()).ToNot(BeEmpty())
+			Expect(block.ID()).ToNot(Equal("6500e8a3-0000-4000-8000-000000000001"))
+			Expect(block.FindProperties().Children()).To(HaveLen(2))
 		})
 
 		It("returns an empty id for a block with other properties", func() {

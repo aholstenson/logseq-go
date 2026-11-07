@@ -63,18 +63,49 @@ func (p *Properties) WithPreviousLineType(t PreviousLineType) *Properties {
 // GetAsNode gets a Property node by name. Will return nil if no Property with
 // the given name exists. Names are compared the way Logseq compares them, see
 // NormalizePropertyName.
+//
+// If the name is written more than once, the last Property with the name is
+// returned, as Logseq uses the last value.
 func (p *Properties) GetAsNode(key string) *Property {
-	key = NormalizePropertyName(key)
+	return p.lastNamed(key)
+}
+
+// lastNamed gets the last Property that has one of the given names. Names are
+// compared the way Logseq compares them, and a Property with a name that
+// Logseq does not keep is skipped, see Property.InvalidName.
+func (p *Properties) lastNamed(keys ...string) *Property {
+	for i := range keys {
+		keys[i] = NormalizePropertyName(keys[i])
+	}
+
+	var last *Property
 	for _, child := range p.Children() {
-		if property, ok := child.(*Property); ok && !property.InvalidName && NormalizePropertyName(property.Name) == key {
-			return property
+		property, ok := child.(*Property)
+		if !ok || property.InvalidName {
+			continue
+		}
+
+		name := NormalizePropertyName(property.Name)
+		for _, key := range keys {
+			if name == key {
+				last = property
+			}
 		}
 	}
 
-	return nil
+	return last
 }
 
-// Get gets the value of a Property by name. Will return an empty slice if no Property with the given name exists.
+// IsOverridden checks if a later Property in the same properties has the same
+// name as the given Property, so that Logseq uses the value of the later one
+// instead. Names are compared the way Logseq compares them.
+func (p *Properties) IsOverridden(property *Property) bool {
+	return p.lastNamed(property.Name) != property
+}
+
+// Get gets the value of a Property by name. Will return an empty slice if no
+// Property with the given name exists. If the name is written more than once,
+// the value of the last Property with the name is returned.
 func (p *Properties) Get(key string) NodeList {
 	property := p.GetAsNode(key)
 	if property == nil {
@@ -85,7 +116,8 @@ func (p *Properties) Get(key string) NodeList {
 }
 
 // Set a Property node by name. If a Property with the given name already
-// exists, its value is replaced and it keeps the name it was written with.
+// exists, its value is replaced and it keeps the name it was written with. If
+// the name is written more than once, the value of the last one is replaced.
 func (p *Properties) Set(key string, nodes ...Node) {
 	property := p.GetAsNode(key)
 	if property == nil {
@@ -96,10 +128,11 @@ func (p *Properties) Set(key string, nodes ...Node) {
 	property.SetChildren(nodes...)
 }
 
-// Remove a Property node by name. If a Property with the given name does not exist this does nothing.
+// Remove a Property node by name. If the name is written more than once, all
+// the Property nodes with the name are removed. If a Property with the given
+// name does not exist this does nothing.
 func (p *Properties) Remove(key string) {
-	property := p.GetAsNode(key)
-	if property != nil {
+	for property := p.GetAsNode(key); property != nil; property = p.GetAsNode(key) {
 		p.RemoveChild(property)
 	}
 }

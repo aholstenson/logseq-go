@@ -389,6 +389,23 @@ var _ = Describe("Queries", func() {
 			Expect(results).To(HaveLen(1))
 			Expect(results[0].Title).To(Equal("Page A"))
 		})
+
+		It("matches only the last value of a property that is written twice", func() {
+			// Given a block with the property status written twice
+			indexPage(idx, "pages/a.md", "Page A",
+				content.NewBlock(
+					content.NewParagraph(content.NewText("content")),
+					content.NewProperties(
+						content.NewProperty("status", content.NewText("todo")),
+						content.NewProperty("Status", content.NewText("done")),
+					),
+				),
+			)
+
+			// Then only the last value is found, the same as Logseq
+			Expect(searchBlocks(idx, indexing.PropertyEquals("status", "done"))).To(HaveLen(1))
+			Expect(searchBlocks(idx, indexing.PropertyEquals("status", "todo"))).To(BeEmpty())
+		})
 	})
 
 	Describe("HasProperty", func() {

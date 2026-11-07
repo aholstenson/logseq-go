@@ -108,28 +108,33 @@ func (b *Block) Blocks() BlockList {
 // will return an empty string. This never changes the block, use WithID to
 // give the block an ID.
 //
-// The ID is read in the same way as Logseq reads it: from `custom-id` or
-// `custom_id` before `id`, and only if the value is a uuid such as
+// The ID is read in the same way as Logseq reads it: Logseq reads
+// `custom-id` and `custom_id` as `id`, so the id is the value of the last of
+// these properties. It is only used if the value is a uuid such as
 // `6500e8a3-0000-4000-8000-000000000000`. Logseq gives a block with an id
 // that is not a uuid a new random id, so such an id is not returned.
 func (b *Block) ID() string {
-	p := b.FindProperties()
-	if p == nil {
+	id := b.idProperty()
+	if id == nil {
 		return ""
 	}
 
-	for _, name := range []string{"custom-id", "id"} {
-		id := p.GetAsNode(name)
-		if id == nil {
-			continue
-		}
-
-		if child, ok := id.FirstChild().(*Text); ok && isUUID(child.Value) {
-			return strings.TrimSpace(child.Value)
-		}
+	if child, ok := id.FirstChild().(*Text); ok && isUUID(child.Value) {
+		return strings.TrimSpace(child.Value)
 	}
 
 	return ""
+}
+
+// idProperty gets the property that Logseq reads the id of the block from,
+// see ID. Returns nil if the block has no such property.
+func (b *Block) idProperty() *Property {
+	p := b.FindProperties()
+	if p == nil {
+		return nil
+	}
+
+	return p.lastNamed("custom-id", "id")
 }
 
 // isUUID checks if a value is a uuid in the form that Logseq accepts as the
@@ -146,10 +151,17 @@ func isUUID(value string) bool {
 }
 
 // WithID ensures that the block has an ID. If the block already has an ID this
-// will do nothing. If the block has an `id` property that is not a uuid, its
-// value is replaced with a new uuid, as Logseq does not use such an id.
+// will do nothing. If the block has an `id` or a `custom-id` property that is
+// not a uuid, the value of the one that Logseq reads is replaced with a new
+// uuid, as Logseq does not use such an id.
 func (b *Block) WithID() *Block {
 	if b.ID() != "" {
+		return b
+	}
+
+	if id := b.idProperty(); id != nil {
+		// The property that Logseq reads the id from gets the new id
+		id.SetChildren(NewText(uuid.NewString()))
 		return b
 	}
 

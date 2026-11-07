@@ -4401,6 +4401,58 @@ var _ = Describe("Spaces and alternative names for block ids", func() {
 		Expect(value).To(HaveLen(1))
 		Expect(value[0]).To(tests.EqualNode(content.NewText("c")))
 	})
+
+	It("uses the last id of a block that has two ids", func() {
+		// Given a block with two id lines
+		block := firstBlock("- a\n  id:: 6500e8a3-0000-4000-8000-000000000001\n  id:: 6500e8a3-0000-4000-8000-000000000002")
+
+		// Then the id is the last one, the same as Logseq
+		Expect(block.ID()).To(Equal("6500e8a3-0000-4000-8000-000000000002"))
+	})
+
+	It("uses the last of custom_id and id, as Logseq reads both as the id", func() {
+		// Given an id followed by a custom_id
+		block := firstBlock("- a\n  id:: 6500e8a3-0000-4000-8000-000000000001\n  custom_id:: " + id)
+		Expect(block.ID()).To(Equal(id))
+
+		// Given a custom_id followed by an id
+		block = firstBlock("- a\n  custom_id:: " + id + "\n  id:: 6500e8a3-0000-4000-8000-000000000001")
+		Expect(block.ID()).To(Equal("6500e8a3-0000-4000-8000-000000000001"))
+	})
+
+	It("does not use an earlier id when the last id is not a uuid", func() {
+		// Given a uuid followed by an id that is not a uuid
+		// Then Logseq gives the block a new id, so the block has no id from
+		// the text
+		Expect(firstBlock("- a\n  id:: " + id + "\n  id:: not-a-uuid").ID()).To(BeEmpty())
+	})
+})
+
+var _ = Describe("Duplicate property names", func() {
+	It("uses the last value of a property that is written twice, the same as Logseq", func() {
+		// Given a block with the property foo written twice
+		input := "- a\n  foo:: 1\n  foo:: 2"
+
+		root, err := markdown.ParseString(input)
+		Expect(err).ToNot(HaveOccurred())
+
+		// Then the value is the last one
+		value := root.Blocks()[0].FindProperties().Get("foo")
+		Expect(value).To(HaveLen(1))
+		Expect(value[0]).To(tests.EqualNode(content.NewText("2")))
+
+		// And the text does not change on save
+		Expect(parseAndOutput(input)).To(Equal(input))
+	})
+
+	It("uses the last value when the names differ only in case", func() {
+		root, err := markdown.ParseString("- a\n  foo:: 1\n  FOO:: 2")
+		Expect(err).ToNot(HaveOccurred())
+
+		value := root.Blocks()[0].FindProperties().Get("foo")
+		Expect(value).To(HaveLen(1))
+		Expect(value[0]).To(tests.EqualNode(content.NewText("2")))
+	})
 })
 
 var _ = Describe("Directives at the start of a page", func() {

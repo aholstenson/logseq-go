@@ -32,7 +32,7 @@ func (i idTerm) Term() []byte {
 // Increase it when the way pages or blocks are indexed changes, so that an
 // index stored on disk is built again with the new fields. Without that the
 // pages that did not change since they were indexed keep their old documents.
-const indexVersion = 25
+const indexVersion = 26
 
 // versionDocID is the id of the document that stores the version of the
 // index. It does not have a type, so searches for pages and blocks never
@@ -903,8 +903,9 @@ func blockID(page *Page, block *content.Block) string {
 func (i *BlugeIndex) transferProperties(doc *bluge.Document, properties *content.Properties, store bool) {
 	for _, node := range properties.Children() {
 		prop, ok := node.(*content.Property)
-		if !ok || prop.InvalidName {
-			// Logseq drops a property with a name that it does not keep
+		if !ok || prop.InvalidName || properties.IsOverridden(prop) {
+			// Logseq drops a property with a name that it does not keep, and
+			// uses the last value of a name that is written more than once
 			continue
 		}
 

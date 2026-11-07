@@ -129,7 +129,9 @@ or a Unicode space in a name splits it into more forms: `b,::` and `b,c,d::`
 are valid, but `b,c::` and a name with a no-break space are not.
 Logseq makes names lower case and reads an underscore as a dash, so
 `Properties.Get("my-prop")` and the query `(property my-prop)` both find
-`My_Prop::`. The name is written back as it was read.
+`My_Prop::`. The name is written back as it was read. If a block has the same
+name more than once, Logseq uses the last value, so `Properties.Get` returns
+the last one, and `Block.ID` reads the last of `id::` and `custom-id::`.
 
 The blocks that reference a page, what Logseq shows as its linked references,
 are available from the page itself:
