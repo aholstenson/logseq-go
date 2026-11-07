@@ -1476,6 +1476,13 @@ func (w *Output) writeText(node *content.Text) error {
 		value = value[:len(value)-1] + `\` + value[len(value)-1:]
 	}
 
+	if markers, ok := closingRunRest(first, value, after); ok {
+		// The markers continue the run that closes the emphasis before the
+		// text, which closes it as it ends the line after a space, as in
+		// "*a **". Escaped, the run would no longer end the line.
+		value = markers
+	}
+
 	if image, ok := first.PreviousSibling().(*content.Image); ok && image.Metadata == "" &&
 		imageMetadataLength([]byte(value)) > 0 {
 		// The `{` directly after an image without metadata would be read
@@ -1566,6 +1573,42 @@ func (w *Output) writeText(node *content.Text) error {
 	}
 
 	return nil
+}
+
+// closingRunRest checks if the escaped value of a run of texts that starts
+// with first is only the escaped markers of the emphasis or strong text before it,
+// at the end of the line, where the emphasis ends with a space. The reader
+// pairs only a part of the run of markers after the space with the opening
+// markers, and keeps the rest as text, as in "*a **". The markers are then
+// written without escapes, so that the run ends the line again. Returns the
+// markers to write.
+func closingRunRest(first *content.Text, value string, after rune) (string, bool) {
+	if after != lineEdgeRune && after != '\n' {
+		return "", false
+	}
+
+	var marker byte
+	var emphasis content.HasChildren
+	switch prev := first.PreviousSibling().(type) {
+	case *content.Emphasis:
+		marker, emphasis = emphasisMarker(prev, prev.Underscore), prev
+	case *content.Strong:
+		marker, emphasis = emphasisMarker(prev, prev.Underscore), prev
+	default:
+		return "", false
+	}
+
+	text, ok := emphasis.LastChild().(*content.Text)
+	if !ok || !strings.HasSuffix(text.Value, " ") {
+		return "", false
+	}
+
+	unescaped := strings.ReplaceAll(value, "\\", "")
+	if unescaped == "" || strings.Trim(unescaped, string(marker)) != "" || len(unescaped)*2 != len(value) {
+		return "", false
+	}
+
+	return unescaped, true
 }
 
 // textRun gets the last text of the run of texts that starts with the text,
