@@ -31,6 +31,11 @@ type beginEnd struct {
 	// text of a command that Logseq reads as Markdown.
 	options *parseOptions
 
+	// beginLine and endLine are the BEGIN and END lines as they are in the
+	// file, see content.BeginEndSourceAware.
+	beginLine string
+	endLine   string
+
 	// indent is the position of the BEGIN line in the line that holds it,
 	// which is the indentation that is taken from the lines inside.
 	indent int
@@ -114,6 +119,7 @@ func (b *beginEndParser) Open(parent ast.Node, reader text.Reader, pc parser.Con
 		LowerCase:  bytes.Equal(line[pos:pos+len(beginPrefix)], beginPrefix),
 		options:    options,
 		indent:     indent,
+		beginLine:  strings.TrimRight(string(line[pos:]), "\r\n"),
 	}
 	return node, parser.NoChildren
 }
@@ -128,6 +134,7 @@ func (b *beginEndParser) Continue(node ast.Node, reader text.Reader, pc parser.C
 	// case
 	searchFor := []byte(string(endPrefix) + block.Variant)
 	if hasPrefixFold(line[pos:], searchFor) && util.IsBlank(line[pos+len(searchFor):]) {
+		block.endLine = strings.TrimRight(string(line), "\r\n")
 		newline := 1
 		if line[len(line)-1] != '\n' {
 			newline = 0

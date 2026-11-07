@@ -1732,6 +1732,8 @@ func convertBeginEnd(src []byte, node *beginEnd) (content.Node, error) {
 		query := content.NewQueryCommand(codeBuf.String()).
 			WithParameters(node.Parameters).
 			WithLowerCase(node.LowerCase)
+		query.SetBeginLineSource(node.beginLine)
+		query.SetEndLineSource(node.endLine)
 		updatePreviousLine(src, node, query)
 		return query, nil
 	default:
@@ -1748,6 +1750,8 @@ func convertBeginEnd(src []byte, node *beginEnd) (content.Node, error) {
 		command := content.NewAdvancedCommand(node.Variant, value, children...).
 			WithParameters(node.Parameters).
 			WithLowerCase(node.LowerCase)
+		command.SetBeginLineSource(node.beginLine)
+		command.SetEndLineSource(node.endLine)
 		updatePreviousLine(src, node, command)
 		return command, nil
 	}

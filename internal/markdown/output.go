@@ -4033,7 +4033,17 @@ func (w *Output) writeBeginEnd(node content.BlockNode, lines beginEndLines, valu
 		return err
 	}
 
-	err = w.writeRaw(lines.begin() + "\n")
+	begin, end := lines.begin(), lines.end()
+	if aware, ok := node.(content.BeginEndSourceAware); ok {
+		if source := aware.BeginLineSource(); source != "" && lines.readsBeginLine(source) {
+			begin = source
+		}
+		if source := aware.EndLineSource(); source != "" && lines.readsEndLine(source) {
+			end = source
+		}
+	}
+
+	err = w.writeRaw(begin + "\n")
 	if err != nil {
 		return err
 	}
@@ -4050,13 +4060,46 @@ func (w *Output) writeBeginEnd(node content.BlockNode, lines beginEndLines, valu
 		}
 	}
 
-	err = w.writeRaw(lines.end())
+	err = w.writeRaw(end)
 	if err != nil {
 		return err
 	}
 
 	w.endBlock()
 	return nil
+}
+
+// readsBeginLine checks if a BEGIN line as it is in the file still gives the
+// type, the parameters and the case of the lines.
+func (l beginEndLines) readsBeginLine(source string) bool {
+	if strings.ContainsAny(source, "\r\n") || !hasPrefixFold([]byte(source), beginPrefix) {
+		return false
+	}
+
+	rest := source[len(beginPrefix):]
+	variant, parameters := rest, ""
+	if i := strings.IndexAny(rest, " \t"); i >= 0 {
+		variant, parameters = rest[:i], rest[i:]
+	}
+
+	lowerCase := strings.HasPrefix(source, string(beginPrefix))
+	return variant == l.variant && strings.TrimSpace(parameters) == l.parameters && lowerCase == l.lowerCase
+}
+
+// readsEndLine checks if an END line as it is in the file ends the command of
+// the lines.
+func (l beginEndLines) readsEndLine(source string) bool {
+	if strings.ContainsAny(source, "\r\n") {
+		return false
+	}
+
+	line := strings.TrimLeft(source, " \t")
+	end := []byte(string(endPrefix) + l.variant)
+	if width, _ := util.IndentWidth([]byte(source), 0); width >= 4 {
+		return false
+	}
+
+	return hasPrefixFold([]byte(line), end) && util.IsBlank([]byte(line[len(end):]))
 }
 
 func (w *Output) writeTaskMarker(node *content.TaskMarker) error {

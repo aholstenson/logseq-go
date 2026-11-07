@@ -10,9 +10,53 @@ package content
 // EXAMPLE, COMMENT and EXPORT is not Markdown, so these have no children.
 //
 // See https://docs.logseq.com/#/page/advanced%20commands
+// BeginEndSourceAware is a command that keeps its BEGIN and END lines as they
+// are in the file.
+type BeginEndSourceAware interface {
+	// BeginLineSource gets the BEGIN line as it is in the file, such as
+	// "#+Begin_src   python". It is empty for a command that was not read
+	// from a file. It is written back while it gives the same type,
+	// parameters and case.
+	BeginLineSource() string
+
+	// SetBeginLineSource sets the BEGIN line as it is in the file.
+	SetBeginLineSource(source string)
+
+	// EndLineSource gets the END line as it is in the file, with its
+	// indentation and the spaces after it. It is empty for a command that
+	// was not read from a file. It is written back while it ends the
+	// command.
+	EndLineSource() string
+
+	// SetEndLineSource sets the END line as it is in the file.
+	SetEndLineSource(source string)
+}
+
+type beginEndSourceImpl struct {
+	beginLineSource string
+	endLineSource   string
+}
+
+func (c *beginEndSourceImpl) BeginLineSource() string {
+	return c.beginLineSource
+}
+
+func (c *beginEndSourceImpl) SetBeginLineSource(source string) {
+	c.beginLineSource = source
+}
+
+func (c *beginEndSourceImpl) EndLineSource() string {
+	return c.endLineSource
+}
+
+func (c *beginEndSourceImpl) SetEndLineSource(source string) {
+	c.endLineSource = source
+}
+
 type AdvancedCommand struct {
 	baseNodeWithChildren
 	previousLineAwareImpl
+	beginEndSourceImpl
 
 	// Type is the type of the advanced command as it is written, such as
 	// `NOTE` or `src`. Logseq reads the type without regard for case.
@@ -104,6 +148,7 @@ var _ HasChildren = (*AdvancedCommand)(nil)
 type QueryCommand struct {
 	baseNode
 	previousLineAwareImpl
+	beginEndSourceImpl
 
 	Query string
 
