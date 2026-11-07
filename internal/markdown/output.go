@@ -1064,6 +1064,8 @@ func (w *Output) Write(n content.Node) error {
 		return w.writeTaskDate(node)
 	case *content.Logbook:
 		return w.writeLogbook(node)
+	case *content.Drawer:
+		return w.writeDrawer(node)
 	default:
 		return fmt.Errorf("unsupported node: %T", node)
 	}
@@ -1914,6 +1916,40 @@ func (w *Output) writeMacro(node content.Node, name string, arguments []string) 
 		return err
 	}
 
+	return nil
+}
+
+func (w *Output) writeDrawer(node *content.Drawer) error {
+	// As for properties, a drawer made with the API follows the line before
+	// it without a blank line.
+	err := w.startBlockWithAutomaticBehavior(node, "", false)
+	if err != nil {
+		return err
+	}
+
+	err = w.writeRaw(":" + node.Name + ":\n" + node.Content)
+	if err != nil {
+		return err
+	}
+
+	if node.Content != "" && !strings.HasSuffix(node.Content, "\n") {
+		err = w.writeRaw("\n")
+		if err != nil {
+			return err
+		}
+	}
+
+	endLine := ":END:"
+	if node.EndLine != "" && isDrawerEnd([]byte(node.EndLine)) && !strings.ContainsAny(node.EndLine, "\r\n") {
+		endLine = node.EndLine
+	}
+
+	err = w.writeRaw(endLine)
+	if err != nil {
+		return err
+	}
+
+	w.endBlock()
 	return nil
 }
 

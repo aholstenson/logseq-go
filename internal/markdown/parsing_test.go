@@ -2145,12 +2145,11 @@ var _ = Describe("Parsing", func() {
 			block, err := markdown.ParseString("This is a <b>bold</b> word.")
 			Expect(err).ToNot(HaveOccurred())
 
+			// Logseq reads a whole element as HTML, so it is one node.
 			Expect(block).To(tests.EqualNode(content.NewBlock(
 				content.NewParagraph(
 					content.NewText("This is a "),
-					content.NewRawHTML("<b>"),
-					content.NewText("bold"),
-					content.NewRawHTML("</b>"),
+					content.NewRawHTML("<b>bold</b>"),
 					content.NewText(" word."),
 				),
 			)))
@@ -3824,6 +3823,82 @@ var _ = Describe("Parsing", func() {
 					content.NewLogbookEntryRaw("* State \"SOMEDAY\" from \"TODO\" [2023-06-26 Mon 17:25:56]"),
 				)))
 			})
+		})
+	})
+
+	Describe("Page links where Logseq does not read references", func() {
+		// pageRefTitles returns the title of every page the parsed text refers to.
+		pageRefTitles := func(input string) []string {
+			block, err := markdown.ParseString(input)
+			Expect(err).ToNot(HaveOccurred())
+
+			titles := make([]string, 0)
+			for _, ref := range block.Children().PageReferences() {
+				titles = append(titles, ref.(content.PageRef).GetTo())
+			}
+			return titles
+		}
+
+		// Given a page link in a place that Logseq keeps as raw text or as a
+		// label, When it is parsed, Then it refers to no page, the same as Logseq.
+		DescribeTable("makes no page reference the same as Logseq",
+			func(input string) {
+				Expect(pageRefTitles(input)).To(BeEmpty())
+			},
+			Entry("in inline HTML", "- <span>[[a]]</span>"),
+			Entry("in the label of a web link", "- [label [[a]]](http://x.com)"),
+			Entry("in the label of a link to a path", "- [a [[b]] c](d)"),
+			Entry("in a drawer", "- :mydrawer:\n  [[indrawer]]\n  :end:"),
+			Entry("in the alt text of an image", "- ![alt [[inalt]]](a.png)"),
+			Entry("in inline HTML with attributes", `- x <span class="y">[[a]]</span> z`),
+			Entry("in inline HTML with tags in other case", "- <SPAN>[[a]]</span>"),
+			Entry("in inline HTML in an element of the same tag", "- <span><span>[[a]]</span>[[b]]</span>"),
+			Entry("in inline HTML that ends at a self closing tag", "- <span>[[a]] <br/>"),
+			Entry("in inline HTML on two lines after the first line", "- a\n  x <span>\n  [[a]]</span>"),
+			Entry("in a tag in inline HTML", "- <span>#a</span>"),
+			Entry("in a tag in the label of a link", "- [a #b](http://x.com)"),
+			Entry("in the label of a block reference", "- [x [[y]]](((64f0a2b1-1234-4abc-9def-0123456789ab)))"),
+			Entry("in a drawer after text", "- a\n  text\n  :notes:\n  [[x]]\n  :END:"),
+			Entry("in a drawer with blank lines and an end line with spaces", "- a\n  :notes:\n  [[x]]\n\n  [[y]]\n   :End: "),
+		)
+
+		DescribeTable("refers to the page, the same as Logseq",
+			func(input string, expected []string) {
+				Expect(pageRefTitles(input)).To(ConsistOf(expected))
+			},
+			Entry("after inline HTML", "- <b>x</b> [[a]]", []string{"a"}),
+			Entry("after a void tag", "- <br> [[a]]", []string{"a"}),
+			Entry("between two HTML elements", "- <span>a</span>[[b]]<span>c</span>", []string{"b"}),
+			Entry("after an opening tag that is not closed", "- <span>[[a]]", []string{"a"}),
+			Entry("in a tag that is not an HTML tag", "- <foo>[[a]]</foo>", []string{"a"}),
+			Entry("in an element on the first line that is closed on the next line", "- x <span>\n  [[a]]</span>", []string{"a"}),
+			Entry("after an element with an inner element that is not closed", "- <span>[[a]] <span>[[b]]</span> [[c]]", []string{"a", "c"}),
+			Entry("after a drawer", "- a\n  :notes:\n  [[x]]\n  :end:\n  [[after]]", []string{"after"}),
+			Entry("in a drawer line with a space after it", "- a\n  :notes: \n  [[x]]\n  :end:", []string{"x"}),
+			Entry("in a drawer that is not closed in its block", "- a\n  :notes:\n  [[x]]\n- b\n  :end:", []string{"x"}),
+			Entry("in a drawer name with a space", "- a\n  :my notes:\n  [[x]]\n  :end:", []string{"x"}),
+		)
+
+		It("reads a drawer with its name, content and end line", func() {
+			// Given a block with a drawer
+			block, err := markdown.ParseString("- a\n  :notes:\n  [[x]]\n\n  more\n  :end:")
+			Expect(err).ToNot(HaveOccurred())
+
+			// When it is parsed
+			drawer, ok := block.Children().FindDeep(content.IsOfType[*content.Drawer]()).(*content.Drawer)
+
+			// Then the drawer keeps its lines as text
+			Expect(ok).To(BeTrue())
+			Expect(drawer.Name).To(Equal("notes"))
+			Expect(drawer.Content).To(Equal("[[x]]\n\nmore\n"))
+			Expect(drawer.EndLine).To(Equal(":end:"))
+		})
+
+		It("refers only to the target of a labelled page link with a page link in the label", func() {
+			// Given a labelled page link whose label has another page link
+			// When it is parsed
+			// Then only the target is referenced, the same as Logseq
+			Expect(pageRefTitles("- [a [[b]] c]([[d]])")).To(ConsistOf("d"))
 		})
 	})
 

@@ -43,6 +43,7 @@ func init() {
 			util.Prioritized(&logbookParser{}, 898),
 			util.Prioritized(&propertyDrawerParser{}, 898),
 			util.Prioritized(&beginEndParser{}, 899),
+			util.Prioritized(&drawerParser{}, 899),
 			util.Prioritized(newHTMLBlockParser(), 900),
 			util.Prioritized(&footnoteDefinitionParser{}, 999),
 			util.Prioritized(newPropertyLineParser(), 999),
@@ -78,6 +79,7 @@ func inlineParsers() []util.PrioritizedValue {
 		util.Prioritized(&pageLinkParser{}, 199),
 		util.Prioritized(&tagParser{}, 999),
 		util.Prioritized(newLabelledRefLinkParser(), 200),
+		util.Prioritized(&htmlElementParser{}, 250),
 		util.Prioritized(newBracketedAutoLinkParser(), 300),
 		util.Prioritized(parser.NewRawHTMLParser(), 400),
 		util.Prioritized(&emphasisParser{}, 500),
@@ -436,6 +438,8 @@ func convert(src []byte, in ast.Node) (content.Node, error) {
 		return convertProperties(src, node)
 	case *logbook:
 		return convertLogbook(src, node)
+	case *drawer:
+		return convertDrawer(src, node)
 	case *taskDate:
 		return convertTaskDate(src, node)
 	case *frontMatter:
@@ -1387,6 +1391,22 @@ func convertLogbook(src []byte, node *logbook) (content.Node, error) {
 	updatePreviousLine(node, logbook)
 
 	return logbook, nil
+}
+
+func convertDrawer(src []byte, node *drawer) (content.Node, error) {
+	var buf bytes.Buffer
+	for i := 0; i < node.Lines().Len(); i++ {
+		line := node.Lines().At(i)
+		_, _ = buf.Write(line.Value(src))
+	}
+
+	result := content.NewDrawer(node.Name, buf.String())
+	if node.EndLine != ":END:" {
+		result.EndLine = node.EndLine
+	}
+
+	updatePreviousLine(node, result)
+	return result, nil
 }
 
 func convertTaskDate(src []byte, node *taskDate) (content.Node, error) {

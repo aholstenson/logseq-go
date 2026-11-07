@@ -106,6 +106,10 @@ func IsPageReference() NodePredicate {
 // A link to a Markdown file, such as `[My page](my_page.md)`, refers to the
 // page named by its label, see FileLinkRef. Logseq does not read such a
 // reference from the value of a property.
+//
+// The label of a link, an image, a page link or a block reference is not
+// searched, as Logseq reads no references from it. Thus `[a [[b]]](url)`
+// refers to no page, and `[a [[b]]]([[c]])` only refers to `c`.
 func (n NodeList) PageReferences() NodeList {
 	refs := make(NodeList, 0)
 	afterTaskDate := false
@@ -141,7 +145,7 @@ func (n NodeList) PageReferences() NodeList {
 			}
 		}
 
-		if children, ok := node.(HasChildren); ok {
+		if children, ok := node.(HasChildren); ok && !hasLabel(node) {
 			refs = append(refs, children.Children().PageReferences()...)
 		}
 	}
@@ -173,4 +177,15 @@ func BlockOf(node Node) *Block {
 	}
 
 	return nil
+}
+
+// hasLabel checks if the children of the node are a label, which is the text
+// that a link, an image, a page link or a block reference shows.
+func hasLabel(node Node) bool {
+	switch node.(type) {
+	case *Link, *Image, *PageLink, *BlockRef:
+		return true
+	}
+
+	return false
 }

@@ -223,6 +223,19 @@ var _ = Describe("Queries", func() {
 			Expect(results[0].PageSubPath).To(Equal("pages/a.md"))
 		})
 
+		It("matches blocks by the text in an HTML element and in a drawer", func() {
+			indexPage(idx, "pages/a.md", "Page A",
+				content.NewBlock(
+					content.NewParagraph(content.NewText("a "), content.NewRawHTML("<b class=\"x\">bold</b>")),
+					content.NewDrawer("notes", "hidden words\n"),
+				),
+			)
+
+			Expect(searchBlocks(idx, indexing.ContentMatches("bold"))).To(HaveLen(1))
+			Expect(searchBlocks(idx, indexing.ContentMatches("class"))).To(BeEmpty())
+			Expect(searchBlocks(idx, indexing.ContentMatches("hidden"))).To(HaveLen(1))
+		})
+
 		It("matches pages by raw text content", func() {
 			indexPage(idx, "pages/a.md", "Page A",
 				content.NewBlock(content.NewParagraph(

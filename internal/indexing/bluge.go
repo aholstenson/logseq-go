@@ -32,7 +32,7 @@ func (i idTerm) Term() []byte {
 // Increase it when the way pages or blocks are indexed changes, so that an
 // index stored on disk is built again with the new fields. Without that the
 // pages that did not change since they were indexed keep their old documents.
-const indexVersion = 23
+const indexVersion = 24
 
 // versionDocID is the id of the document that stores the version of the
 // index. It does not have a type, so searches for pages and blocks never
@@ -1179,6 +1179,15 @@ func plainText0(nodes content.NodeList, builder *strings.Builder) {
 			}
 		case *content.RawText:
 			builder.WriteString(n.Value)
+		case *content.RawHTML:
+			// The text of an HTML element is shown, but its tags are not.
+			builder.WriteString(htmlText(n.HTML))
+		case *content.Drawer:
+			if builder.Len() > 0 {
+				builder.WriteString("\n\n")
+			}
+
+			builder.WriteString(n.Content)
 		case *content.Hashtag:
 			builder.WriteString("#")
 			builder.WriteString(n.To)
@@ -1224,6 +1233,33 @@ func plainText0(nodes content.NodeList, builder *strings.Builder) {
 			plainText0(n.Children(), builder)
 		}
 	}
+}
+
+// htmlText gets the text of HTML without its tags and comments, such as
+// `bold` for `<b>bold</b>`.
+func htmlText(html string) string {
+	var builder strings.Builder
+	for len(html) > 0 {
+		start := strings.IndexByte(html, '<')
+		if start < 0 {
+			builder.WriteString(html)
+			break
+		}
+
+		builder.WriteString(html[:start])
+		closer := ">"
+		if strings.HasPrefix(html[start:], "<!--") {
+			closer = "-->"
+		}
+
+		end := strings.Index(html[start:], closer)
+		if end < 0 {
+			break
+		}
+		html = html[start+end+len(closer):]
+	}
+
+	return builder.String()
 }
 
 func mapQuery(q Query) bluge.Query {
