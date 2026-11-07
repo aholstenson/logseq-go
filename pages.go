@@ -332,9 +332,10 @@ func (p *pageImpl) findProperties() *content.Properties {
 }
 
 // moveFirstBlockPropertiesToPage makes the first block of the page its
-// pre-block when the block starts with properties, so that it is written
-// without a bullet and its properties become the page properties. Logseq does
-// the same when it saves a page. It returns true if the page changed.
+// pre-block when the block starts with properties, and has no `id`, so that
+// it is written without a bullet and its properties become the page
+// properties. Logseq does the same when it saves a page. It returns true if
+// the page changed.
 func (p *pageImpl) moveFirstBlockPropertiesToPage() bool {
 	first, ok := p.root.FirstChild().(*content.Block)
 	if !ok || first.IsPreBlock() || first.IsHeadingBlock() {
@@ -343,6 +344,12 @@ func (p *pageImpl) moveFirstBlockPropertiesToPage() bool {
 
 	properties, ok := first.FirstChild().(*content.Properties)
 	if !ok || properties.FirstChild() == nil {
+		return false
+	}
+
+	// An `id` is the id of the block, which block references point at, so
+	// such a block stays a block.
+	if len(properties.Get("id")) > 0 {
 		return false
 	}
 
