@@ -1937,7 +1937,14 @@ func emphasisMarker(node content.Node, underscore bool) byte {
 }
 
 func (w *Output) writeStrikethrough(node *content.Strikethrough) error {
-	err := w.writeRaw("~~")
+	marker := "~~"
+	if inner, ok := node.FirstChild().(*content.Strikethrough); ok && inner.NextSibling() == nil {
+		// A run of three markers, as in "~~~a~~~", is read as two nodes, one
+		// in the other. They are written as one run again.
+		marker = "~"
+	}
+
+	err := w.writeRaw(marker)
 	if err != nil {
 		return err
 	}
@@ -1947,7 +1954,7 @@ func (w *Output) writeStrikethrough(node *content.Strikethrough) error {
 		return err
 	}
 
-	err = w.writeRaw("~~")
+	err = w.writeRaw(marker)
 	if err != nil {
 		return err
 	}
@@ -1959,6 +1966,12 @@ func (w *Output) writeHighlight(node *content.Highlight) error {
 	marker := "^^"
 	if node.EqualSigns {
 		marker = "=="
+	}
+
+	if inner, ok := node.FirstChild().(*content.Highlight); ok && inner.NextSibling() == nil && inner.EqualSigns == node.EqualSigns {
+		// A run of three markers, as in "===a===", is read as two nodes, one
+		// in the other. They are written as one run again.
+		marker = marker[:1]
 	}
 
 	err := w.writeRaw(marker)
