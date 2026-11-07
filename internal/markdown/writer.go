@@ -39,6 +39,33 @@ func (w *writer) SkipIndentationOnNextLine(level int) {
 	w.lazyLevel = level
 }
 
+// WriteIndentationOnly writes the indentation of a new line without its
+// trailing spaces, such as the `>` of a line of a quote that has no text. It
+// does not count as text that is written at the current indentation.
+func (w *writer) WriteIndentationOnly() error {
+	if !w.lastWasLineBreak {
+		return nil
+	}
+
+	_, err := w.output.Write(w.OnlyIndent())
+	w.lastWasLineBreak = false
+	return err
+}
+
+// WriteLineBreak writes a line break. It does not count as text that is
+// written at the current indentation.
+func (w *writer) WriteLineBreak() error {
+	var err error
+	if w.lineEnding == "" {
+		_, err = io.WriteString(w.output, "\n")
+	} else {
+		_, err = io.WriteString(w.output, w.lineEnding)
+	}
+
+	w.lastWasLineBreak = true
+	return err
+}
+
 // AtLineStart returns true if the last write ended with a line break, so that
 // the next write starts a new line.
 func (w *writer) AtLineStart() bool {

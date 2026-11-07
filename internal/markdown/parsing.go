@@ -1532,6 +1532,12 @@ func convertBlockquote(src []byte, node *ast.Blockquote) (*content.Blockquote, e
 	if _, ok := node.AttributeString(quoteNoSpaceAttribute); ok {
 		blockquote.NoSpaceAfterMarker = true
 	}
+	if node.FirstChild() != nil {
+		_, blockquote.BlankFirstLine = node.AttributeString(quoteBlankFirstLineAttribute)
+		if last, ok := node.AttributeString(quoteBlankLastLineAttribute); ok {
+			blockquote.BlankLastLine = last.(bool)
+		}
+	}
 	err := convertChildren(src, node, blockquote)
 	if err != nil {
 		return nil, err

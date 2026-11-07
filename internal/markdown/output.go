@@ -3111,10 +3111,30 @@ func (w *Output) writeBlockquote(node *content.Blockquote) error {
 		w.out.SkipIndentationOnNextLine(-1)
 	}()
 
+	// A line with only the marker has no space after it, as at the start of
+	// a quote with a blank first line, and for a quote with no content.
+	empty := node.FirstChild() == nil
 	if !w.out.lastWasLineBreak {
 		// This is a hack to make sure that the indicator is written in lists
 		// if the blockquote is the first item in a list item.
-		_, err = w.out.output.Write([]byte(marker))
+		first := marker
+		if empty || node.BlankFirstLine {
+			first = ">"
+		}
+
+		_, err = w.out.output.Write([]byte(first))
+		if err != nil {
+			return err
+		}
+	} else if empty || node.BlankFirstLine {
+		err = w.out.WriteIndentationOnly()
+		if err != nil {
+			return err
+		}
+	}
+
+	if !empty && node.BlankFirstLine {
+		err = w.out.WriteLineBreak()
 		if err != nil {
 			return err
 		}
@@ -3123,6 +3143,18 @@ func (w *Output) writeBlockquote(node *content.Blockquote) error {
 	err = w.writeChildren(node)
 	if err != nil {
 		return err
+	}
+
+	if !empty && node.BlankLastLine {
+		err = w.out.WriteLineBreak()
+		if err != nil {
+			return err
+		}
+
+		err = w.out.WriteIndentationOnly()
+		if err != nil {
+			return err
+		}
 	}
 
 	w.endBlock()

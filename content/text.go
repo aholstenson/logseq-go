@@ -398,6 +398,12 @@ type Blockquote struct {
 	// NoSpaceAfterMarker is whether the `>` markers of the quote are written
 	// without a space after them, as in ">quote", as they are in the file.
 	NoSpaceAfterMarker bool
+
+	// BlankFirstLine and BlankLastLine are whether the quote starts or ends
+	// with a line that has only the `>` marker, as in ">\n> a\n>", as it is
+	// in the file. Such lines are not a part of the content of the quote.
+	BlankFirstLine bool
+	BlankLastLine  bool
 }
 
 func NewBlockquote(children ...Node) *Blockquote {

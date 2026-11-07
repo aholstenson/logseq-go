@@ -4,6 +4,7 @@ import (
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/text"
+	"github.com/yuin/goldmark/util"
 )
 
 // quoteNoSpaceAttribute is the name of the attribute that is set on a quote
@@ -21,6 +22,14 @@ func newQuoteParser() *quoteParser {
 	return &quoteParser{BlockParser: parser.NewBlockquoteParser()}
 }
 
+// quoteBlankFirstLineAttribute is the name of the attribute that is set on a
+// quote whose first line has nothing after the `>` marker.
+const quoteBlankFirstLineAttribute = "logseq-quote-blank-first-line"
+
+// quoteBlankLastLineAttribute is the name of the attribute that holds
+// whether the last line of a quote has nothing after the `>` marker.
+const quoteBlankLastLineAttribute = "logseq-quote-blank-last-line"
+
 func (p *quoteParser) Open(parent ast.Node, reader text.Reader, pc parser.Context) (ast.Node, parser.State) {
 	line, _ := reader.PeekLine()
 	pos := pc.BlockOffset()
@@ -31,7 +40,26 @@ func (p *quoteParser) Open(parent ast.Node, reader text.Reader, pc parser.Contex
 		}
 	}
 
+	if node != nil {
+		rest, _ := reader.PeekLine()
+		blank := util.IsBlank(rest)
+		if blank {
+			node.SetAttributeString(quoteBlankFirstLineAttribute, true)
+		}
+		node.SetAttributeString(quoteBlankLastLineAttribute, blank)
+	}
+
 	return node, state
+}
+
+func (p *quoteParser) Continue(node ast.Node, reader text.Reader, pc parser.Context) parser.State {
+	state := p.BlockParser.Continue(node, reader, pc)
+	if state != parser.Close {
+		rest, _ := reader.PeekLine()
+		node.SetAttributeString(quoteBlankLastLineAttribute, util.IsBlank(rest))
+	}
+
+	return state
 }
 
 var _ parser.BlockParser = (*quoteParser)(nil)
