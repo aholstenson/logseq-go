@@ -30,6 +30,10 @@ type beginEnd struct {
 	// options are the parse options of the page, which are used to read the
 	// text of a command that Logseq reads as Markdown.
 	options *parseOptions
+
+	// indent is the position of the BEGIN line in the line that holds it,
+	// which is the indentation that is taken from the lines inside.
+	indent int
 }
 
 func (n *beginEnd) Kind() ast.NodeKind {
@@ -39,14 +43,6 @@ func (n *beginEnd) Kind() ast.NodeKind {
 func (n *beginEnd) Dump(source []byte, level int) {
 	ast.DumpHelper(n, source, level, nil, nil)
 }
-
-type beginEndBlockData struct {
-	indent  int
-	node    ast.Node
-	keyword string
-}
-
-var beginEndInfoKey = parser.NewContextKey()
 
 type beginEndParser struct {
 }
@@ -117,25 +113,20 @@ func (b *beginEndParser) Open(parent ast.Node, reader text.Reader, pc parser.Con
 		Parameters: string(util.TrimRightSpace(util.TrimLeftSpace(line[i:]))),
 		LowerCase:  bytes.Equal(line[pos:pos+len(beginPrefix)], beginPrefix),
 		options:    options,
+		indent:     indent,
 	}
-	pc.Set(beginEndInfoKey, &beginEndBlockData{
-		indent:  indent,
-		node:    node,
-		keyword: blockType,
-	})
 	return node, parser.NoChildren
-
 }
 
 func (b *beginEndParser) Continue(node ast.Node, reader text.Reader, pc parser.Context) parser.State {
 	line, segment := reader.PeekLine()
-	data := pc.Get(beginEndInfoKey).(*beginEndBlockData)
+	block := node.(*beginEnd)
 
 	_, pos := util.IndentWidth(line, reader.LineOffset())
 
 	// Check if the line starts with #+END_ and the type, without regard for
 	// case
-	searchFor := []byte(string(endPrefix) + data.keyword)
+	searchFor := []byte(string(endPrefix) + block.Variant)
 	if hasPrefixFold(line[pos:], searchFor) && util.IsBlank(line[pos+len(searchFor):]) {
 		newline := 1
 		if line[len(line)-1] != '\n' {
@@ -145,26 +136,11 @@ func (b *beginEndParser) Continue(node ast.Node, reader text.Reader, pc parser.C
 		return parser.Close
 	}
 
-	pos, padding := util.IndentPositionPadding(line, reader.LineOffset(), segment.Padding, data.indent)
-	if pos < 0 {
-		pos = util.FirstNonSpacePosition(line)
-		if pos < 0 {
-			pos = 0
-		}
-		padding = 0
-	}
-
-	seg := text.NewSegmentPadding(segment.Start+pos, segment.Stop, padding)
-	node.Lines().Append(seg)
-	reader.AdvanceAndSetPadding(segment.Stop-segment.Start-pos-1, padding)
+	appendContentLine(node, reader, block.indent)
 	return parser.Continue | parser.NoChildren
 }
 
 func (b *beginEndParser) Close(node ast.Node, reader text.Reader, pc parser.Context) {
-	data := pc.Get(beginEndInfoKey).(*beginEndBlockData)
-	if data.node == node {
-		pc.Set(beginEndInfoKey, nil)
-	}
 }
 
 func (b *beginEndParser) CanInterruptParagraph() bool {

@@ -23,6 +23,10 @@ type drawer struct {
 	// EndLine is the last line, without the indentation of the first line
 	// and without its line break.
 	EndLine string
+
+	// indent is the position of the first line in the line that holds it,
+	// which is the indentation that is taken from the lines inside.
+	indent int
 }
 
 func (n *drawer) Kind() ast.NodeKind {
@@ -32,13 +36,6 @@ func (n *drawer) Kind() ast.NodeKind {
 func (n *drawer) Dump(source []byte, level int) {
 	ast.DumpHelper(n, source, level, nil, nil)
 }
-
-type drawerBlockData struct {
-	indent int
-	node   ast.Node
-}
-
-var drawerInfoKey = parser.NewContextKey()
 
 // drawerStartRegexp matches the first line of a drawer, which is a name
 // between colons and nothing after it, not even a space. The name has no
@@ -79,8 +76,7 @@ func (p *drawerParser) Open(parent ast.Node, reader text.Reader, pc parser.Conte
 		return nil, parser.NoChildren
 	}
 
-	node := &drawer{Name: string(match[1])}
-	pc.Set(drawerInfoKey, &drawerBlockData{indent: pos, node: node})
+	node := &drawer{Name: string(match[1]), indent: pos}
 
 	reader.Advance(segment.Len() - 1)
 	return node, parser.NoChildren
@@ -123,17 +119,17 @@ func isDrawerEnd(line []byte) bool {
 
 func (p *drawerParser) Continue(node ast.Node, reader text.Reader, pc parser.Context) parser.State {
 	line, segment := reader.PeekLine()
-	data := pc.Get(drawerInfoKey).(*drawerBlockData)
+	block := node.(*drawer)
 
 	_, pos := util.IndentWidth(line, reader.LineOffset())
 	if isDrawerEnd(line[pos:]) {
 		// The spaces before the end line that are more than the indentation
 		// of the first line are kept.
 		start := pos
-		if relative, _ := util.IndentPositionPadding(line, reader.LineOffset(), segment.Padding, data.indent); relative >= 0 && relative < pos {
+		if relative, _ := util.IndentPositionPadding(line, reader.LineOffset(), segment.Padding, block.indent); relative >= 0 && relative < pos {
 			start = relative
 		}
-		node.(*drawer).EndLine = strings.TrimRight(string(line[start:]), "\r\n")
+		block.EndLine = strings.TrimRight(string(line[start:]), "\r\n")
 
 		newline := 1
 		if line[len(line)-1] != '\n' {
@@ -143,24 +139,11 @@ func (p *drawerParser) Continue(node ast.Node, reader text.Reader, pc parser.Con
 		return parser.Close
 	}
 
-	pos, padding := util.IndentPositionPadding(line, reader.LineOffset(), segment.Padding, data.indent)
-	if pos < 0 {
-		pos = util.FirstNonSpacePosition(line)
-		if pos < 0 {
-			pos = 0
-		}
-		padding = 0
-	}
-
-	node.Lines().Append(text.NewSegmentPadding(segment.Start+pos, segment.Stop, padding))
-	reader.AdvanceAndSetPadding(segment.Stop-segment.Start-pos-1, padding)
+	appendContentLine(node, reader, block.indent)
 	return parser.Continue | parser.NoChildren
 }
 
 func (p *drawerParser) Close(node ast.Node, reader text.Reader, pc parser.Context) {
-	if data, ok := pc.Get(drawerInfoKey).(*drawerBlockData); ok && data.node == node {
-		pc.Set(drawerInfoKey, nil)
-	}
 }
 
 func (p *drawerParser) CanInterruptParagraph() bool {

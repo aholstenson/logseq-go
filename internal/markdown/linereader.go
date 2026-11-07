@@ -1,6 +1,7 @@
 package markdown
 
 import (
+	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/text"
 	"github.com/yuin/goldmark/util"
 )
@@ -192,3 +193,33 @@ func indentWidthUpTo(line []byte, currentPos int, limit int) (int, int) {
 }
 
 var _ text.Reader = (*lineCachingReader)(nil)
+
+// appendContentLine adds the line that the reader is on to the lines of a
+// block that keeps its lines as they are, such as a math block or a drawer,
+// and moves the reader to the end of the line. The indentation of the first
+// line of the block, indent columns, is taken from the start of the line. A
+// line with less indentation keeps the text from its first character that is
+// not a space.
+func appendContentLine(node ast.Node, reader text.Reader, indent int) {
+	line, segment := reader.PeekLine()
+	pos, padding := util.IndentPositionPadding(line, reader.LineOffset(), segment.Padding, indent)
+	if pos < 0 {
+		// The line from PeekLine starts with the padding of the reader as
+		// spaces, which are not in the source.
+		pos = util.FirstNonSpacePosition(line) - segment.Padding
+		if pos < 0 {
+			pos = 0
+		}
+		padding = 0
+	}
+
+	length := segment.Stop - segment.Start
+	if pos >= length {
+		// Nothing of the line is left, and Goldmark cannot read an empty
+		// line of a block.
+		return
+	}
+
+	node.Lines().Append(text.NewSegmentPadding(segment.Start+pos, segment.Stop, padding))
+	reader.AdvanceAndSetPadding(length-pos-1, padding)
+}

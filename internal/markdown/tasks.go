@@ -190,6 +190,10 @@ type logbook struct {
 	// StartLineText is the text after `:LOGBOOK:` on its line, without the
 	// line break.
 	StartLineText string
+
+	// indent is the position of `:LOGBOOK:` in the line that holds it, which
+	// is the indentation that is taken from the lines inside.
+	indent int
 }
 
 func (n *logbook) Kind() ast.NodeKind {
@@ -199,13 +203,6 @@ func (n *logbook) Kind() ast.NodeKind {
 func (n *logbook) Dump(source []byte, level int) {
 	ast.DumpHelper(n, source, level, nil, nil)
 }
-
-type logbookBlockData struct {
-	indent int
-	node   ast.Node
-}
-
-var logbookInfoKey = parser.NewContextKey()
 
 type logbookParser struct {
 }
@@ -237,13 +234,10 @@ func (b *logbookParser) Open(parent ast.Node, reader text.Reader, pc parser.Cont
 
 	// Create the block
 	rest := line[pos+len(":LOGBOOK:"):]
-	block := &logbook{StartLineText: strings.TrimRight(string(rest), "\r\n")}
-
-	// Store the block in the context
-	pc.Set(logbookInfoKey, &logbookBlockData{
-		indent: indent,
-		node:   block,
-	})
+	block := &logbook{
+		StartLineText: strings.TrimRight(string(rest), "\r\n"),
+		indent:        indent,
+	}
 
 	return block, parser.NoChildren
 }
@@ -285,7 +279,7 @@ func hasLogbookEnd(source []byte, indent int) bool {
 
 func (b *logbookParser) Continue(node ast.Node, reader text.Reader, pc parser.Context) parser.State {
 	line, segment := reader.PeekLine()
-	data := pc.Get(logbookInfoKey).(*logbookBlockData)
+	block := node.(*logbook)
 
 	_, pos := util.IndentWidth(line, reader.LineOffset())
 
@@ -300,26 +294,11 @@ func (b *logbookParser) Continue(node ast.Node, reader text.Reader, pc parser.Co
 		return parser.Close
 	}
 
-	pos, padding := util.IndentPositionPadding(line, reader.LineOffset(), segment.Padding, data.indent)
-	if pos < 0 {
-		pos = util.FirstNonSpacePosition(line)
-		if pos < 0 {
-			pos = 0
-		}
-		padding = 0
-	}
-
-	seg := text.NewSegmentPadding(segment.Start+pos, segment.Stop, padding)
-	node.Lines().Append(seg)
-	reader.AdvanceAndSetPadding(segment.Stop-segment.Start-pos-1, padding)
+	appendContentLine(node, reader, block.indent)
 	return parser.Continue | parser.NoChildren
 }
 
 func (b *logbookParser) Close(node ast.Node, reader text.Reader, pc parser.Context) {
-	data := pc.Get(logbookInfoKey).(*logbookBlockData)
-	if data.node == node {
-		pc.Set(beginEndInfoKey, nil)
-	}
 }
 
 func (b *logbookParser) CanInterruptParagraph() bool {

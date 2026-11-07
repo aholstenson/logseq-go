@@ -330,17 +330,7 @@ func (m *mathBlockParser) Continue(node ast.Node, reader text.Reader, pc parser.
 		return parser.Close
 	}
 
-	pos, padding := util.IndentPositionPadding(line, reader.LineOffset(), segment.Padding, node.(*mathBlock).indent)
-	if pos < 0 {
-		pos = util.FirstNonSpacePosition(line)
-		if pos < 0 {
-			pos = 0
-		}
-		padding = 0
-	}
-
-	node.Lines().Append(text.NewSegmentPadding(segment.Start+pos, segment.Stop, padding))
-	reader.AdvanceAndSetPadding(segment.Stop-segment.Start-pos-1, padding)
+	appendContentLine(node, reader, node.(*mathBlock).indent)
 	return parser.Continue | parser.NoChildren
 }
 
@@ -419,17 +409,7 @@ func (m *latexEnvironmentParser) Continue(node ast.Node, reader text.Reader, pc 
 		return parser.Close
 	}
 
-	pos, padding := util.IndentPositionPadding(line, reader.LineOffset(), segment.Padding, node.(*mathBlock).indent)
-	if pos < 0 {
-		pos = util.FirstNonSpacePosition(line)
-		if pos < 0 {
-			pos = 0
-		}
-		padding = 0
-	}
-
-	node.Lines().Append(text.NewSegmentPadding(segment.Start+pos, segment.Stop, padding))
-	reader.AdvanceAndSetPadding(segment.Stop-segment.Start-pos-1, padding)
+	appendContentLine(node, reader, node.(*mathBlock).indent)
 	return parser.Continue | parser.NoChildren
 }
 
