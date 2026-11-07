@@ -41,9 +41,11 @@ func (f *footnoteRefParser) Parse(parent ast.Node, block text.Reader, pc parser.
 		return nil
 	}
 
-	if end+1 < len(line) && (line[end+1] == '(' || line[end+1] == '[') {
-		// A link destination or a link label follows, so this is the text of a
-		// link rather than a reference to a footnote.
+	if end+1 < len(line) && line[end+1] == '(' {
+		// A link destination follows, so this is the text of a link rather
+		// than a reference to a footnote. A `[` after it starts other
+		// syntax, such as a second reference in "[^1][^2]", as Logseq reads
+		// it.
 		return nil
 	}
 
