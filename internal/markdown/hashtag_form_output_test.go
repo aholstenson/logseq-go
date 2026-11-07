@@ -81,7 +81,7 @@ var _ = Describe("Tag form in saved blocks", func() {
 		Entry("a title that ends with an exclamation mark", "a!", "#[[a!]]"),
 		Entry("a title with a quote", `a"b`, `#[[a"b]]`),
 		Entry("a title with a hash", "a#b", "#[[a#b]]"),
-		Entry("a title with a closing bracket", "a]b", "#[[a]b]]"),
+		Entry("a title with a closing bracket", "a]b", "#a]b"),
 	)
 
 	DescribeTable("keeps the form of a tag that is read and written",

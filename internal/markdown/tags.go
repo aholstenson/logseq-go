@@ -23,6 +23,10 @@ type tag struct {
 
 	// Extended is true for a tag in the form #[[name]].
 	Extended bool
+
+	// Source is the name of an extended tag as it is in the file, with the
+	// backslashes that escape punctuation.
+	Source string
 }
 
 func (*tag) Kind() ast.NodeKind {
@@ -131,6 +135,12 @@ func (t *tagParser) Parse(parent ast.Node, block text.Reader, pc parser.Context)
 		Page:     string(value),
 		Segment:  seg,
 		Extended: extended,
+	}
+	if extended {
+		// The same as a page link, a bracketed tag can escape punctuation,
+		// as in "#[[a\]]]" for the tag "a]".
+		n.Page = unescapePunctuation(value)
+		n.Source = string(value)
 	}
 	block.Advance(seg.Len())
 	return &n

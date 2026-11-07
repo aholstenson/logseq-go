@@ -305,6 +305,8 @@ type Hashtag struct {
 	// be written as `#To` and read back with the same title, such as a title
 	// with a space or a comma, is always written as `#[[To]]`.
 	Bracketed bool
+
+	toSource string
 }
 
 func NewHashtag(target string) *Hashtag {
@@ -324,6 +326,20 @@ func (l *Hashtag) SetTo(target string) {
 func (l *Hashtag) WithTo(target string) *Hashtag {
 	l.To = target
 	return l
+}
+
+// ToSource gets the title of a bracketed tag as it is in the file, between
+// the `#[[` and `]]`, with the backslashes that escape punctuation, such as
+// `a\]` for the title `a]`. It is empty for a tag that was not read from a
+// file. If this text still reads as the title of the tag, the tag is written
+// with it, so that the backslashes do not change on save.
+func (l *Hashtag) ToSource() string {
+	return l.toSource
+}
+
+// SetToSource sets the title of the tag as it is in the file, see ToSource.
+func (l *Hashtag) SetToSource(source string) {
+	l.toSource = source
 }
 
 // WithBracketed sets if the tag is written as `#[[To]]`.

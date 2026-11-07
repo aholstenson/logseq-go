@@ -1938,6 +1938,10 @@ func (w *Output) writeHashtag(node *content.Hashtag) error {
 		return w.writeRaw("#" + node.To)
 	}
 
+	if source := node.ToSource(); source != "" && pageLinkTargetReadsBack(source, node.To) {
+		return w.writeRaw("#[[" + source + "]]")
+	}
+
 	err := w.writeRaw("#[[")
 	if err != nil {
 		return err
@@ -1952,12 +1956,13 @@ func (w *Output) writeHashtag(node *content.Hashtag) error {
 }
 
 // isBareTagName returns true if `#name` is read back as a tag with the whole
-// name. A space or a tag delimiter such as `,` ends the name early, and a
-// bracket can start a link, so such names need the form `#[[name]]`.
+// name. A space or a tag delimiter such as `,` ends the name early, and a `[`
+// can start a link, so such names need the form `#[[name]]`. A `]` stays in
+// the name, as in "[see #a]" which has the tag "a]".
 func isBareTagName(name string) bool {
 	return name != "" &&
 		tagNameLength([]byte(name)) == len(name) &&
-		!strings.ContainsAny(name, "[]")
+		!strings.Contains(name, "[")
 }
 
 // writeBlockRef writes *content.BlockRef as `((id))`, or as `[label](((id)))`

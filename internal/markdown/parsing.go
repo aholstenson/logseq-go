@@ -429,7 +429,9 @@ func convert(src []byte, in ast.Node) (content.Node, error) {
 		_, bracketed := node.AttributeString(bracketedAttribute)
 		return content.NewAutoLink(string(node.URL(src))).WithBracketed(bracketed), nil
 	case *tag:
-		return content.NewHashtag(node.Page).WithBracketed(node.Extended), nil
+		hashtag := content.NewHashtag(node.Page).WithBracketed(node.Extended)
+		hashtag.SetToSource(node.Source)
+		return hashtag, nil
 	case *pageLink:
 		link := content.NewPageLink(node.Page)
 		link.SetToSource(node.Source)
