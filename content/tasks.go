@@ -772,23 +772,7 @@ func (b *Block) setTaskDate(dateType TaskDateType, date *TaskDate) {
 	// place the date after the properties, the first line of the first
 	// paragraph and any date that is already there. Logseq ignores a date
 	// that comes after more lines of text.
-	var after Node
-	seenParagraph := false
-	for node := b.FirstChild(); node != nil; node = node.NextSibling() {
-		if _, ok := node.(*Paragraph); ok {
-			if seenParagraph {
-				break
-			}
-			seenParagraph = true
-		} else if _, ok := node.(*Properties); !ok {
-			if _, ok := node.(*TaskDate); !ok {
-				break
-			}
-		}
-
-		after = node
-	}
-
+	after := b.firstContentEnd()
 	if after == nil {
 		b.PrependChild(date)
 		return
@@ -965,28 +949,38 @@ func (b *Block) Logbook() *Logbook {
 	return nil
 }
 
+// firstContentEnd gets the last node of the first content of the block and
+// the properties and dates that follow it. The first content is the node that
+// starts the block, such as a paragraph or a heading. The dates and the
+// logbook of a task go after this node, as a line before the first content
+// moves the content off the line of the bullet. It returns nil if the block
+// has no such node.
+func (b *Block) firstContentEnd() Node {
+	var after Node
+	seenContent := false
+	for node := b.FirstChild(); node != nil; node = node.NextSibling() {
+		switch node.(type) {
+		case *Properties, *TaskDate:
+		case *Block:
+			return after
+		default:
+			if seenContent {
+				return after
+			}
+			seenContent = true
+		}
+
+		after = node
+	}
+
+	return after
+}
+
 // insertAfterTaskContent inserts a node after the first paragraph of the
 // block and the dates and properties that follow it, which is where Logseq
 // puts the logbook of a task.
 func (b *Block) insertAfterTaskContent(node Node) {
-	var after Node
-	seenParagraph := false
-loop:
-	for child := b.FirstChild(); child != nil; child = child.NextSibling() {
-		switch child.(type) {
-		case *Paragraph:
-			if seenParagraph {
-				break loop
-			}
-			seenParagraph = true
-		case *TaskDate, *Properties:
-		default:
-			break loop
-		}
-
-		after = child
-	}
-
+	after := b.firstContentEnd()
 	if after == nil {
 		b.PrependChild(node)
 	} else {
