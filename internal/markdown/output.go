@@ -1816,16 +1816,18 @@ func (w *Output) writeIsolated(node content.Node) string {
 }
 
 func (w *Output) writeEmphasis(node *content.Emphasis) error {
-	if _, ok := node.PreviousSibling().(*content.Emphasis); ok {
-		// Writing two emphasis nodes next to each other is not valid Markdown,
-		// so we add a space between them as a compromise.
+	marker := string(emphasisMarker(node, node.Underscore))
+	if previous, ok := node.PreviousSibling().(*content.Emphasis); ok && string(emphasisMarker(previous, previous.Underscore)) == marker {
+		// Two emphasis nodes with the same marker next to each other would
+		// be read back as one, so we add a space between them as a
+		// compromise. With different markers, as in "*a*_b_", they are read
+		// back as two.
 		err := w.writeRaw(" ")
 		if err != nil {
 			return err
 		}
 	}
 
-	marker := string(emphasisMarker(node, node.Underscore))
 	err := w.writeRaw(marker)
 	if err != nil {
 		return err
@@ -1845,16 +1847,16 @@ func (w *Output) writeEmphasis(node *content.Emphasis) error {
 }
 
 func (w *Output) writeStrong(node *content.Strong) error {
-	if _, ok := node.PreviousSibling().(*content.Strong); ok {
-		// Writing two strong nodes next to each other is not valid Markdown,
-		// so we add a space between them as a compromise.
+	marker := strings.Repeat(string(emphasisMarker(node, node.Underscore)), 2)
+	if previous, ok := node.PreviousSibling().(*content.Strong); ok && strings.Repeat(string(emphasisMarker(previous, previous.Underscore)), 2) == marker {
+		// Two strong nodes with the same marker next to each other would be
+		// read back as one, so we add a space between them as a compromise.
 		err := w.writeRaw(" ")
 		if err != nil {
 			return err
 		}
 	}
 
-	marker := strings.Repeat(string(emphasisMarker(node, node.Underscore)), 2)
 	err := w.writeRaw(marker)
 	if err != nil {
 		return err
