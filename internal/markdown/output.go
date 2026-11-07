@@ -315,7 +315,7 @@ func markupEscapes(str string, before rune, after rune, tags bool, headings bool
 				escapes[i] = true
 			}
 		case '{':
-			if strings.HasPrefix(str[i:], "{{") && lastMacroClose >= i+2 && macroCanStartAt(str, i, escapes) {
+			if strings.HasPrefix(str[i:], "{{") && lastMacroClose >= i+2 && macroCanStartAt(str, i, escapes) && startsMacro(str[i:]) {
 				escapes[i] = true
 			}
 		case '`':

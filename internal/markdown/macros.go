@@ -8,7 +8,29 @@ import (
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/text"
+	"github.com/yuin/goldmark/util"
 )
+
+// macroCheckParser reads only paragraphs and macros. It is used to check if
+// text starts with a macro, see startsMacro.
+var macroCheckParser = parser.NewParser(
+	parser.WithBlockParsers(util.Prioritized(parser.NewParagraphParser(), 1000)),
+	parser.WithInlineParsers(util.Prioritized(&macroParser{}, 100)),
+)
+
+// startsMacro returns true if the text is read as a macro at its start, such
+// as "{{embed [[a]]}} b". Text such as "{{ name }}" is not a macro.
+func startsMacro(str string) bool {
+	src := []byte(str)
+	doc := macroCheckParser.Parse(text.NewReader(src))
+	paragraph := doc.FirstChild()
+	if paragraph == nil {
+		return false
+	}
+
+	_, ok := paragraph.FirstChild().(*macro)
+	return ok
+}
 
 var macroKind = ast.NewNodeKind("Macro")
 
