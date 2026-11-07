@@ -421,6 +421,30 @@ var _ HasChildren = (*baseNodeWithChildren)(nil)
 
 type previousLineAwareImpl struct {
 	previousLineType PreviousLineType
+	blankLineSpace   string
+}
+
+// BlankLineSpaceAware is a node that keeps the spaces and tabs of the blank
+// line before it, as they are in the file.
+type BlankLineSpaceAware interface {
+	// BlankLineSpace gets the spaces and tabs of the blank line before the
+	// node, as they are in the file, with the indentation of the block. It
+	// is empty for a node that was not read from a file, or that has no
+	// such line before it. It is written back when a blank line is written
+	// before the node.
+	BlankLineSpace() string
+
+	// SetBlankLineSpace sets the spaces and tabs of the blank line before
+	// the node. See BlankLineSpace.
+	SetBlankLineSpace(space string)
+}
+
+func (p *previousLineAwareImpl) BlankLineSpace() string {
+	return p.blankLineSpace
+}
+
+func (p *previousLineAwareImpl) SetBlankLineSpace(space string) {
+	p.blankLineSpace = space
 }
 
 func (p *previousLineAwareImpl) PreviousLineType() PreviousLineType {

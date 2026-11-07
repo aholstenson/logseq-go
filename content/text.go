@@ -473,6 +473,10 @@ type ThematicBreak struct {
 	// as `***`, `___` or `* * *`. It is written back as it is. It is empty
 	// for `---`. If it is empty or is not a thematic break, `---` is written.
 	Marker string
+
+	// Indentation is the spaces before the thematic break, after the
+	// indentation of the block or quote that holds it, as it is in the file.
+	Indentation string
 }
 
 func NewThematicBreak() *ThematicBreak {

@@ -1383,6 +1383,18 @@ func (w *Output) startBlockWithAutomaticBehavior(node content.BlockNode, marker 
 			}
 		}
 
+		if aware, ok := node.(content.BlankLineSpaceAware); ok && prefix == "\n\n" && aware.BlankLineSpace() != "" && strings.Trim(w.out.IndentationFrom(0), " \t") == "" {
+			// The blank line keeps its spaces, which hold the indentation
+			// of the block.
+			err := w.out.WriteString("\n")
+			if err != nil {
+				return err
+			}
+
+			w.out.SkipIndentationOnNextLine(0)
+			prefix = aware.BlankLineSpace() + "\n"
+		}
+
 		err := w.out.WriteString(prefix)
 		if err != nil {
 			return err
@@ -3272,7 +3284,12 @@ func (w *Output) writeThematicBreak(node *content.ThematicBreak) error {
 		marker = node.Marker
 	}
 
-	err = w.writeRaw(marker)
+	indentation := node.Indentation
+	if width, _ := util.IndentWidth([]byte(indentation), 0); width >= 4 || strings.Trim(indentation, " \t") != "" {
+		indentation = ""
+	}
+
+	err = w.writeRaw(indentation + marker)
 	if err != nil {
 		return err
 	}

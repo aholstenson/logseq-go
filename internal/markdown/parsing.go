@@ -465,7 +465,10 @@ func convert(src []byte, in ast.Node) (content.Node, error) {
 		if marker, ok := node.AttributeString(thematicBreakMarkerAttribute); ok && marker != "---" {
 			thematicBreak.Marker = marker.(string)
 		}
-		updatePreviousLine(node, thematicBreak)
+		if indentation, ok := node.AttributeString(thematicBreakIndentationAttribute); ok {
+			thematicBreak.Indentation = indentation.(string)
+		}
+		updatePreviousLine(src, node, thematicBreak)
 		return thematicBreak, nil
 	case *beginEnd:
 		return convertBeginEnd(src, node)
@@ -987,9 +990,9 @@ func convertParagraph(src []byte, node *ast.Paragraph) (*content.Paragraph, erro
 	if _, afterProperties := node.PreviousSibling().(*properties); afterProperties {
 		// A paragraph directly after properties is written on the next line,
 		// so a blank line between them has to be recorded explicitly.
-		updatePreviousLineKeepingBlank(node, paragraph)
+		updatePreviousLineKeepingBlank(src, node, paragraph)
 	} else {
-		updatePreviousLine(node, paragraph)
+		updatePreviousLine(src, node, paragraph)
 	}
 	keepBlankQuoteLineBefore(src, node, paragraph)
 	return paragraph, nil
@@ -1014,7 +1017,7 @@ func convertTextBlock(src []byte, node ast.Node) (*content.Paragraph, error) {
 	}
 	keepLineStartSources(paragraph)
 
-	updatePreviousLine(node, paragraph)
+	updatePreviousLine(src, node, paragraph)
 	keepBlankQuoteLineBefore(src, node, paragraph)
 	return paragraph, nil
 }
@@ -1428,7 +1431,7 @@ func convertFencedCodeBlock(src []byte, node *ast.FencedCodeBlock) (*content.Cod
 		code.SetClosingFenceSource(closing.(string))
 	}
 
-	updatePreviousLine(node, code)
+	updatePreviousLine(src, node, code)
 
 	return code, nil
 }
@@ -1456,7 +1459,7 @@ func convertFootnoteDefinition(src []byte, node *footnoteDefinition) (*content.F
 		return nil, err
 	}
 
-	updatePreviousLine(node, definition)
+	updatePreviousLine(src, node, definition)
 
 	return definition, nil
 }
@@ -1472,7 +1475,7 @@ func convertMathBlock(src []byte, node *mathBlock) (*content.MathBlock, error) {
 
 	value := content.NewMathBlock(valueBuf.String()).WithEnvironment(node.environment)
 
-	updatePreviousLine(node, value)
+	updatePreviousLine(src, node, value)
 
 	return value, nil
 }
@@ -1484,7 +1487,7 @@ func convertBlockquote(src []byte, node *ast.Blockquote) (*content.Blockquote, e
 		return nil, err
 	}
 
-	updatePreviousLine(node, blockquote)
+	updatePreviousLine(src, node, blockquote)
 
 	return blockquote, nil
 }
@@ -1505,7 +1508,7 @@ func convertList(src []byte, node *ast.List) (*content.List, error) {
 		list.AddChild(item)
 	}
 
-	updatePreviousLine(node, list)
+	updatePreviousLine(src, node, list)
 
 	return list, nil
 }
@@ -1549,7 +1552,7 @@ func convertTable(src []byte, node *east.Table) (*content.Table, error) {
 		table.SetSourceText(string(source.([]byte)))
 	}
 
-	updatePreviousLine(node, table)
+	updatePreviousLine(src, node, table)
 
 	return table, nil
 }
@@ -1609,7 +1612,7 @@ func convertHTMLBlock(src []byte, node *ast.HTMLBlock) (*content.RawHTMLBlock, e
 	}
 
 	raw := content.NewRawHTMLBlock(codeBuf.String())
-	updatePreviousLine(node, raw)
+	updatePreviousLine(src, node, raw)
 	return raw, nil
 }
 
@@ -1656,7 +1659,7 @@ func convertProperties(src []byte, node *properties) (*content.Properties, error
 		properties.AddChild(prop)
 	}
 
-	updatePreviousLineKeepingBlank(node, properties)
+	updatePreviousLineKeepingBlank(src, node, properties)
 
 	return properties, nil
 }
@@ -1673,7 +1676,7 @@ func convertBeginEnd(src []byte, node *beginEnd) (content.Node, error) {
 		query := content.NewQueryCommand(codeBuf.String()).
 			WithParameters(node.Parameters).
 			WithLowerCase(node.LowerCase)
-		updatePreviousLine(node, query)
+		updatePreviousLine(src, node, query)
 		return query, nil
 	default:
 		value := codeBuf.String()
@@ -1689,7 +1692,7 @@ func convertBeginEnd(src []byte, node *beginEnd) (content.Node, error) {
 		command := content.NewAdvancedCommand(node.Variant, value, children...).
 			WithParameters(node.Parameters).
 			WithLowerCase(node.LowerCase)
-		updatePreviousLine(node, command)
+		updatePreviousLine(src, node, command)
 		return command, nil
 	}
 }
@@ -1703,7 +1706,7 @@ func convertLogbook(src []byte, node *logbook) (content.Node, error) {
 		logbook.AddChild(parseLogbookEntry(value))
 	}
 
-	updatePreviousLine(node, logbook)
+	updatePreviousLine(src, node, logbook)
 
 	return logbook, nil
 }
@@ -1720,7 +1723,7 @@ func convertDrawer(src []byte, node *drawer) (content.Node, error) {
 		result.EndLine = node.EndLine
 	}
 
-	updatePreviousLine(node, result)
+	updatePreviousLine(src, node, result)
 	return result, nil
 }
 
@@ -1746,7 +1749,7 @@ func convertTaskDate(src []byte, node *taskDate) (content.Node, error) {
 		return nil, err
 	}
 
-	updatePreviousLineKeepingBlank(node, date)
+	updatePreviousLineKeepingBlank(src, node, date)
 
 	return date, nil
 }
@@ -1754,8 +1757,9 @@ func convertTaskDate(src []byte, node *taskDate) (content.Node, error) {
 // updatePreviousLine updates the PreviousLineType of the target based on the
 // node. This takes the information Goldmark parsed out and transfers it to
 // our nodes.
-func updatePreviousLine(node ast.Node, target content.PreviousLineAware) {
+func updatePreviousLine(src []byte, node ast.Node, target content.PreviousLineAware) {
 	if node.HasBlankPreviousLines() {
+		keepBlankLineSpace(src, node, target)
 		target.SetPreviousLineType(content.PreviousLineTypeAutomatic)
 	} else {
 		// Parsing didn't indicate blank lines before the node, but we might
@@ -1769,11 +1773,65 @@ func updatePreviousLine(node ast.Node, target content.PreviousLineAware) {
 	}
 }
 
+// keepBlankLineSpace records the spaces and tabs of the blank line before a
+// node, when one line of only spaces and tabs comes before it, see
+// content.BlankLineSpaceAware.
+func keepBlankLineSpace(src []byte, node ast.Node, target content.PreviousLineAware) {
+	aware, ok := target.(content.BlankLineSpaceAware)
+	if !ok {
+		return
+	}
+
+	start, ok := nodeStart(node)
+	if !ok {
+		return
+	}
+
+	lineStart := bytes.LastIndexByte(src[:start], '\n') + 1
+	if lineStart < 2 {
+		return
+	}
+
+	blankStart := bytes.LastIndexByte(src[:lineStart-1], '\n') + 1
+	blank := bytes.TrimSuffix(src[blankStart:lineStart-1], []byte("\r"))
+	if len(blank) == 0 || len(bytes.Trim(blank, " \t")) > 0 {
+		return
+	}
+
+	// Only one blank line is written back, so the space is kept only when
+	// the line before it has text.
+	if blankStart > 0 {
+		before := bytes.LastIndexByte(src[:blankStart-1], '\n') + 1
+		if len(bytes.Trim(src[before:blankStart-1], " \t\r")) == 0 {
+			return
+		}
+	}
+
+	aware.SetBlankLineSpace(string(blank))
+}
+
+// nodeStart gets the offset in the source of the first line of a block node,
+// from the lines of the node or of its first child.
+func nodeStart(node ast.Node) (int, bool) {
+	for n := node; n != nil; n = n.FirstChild() {
+		if n.Type() == ast.TypeBlock && n.Lines().Len() > 0 {
+			return n.Lines().At(0).Start, true
+		}
+
+		if text, ok := n.(*ast.Text); ok {
+			return text.Segment.Start, true
+		}
+	}
+
+	return 0, false
+}
+
 // updatePreviousLineKeepingBlank is updatePreviousLine for nodes that combine
 // with the previous line by default. For those a blank line before the node
 // has to be recorded explicitly, as the automatic behavior would drop it.
-func updatePreviousLineKeepingBlank(node ast.Node, target content.PreviousLineAware) {
+func updatePreviousLineKeepingBlank(src []byte, node ast.Node, target content.PreviousLineAware) {
 	if node.HasBlankPreviousLines() {
+		keepBlankLineSpace(src, node, target)
 		target.SetPreviousLineType(content.PreviousLineTypeBlank)
 	} else if node.PreviousSibling() == nil {
 		// Parsing didn't indicate blank lines before the node, but we might
