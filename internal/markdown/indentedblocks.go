@@ -52,6 +52,13 @@ func (p *indentedBlocksParser) Trigger() []byte {
 }
 
 func (p *indentedBlocksParser) Open(parent ast.Node, reader text.Reader, pc parser.Context) (ast.Node, parser.State) {
+	for n := parent; n != nil; n = n.Parent() {
+		if _, ok := n.(*footnoteDefinition); ok {
+			// A footnote holds no blocks, so its lines are read as text.
+			return nil, parser.NoChildren
+		}
+	}
+
 	line, _ := reader.PeekLine()
 	width, ok := indentedUnderHeading(parent, reader, pc)
 	if !ok {
