@@ -394,6 +394,10 @@ var _ BlockNode = (*Paragraph)(nil)
 type Blockquote struct {
 	baseNodeWithChildren
 	previousLineAwareImpl
+
+	// NoSpaceAfterMarker is whether the `>` markers of the quote are written
+	// without a space after them, as in ">quote", as they are in the file.
+	NoSpaceAfterMarker bool
 }
 
 func NewBlockquote(children ...Node) *Blockquote {

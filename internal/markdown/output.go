@@ -3092,7 +3092,12 @@ func tableDelimiterRow(node *content.Table, widths []int) string {
 }
 
 func (w *Output) writeBlockquote(node *content.Blockquote) error {
-	err := w.startBlock(node, "> ")
+	marker := "> "
+	if node.NoSpaceAfterMarker {
+		marker = ">"
+	}
+
+	err := w.startBlock(node, marker)
 	if err != nil {
 		return err
 	}
@@ -3109,7 +3114,7 @@ func (w *Output) writeBlockquote(node *content.Blockquote) error {
 	if !w.out.lastWasLineBreak {
 		// This is a hack to make sure that the indicator is written in lists
 		// if the blockquote is the first item in a list item.
-		_, err = w.out.output.Write([]byte{'>', ' '})
+		_, err = w.out.output.Write([]byte(marker))
 		if err != nil {
 			return err
 		}

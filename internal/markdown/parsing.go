@@ -35,7 +35,7 @@ func init() {
 			util.Prioritized(&indentedParagraphParser{}, 500),
 			util.Prioritized(newATXHeadingParser(), 600),
 			util.Prioritized(newFencedCodeBlockParser(), 700),
-			util.Prioritized(parser.NewBlockquoteParser(), 800),
+			util.Prioritized(newQuoteParser(), 800),
 			util.Prioritized(&mathBlockParser{}, 896),
 			util.Prioritized(&latexEnvironmentParser{}, 896),
 			util.Prioritized(&taskDateParser{}, 897),
@@ -1482,6 +1482,9 @@ func convertMathBlock(src []byte, node *mathBlock) (*content.MathBlock, error) {
 
 func convertBlockquote(src []byte, node *ast.Blockquote) (*content.Blockquote, error) {
 	blockquote := content.NewBlockquote()
+	if _, ok := node.AttributeString(quoteNoSpaceAttribute); ok {
+		blockquote.NoSpaceAfterMarker = true
+	}
 	err := convertChildren(src, node, blockquote)
 	if err != nil {
 		return nil, err
