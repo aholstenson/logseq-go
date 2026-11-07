@@ -33,17 +33,17 @@ var _ = Describe("Parsing block lines with less indentation than the block", fun
 	// tab, When parsed, Then the line is in the math block and nothing
 	// panics.
 	It("keeps a tab indented line of a math block", func() {
-		input := "- ```\n   $$\n\t-\n  - a\n"
+		input := "- ```\n   $$\n\t-\n   $$\n  - a\n"
 		Expect(func() { mathBlockValue(input) }).ToNot(Panic())
 		Expect(mathBlockValue(input)).To(HavePrefix("-\n"))
 	})
 
-	// Given a math block after a quote, and a line with a tab and `>` at the
-	// end of the page, When parsed, Then the line is in the math block and
-	// nothing panics.
+	// Given a math block after a quote, and a line with a tab and `>` as its
+	// last line, When parsed, Then the line is in the math block and nothing
+	// panics.
 	It("keeps a tab indented last line of a math block", func() {
-		input := "- > q\n   $$\n\t>"
+		input := "- > q\n   $$\n\t>\n   $$"
 		Expect(func() { mathBlockValue(input) }).ToNot(Panic())
-		Expect(mathBlockValue(input)).To(Equal(">"))
+		Expect(mathBlockValue(input)).To(Equal(">\n"))
 	})
 })

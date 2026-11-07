@@ -21,8 +21,8 @@ import (
 // than the text of the current line. closes gets each line in the block with
 // its indentation taken off.
 //
-// For a line in a quote the block cannot be found from the indentation, so
-// hasClosingLine returns true and the construct is read as in CommonMark.
+// For a line in a quote the block is the lines after it that have the `>`
+// markers of the quote, see hasClosingLineInQuote.
 //
 // kind names the closing lines that closes looks for, such as "fence:`:3".
 // When no closing line is found, the lines that were checked are remembered
@@ -35,8 +35,8 @@ func hasClosingLine(reader text.Reader, pc parser.Context, kind string, closes f
 
 	lineStart := bytes.LastIndexByte(source[:segment.Start], '\n') + 1
 	prefix := source[lineStart:segment.Start]
-	if bytes.IndexByte(prefix, '>') >= 0 {
-		return true
+	if depth := bytes.Count(prefix, []byte{'>'}); depth > 0 {
+		return hasClosingLineInQuote(source[segment.Stop:], depth, closes)
 	}
 
 	// The prefix holds the indentation and the markers of the blocks and
@@ -84,6 +84,48 @@ func hasClosingLine(reader text.Reader, pc parser.Context, kind string, closes f
 	}
 
 	scans[scan] = checkedLines{start: segment.Stop, end: pos}
+	return false
+}
+
+// hasClosingLineInQuote checks if a line in the text closes a construct that
+// opens in a quote, where depth is the number of `>` markers before the
+// construct. The quote ends at the first line with fewer markers, as the lines
+// of a code block or of a `#+BEGIN_` block cannot be lazy lines of the quote.
+// closes gets each line with its markers and indentation taken off.
+func hasClosingLineInQuote(rest []byte, depth int, closes func(line []byte) bool) bool {
+	for len(rest) > 0 {
+		end := bytes.IndexByte(rest, '\n')
+		if end < 0 {
+			end = len(rest)
+		} else {
+			end++
+		}
+
+		line := rest[:end]
+		rest = rest[end:]
+
+		i := 0
+		for markers := 0; markers < depth; markers++ {
+			for i < len(line) && (line[i] == ' ' || line[i] == '\t') {
+				i++
+			}
+			if i >= len(line) || line[i] != '>' {
+				return false
+			}
+			i++
+		}
+
+		line = line[i:]
+		if util.IsBlank(line) {
+			continue
+		}
+
+		_, textStart := util.IndentWidth(line, 0)
+		if closes(line[textStart:]) {
+			return true
+		}
+	}
+
 	return false
 }
 

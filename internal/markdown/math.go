@@ -302,6 +302,12 @@ func (m *mathBlockParser) Open(parent ast.Node, reader text.Reader, pc parser.Co
 		return nil, parser.NoChildren
 	}
 
+	// Logseq reads a `$$` line that is not closed as text, see
+	// hasClosingLine.
+	if !hasClosingLine(reader, pc, "math", isMathBlockMarker) {
+		return nil, parser.NoChildren
+	}
+
 	return &mathBlock{indent: pos}, parser.NoChildren
 }
 

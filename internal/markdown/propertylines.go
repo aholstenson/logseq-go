@@ -71,9 +71,10 @@ func (p *propertyLineParser) CanAcceptIndentedLine() bool {
 var _ parser.BlockParser = (*propertyLineParser)(nil)
 
 // htmlBlockParser is the HTML block parser of Goldmark, changed so that an
-// HTML block that ends at a blank line also ends at a property line. Logseq
-// reads the property lines after HTML as properties of the block, as in
-// "- <div>x</div>\n  id:: 65e5a0b2-...".
+// HTML block that ends at a blank line also ends at a property line or at the
+// bullet of a block. Logseq reads the property lines after HTML as properties
+// of the block, as in "- <div>x</div>\n  id:: 65e5a0b2-...", and a bullet
+// line as the start of a block, as in "- x\n<div>\n- y".
 //
 // HTML blocks that end with a closing marker, such as `</pre>` or `-->`, keep
 // all lines up to that marker.
@@ -91,7 +92,7 @@ func (p *htmlBlockParser) Continue(node ast.Node, reader text.Reader, pc parser.
 	if block, ok := node.(*ast.HTMLBlock); ok &&
 		(block.HTMLBlockType == ast.HTMLBlockType6 || block.HTMLBlockType == ast.HTMLBlockType7) {
 		line, _ := reader.PeekLine()
-		if isPropertyLine(line) {
+		if isPropertyLine(line) || isBulletLine(util.TrimLeftSpace(line)) {
 			return parser.Close
 		}
 	}
