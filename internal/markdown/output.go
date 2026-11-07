@@ -1217,6 +1217,13 @@ func (w *Output) writeText(node *content.Text) error {
 		w.out.SkipIndentationOnNextLine(w.quoteLevels[0])
 	}
 
+	if (node.SoftLineBreak || node.HardLineBreak) && node.NextLineIndentation != "" {
+		err = w.writeRaw(node.NextLineIndentation)
+		if err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
@@ -3057,7 +3064,7 @@ func (w *Output) writeTaskDate(node *content.TaskDate) error {
 		return err
 	}
 
-	err = w.writeRaw(value.String())
+	err = w.writeRaw(node.Indentation + value.String())
 	if err != nil {
 		return err
 	}

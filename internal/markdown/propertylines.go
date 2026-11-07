@@ -29,7 +29,7 @@ type propertyLineParser struct {
 
 func newPropertyLineParser() *propertyLineParser {
 	return &propertyLineParser{
-		paragraph: parser.NewParagraphParser(),
+		paragraph: newParagraphParser(),
 	}
 }
 

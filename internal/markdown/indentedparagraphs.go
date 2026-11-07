@@ -58,6 +58,9 @@ func (p *indentedParagraphParser) Continue(node ast.Node, reader text.Reader, pc
 }
 
 func (p *indentedParagraphParser) Close(node ast.Node, reader text.Reader, pc parser.Context) {
+	// The paragraph indentation is written for each line, so only the
+	// indentation after it is recorded.
+	recordLineIndentation(node, reader, pc, paragraphIndentation(node.(*ast.Paragraph)))
 	parser.NewParagraphParser().Close(node, reader, pc)
 }
 

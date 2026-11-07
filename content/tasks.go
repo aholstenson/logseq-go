@@ -472,6 +472,11 @@ type TaskDate struct {
 	// Repeater describes how the date repeats, or nil if it does not repeat.
 	Repeater *Repeater
 
+	// Indentation is the spaces and tabs at the start of the line of the
+	// date, after the indentation of the block or quote that holds it. It is
+	// written back so that saving does not change the line.
+	Indentation string
+
 	// dateSource is the text of the line in the file, see DateSource.
 	dateSource string
 }

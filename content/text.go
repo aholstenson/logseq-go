@@ -27,6 +27,13 @@ type Text struct {
 	// written back without the marker, so that saving does not change the
 	// line. It is not used if the text has no line break.
 	LazyLine bool
+
+	// NextLineIndentation is the spaces and tabs at the start of the line
+	// after the line break of the text, as in the two spaces before `b` in
+	// "a\n  b". It does not include the indentation of the block or quote
+	// that holds the text. It is written back so that saving does not change
+	// the line. It is not used if the text has no line break.
+	NextLineIndentation string
 }
 
 func NewText(text string) *Text {

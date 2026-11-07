@@ -38,6 +38,10 @@ type taskDate struct {
 	// parsed as its inline children.
 	Segment text.Segment
 
+	// indentation is the spaces and tabs before the date, after the
+	// indentation of the block or quote that holds it.
+	indentation string
+
 	// length is the length of the date in the line it was parsed from, see
 	// Segment.
 	length int
@@ -82,6 +86,7 @@ func (b *taskDateParser) Open(parent ast.Node, reader text.Reader, pc parser.Con
 		stop--
 	}
 	node.Segment = text.NewSegment(start, stop)
+	node.indentation = strings.Repeat(" ", segment.Padding) + string(reader.Source()[segment.Start:start])
 	if dateStop := start + node.length; dateStop < stop {
 		node.Segment = text.NewSegment(start, dateStop)
 		node.Lines().Append(text.NewSegment(dateStop, stop))

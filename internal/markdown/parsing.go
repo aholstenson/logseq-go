@@ -47,7 +47,7 @@ func init() {
 			util.Prioritized(newHTMLBlockParser(), 900),
 			util.Prioritized(&footnoteDefinitionParser{}, 999),
 			util.Prioritized(newPropertyLineParser(), 999),
-			util.Prioritized(parser.NewParagraphParser(), 1000),
+			util.Prioritized(newParagraphParser(), 1000),
 		),
 		parser.WithInlineParsers(inlineParsers()...),
 		// Logseq has no link reference definitions, so a line such as
@@ -273,6 +273,10 @@ func parseWithOptions(src []byte, options *parseOptions) (*content.Block, error)
 	context.Set(parseOptionsKey, options)
 
 	doc := markdownParser.Parse(text.NewReader(src), parser.WithContext(context))
+	if indentation, ok := context.Get(lineIndentationKey).(lineIndentation); ok {
+		doc.SetAttribute(lineIndentationAttribute, indentation)
+	}
+
 	levels := blockLevels{}
 	block, err := convertOutline(src, doc, options.page, levels)
 	if err != nil {
@@ -497,6 +501,7 @@ func convertChildren(src []byte, node ast.Node, target content.HasChildren) erro
 				merged.SoftLineBreak = text.SoftLineBreak()
 				merged.TrailingSpace = trailingSpaceOf(src, text)
 				merged.LazyLine = isLazyLineAfter(src, text)
+				merged.NextLineIndentation = nextLineIndentationOf(src, text)
 				continue
 			}
 
@@ -927,6 +932,7 @@ func convertText(src []byte, node *ast.Text) (*content.Text, error) {
 	}
 	text.TrailingSpace = trailingSpaceOf(src, node)
 	text.LazyLine = isLazyLineAfter(src, node)
+	text.NextLineIndentation = nextLineIndentationOf(src, node)
 	return text, nil
 }
 
@@ -1417,6 +1423,7 @@ func convertTaskDate(src []byte, node *taskDate) (content.Node, error) {
 		date = content.NewTaskDate(node.DateType, node.Date)
 	}
 	date.Repeater = node.Repeater
+	date.Indentation = node.indentation
 	date.SetDateSource(string(node.Segment.Value(src)))
 
 	err := convertChildren(src, node, date)
