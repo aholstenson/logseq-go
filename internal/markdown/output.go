@@ -2904,10 +2904,22 @@ func bulletMarker(block *content.Block) string {
 // has more than one space, as in "-   x", as Logseq writes them there. The
 // writer then leaves out the indentation from this level, see
 // writer.SkipIndentationOnNextLine. Returns -1 in other cases.
+//
+// A line at that column ends the content of the block for the parser, so only
+// properties, dates and child blocks can follow the node. Otherwise the node
+// is written at the column of the text of the block.
 func (w *Output) bulletColumnLevel(node content.Node) int {
 	block, ok := node.Parent().(*content.Block)
 	if !ok || len(w.blockTextLevels) == 0 || !w.out.AtLineStart() {
 		return -1
+	}
+
+	for next := node.NextSibling(); next != nil; next = next.NextSibling() {
+		switch next.(type) {
+		case *content.Properties, *content.TaskDate, *content.Block:
+		default:
+			return -1
+		}
 	}
 
 	level := w.blockTextLevels[len(w.blockTextLevels)-1]
