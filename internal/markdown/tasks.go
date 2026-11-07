@@ -232,7 +232,16 @@ func (b *logbookParser) Open(parent ast.Node, reader text.Reader, pc parser.Cont
 		return nil, parser.NoChildren
 	}
 
-	if !hasLogbookEnd(reader.Source()[segment.Stop:], indent) {
+	source := reader.Source()
+	lineStart := bytes.LastIndexByte(source[:segment.Start], '\n') + 1
+	if markerAt := segment.Start + pos - segment.Padding; markerAt >= lineStart && len(bytes.Trim(source[lineStart:markerAt], " \t")) == 0 {
+		// The line has only spaces and tabs before `:LOGBOOK:`, so the
+		// lines after it are compared in columns, as a tab can be split
+		// by the column of the block, as in "- a\n\t:LOGBOOK:".
+		if !hasLogbookEndAtColumn(source[segment.Stop:], indentationWidth(source, lineStart)) {
+			return nil, parser.NoChildren
+		}
+	} else if !hasLogbookEnd(source[segment.Stop:], indent) {
 		return nil, parser.NoChildren
 	}
 
@@ -281,6 +290,34 @@ func hasLogbookEnd(source []byte, indent int) bool {
 	return false
 }
 
+// hasLogbookEndAtColumn is hasLogbookEnd for a `:LOGBOOK:` line at the given
+// column, where the indentation of the lines after it is compared in
+// columns.
+func hasLogbookEndAtColumn(source []byte, column int) bool {
+	for len(source) > 0 {
+		line := source
+		if i := bytes.IndexByte(source, '\n'); i >= 0 {
+			line = source[:i+1]
+		}
+		source = source[len(line):]
+
+		trimmed := bytes.TrimLeft(line, " \t")
+		if util.IsBlank(trimmed) {
+			continue
+		}
+
+		if indentationWidth(line, 0) < column || isBulletLine(trimmed) {
+			return false
+		}
+
+		if bytes.HasPrefix(trimmed, []byte(":END:")) && util.IsBlank(trimmed[len(":END:"):]) {
+			return true
+		}
+	}
+
+	return false
+}
+
 func (b *logbookParser) Continue(node ast.Node, reader text.Reader, pc parser.Context) parser.State {
 	line, segment := reader.PeekLine()
 	block := node.(*logbook)
@@ -290,7 +327,13 @@ func (b *logbookParser) Continue(node ast.Node, reader text.Reader, pc parser.Co
 	// Check if the line starts with :END:
 	searchFor := []byte(":END:")
 	if bytes.HasPrefix(line[pos:], searchFor) && util.IsBlank(line[pos+len(searchFor):]) {
+		// The END line is kept from the column of `:LOGBOOK:`, which the
+		// writer writes at the column of the block.
 		block.EndLine = strings.TrimRight(string(line), "\r\n")
+		if block.indent > 0 {
+			block.EndLine = indentationAfterColumn([]byte(block.EndLine), 0, block.indent)
+			block.EndLine += strings.TrimLeft(strings.TrimRight(string(line), "\r\n"), " \t")
+		}
 		newline := 1
 		if line[len(line)-1] != '\n' {
 			newline = 0
