@@ -42,7 +42,10 @@ func (p *atxHeadingParser) Open(parent ast.Node, reader text.Reader, pc parser.C
 	}
 
 	node := ast.NewHeading(i - pos)
-	if pos > 0 {
+	_, inFootnote := parent.(*footnoteDefinition)
+	if pos > 0 && !(inFootnote && parent.FirstChild() == nil) {
+		// On the line of the label of a footnote, the space before the
+		// heading belongs to the label, see footnoteDefinition.LabelSpace.
 		node.SetAttributeString(headingIndentationAttribute, string(line[:pos]))
 	}
 
