@@ -2107,8 +2107,9 @@ func (w *Output) writeMathBlock(node *content.MathBlock) error {
 		return err
 	}
 
-	// The line that ends the block needs a line of its own.
-	if !strings.HasSuffix(node.Value, "\n") {
+	// The line that ends the block needs a line of its own. An empty block
+	// has no lines between its first and last line.
+	if node.Value != "" && !strings.HasSuffix(node.Value, "\n") {
 		err = w.writeRaw("\n")
 		if err != nil {
 			return err
@@ -3391,8 +3392,9 @@ func (w *Output) writeCodeBlock(node *content.CodeBlock) error {
 		return err
 	}
 
-	// If the code does not end with a blank line, we add a newline
-	if !strings.HasSuffix(code, "\n") {
+	// If the code does not end with a blank line, we add a newline. Empty
+	// code has no lines between the fences.
+	if code != "" && !strings.HasSuffix(code, "\n") {
 		err = w.writeRaw("\n")
 		if err != nil {
 			return err
