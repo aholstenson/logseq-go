@@ -562,6 +562,10 @@ func convertChildren(src []byte, node ast.Node, target content.HasChildren) erro
 			mergedStart = text.Segment.Start
 		}
 
+		if aware, ok := node.(content.PreviousLineAware); ok {
+			keepBlankQuoteLineAfterText(src, child, aware)
+		}
+
 		target.AddChild(node)
 		previousChild = child
 	}
@@ -1004,6 +1008,49 @@ func convertParagraph(src []byte, node *ast.Paragraph) (*content.Paragraph, erro
 func keepBlankQuoteLineBefore(src []byte, node ast.Node, target content.PreviousLineAware) {
 	if node.PreviousSibling() != nil && target.PreviousLineType() == content.PreviousLineTypeNonBlank && hasBlankQuoteLineBefore(src, node) {
 		target.SetPreviousLineType(content.PreviousLineTypeBlank)
+	}
+}
+
+// keepBlankQuoteLineAfterText records a blank line before a node in a quote
+// that comes after a paragraph, such as the list in "> a\n>\n> * b". Goldmark
+// does not mark the `>` line as a blank line. The line after the last line of
+// the paragraph is checked, as the first line of a node such as a list or a
+// math block is not in its lines.
+func keepBlankQuoteLineAfterText(src []byte, node ast.Node, target content.PreviousLineAware) {
+	if target.PreviousLineType() != content.PreviousLineTypeNonBlank || !inQuote(node) {
+		return
+	}
+
+	switch node.(type) {
+	case *ast.Paragraph, *ast.TextBlock:
+		// See keepBlankQuoteLineBefore.
+		return
+	}
+
+	switch previous := node.PreviousSibling().(type) {
+	case *ast.Paragraph, *ast.TextBlock:
+		lines := previous.Lines()
+		if lines.Len() == 0 {
+			return
+		}
+
+		end := lines.At(lines.Len() - 1).Stop
+		if end < len(src) && src[end-1] != '\n' {
+			if i := bytes.IndexByte(src[end:], '\n'); i >= 0 {
+				end += i + 1
+			} else {
+				return
+			}
+		}
+
+		next := src[end:]
+		if i := bytes.IndexByte(next, '\n'); i >= 0 {
+			next = next[:i]
+		}
+
+		if end < len(src) && isBlankLine(next, true) {
+			target.SetPreviousLineType(content.PreviousLineTypeBlank)
+		}
 	}
 }
 
