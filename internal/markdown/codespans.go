@@ -32,12 +32,47 @@ func (p *codeSpanSourceParser) Parse(parent ast.Node, block text.Reader, pc pars
 	result := p.InlineParser.Parse(parent, block, pc)
 	if code, ok := result.(*ast.CodeSpan); ok {
 		stopLine, stop := block.Position()
+		source := block.Source()
 		if startLine == stopLine {
-			code.SetAttributeString(codeSpanSourceAttribute, string(block.Source()[start.Start:stop.Start]))
+			code.SetAttributeString(codeSpanSourceAttribute, string(source[start.Start:stop.Start]))
+		} else if lines := blockLinesOf(parent); lines != nil && stopLine < lines.Len() {
+			// A code span over more than one line keeps its line breaks.
+			// The lines are taken without the indentation and the markers
+			// of the containers, which the writer writes again.
+			var buf []byte
+			for i := startLine; i <= stopLine; i++ {
+				line := lines.At(i)
+				from, to := line.Start, line.Stop
+				if i == startLine {
+					from = start.Start
+				}
+				if i == stopLine {
+					to = stop.Start
+				}
+				if from > to {
+					return result
+				}
+
+				buf = append(buf, source[from:to]...)
+			}
+
+			code.SetAttributeString(codeSpanSourceAttribute, string(buf))
 		}
 	}
 
 	return result
+}
+
+// blockLinesOf gets the lines of the block that holds the inline node, such
+// as the paragraph that a code span is in.
+func blockLinesOf(node ast.Node) *text.Segments {
+	for ; node != nil; node = node.Parent() {
+		if node.Type() == ast.TypeBlock {
+			return node.Lines()
+		}
+	}
+
+	return nil
 }
 
 // codeSpanParser reads only paragraphs and code spans. It is used to check
