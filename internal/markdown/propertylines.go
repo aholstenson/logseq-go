@@ -49,7 +49,30 @@ func (p *propertyLineParser) Open(parent ast.Node, reader text.Reader, pc parser
 		return nil, parser.NoChildren
 	}
 
+	// A property line after a paragraph of only property lines is a lazy
+	// line of the same group of properties, as in "- a:: b\nc:: d".
+	if onlyPropertyLines(paragraph, reader.Source()) {
+		return nil, parser.NoChildren
+	}
+
 	return p.paragraph.Open(parent, reader, pc)
+}
+
+// onlyPropertyLines checks if each line of the paragraph is a property line.
+func onlyPropertyLines(paragraph *ast.Paragraph, source []byte) bool {
+	lines := paragraph.Lines()
+	if lines.Len() == 0 {
+		return false
+	}
+
+	for i := 0; i < lines.Len(); i++ {
+		line := lines.At(i)
+		if !isPropertyLine(line.Value(source)) {
+			return false
+		}
+	}
+
+	return true
 }
 
 func (p *propertyLineParser) Continue(node ast.Node, reader text.Reader, pc parser.Context) parser.State {
