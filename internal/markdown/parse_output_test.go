@@ -132,6 +132,7 @@ var _ = Describe("Parsing then outputting", func() {
 		FullyEqual("Heading 6", "###### Heading")
 		FullyEqual("Empty heading", "##")
 		FullyEqual("Empty heading block", "- ##")
+		FullyEqual("Block whose whole text is a hash", "- #")
 	})
 
 	Describe("Heading combined with paragraph", func() {
