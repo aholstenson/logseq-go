@@ -536,6 +536,19 @@ func (p *blockListItemParser) Continue(node ast.Node, reader text.Reader, pc par
 		return p.BlockParser.Continue(node, reader, pc)
 	}
 
+	if line, _ := reader.PeekLine(); util.IsBlank(line) {
+		// Goldmark skips all of a blank line. Only the indentation of the
+		// item is skipped here, so that a line of only spaces in a code
+		// block keeps the spaces after it.
+		pos, padding := util.IndentPosition(line, reader.LineOffset(), item.Offset)
+		if pos < 0 {
+			reader.Advance(len(line) - 1)
+		} else {
+			reader.AdvanceAndSetPadding(pos, padding)
+		}
+		return parser.Continue | parser.HasChildren
+	}
+
 	if keepsLine(item, reader) {
 		line, _ := reader.PeekLine()
 		pos, padding := util.IndentPosition(line, reader.LineOffset(), item.Offset)
