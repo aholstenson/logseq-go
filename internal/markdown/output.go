@@ -3969,10 +3969,20 @@ func (w *Output) writeFrontMatter(node *content.FrontMatter) error {
 			return err
 		}
 	} else {
+		unchanged := unchangedFrontMatterLines(node.Raw)
 		for child := node.FindProperties().FirstChild(); child != nil; child = child.NextSibling() {
 			property, ok := child.(*content.Property)
 			if !ok {
 				return fmt.Errorf("unsupported properties child: %T", child)
+			}
+
+			// A property that is not changed keeps its line as it is.
+			if line, ok := unchanged.lineOf(property); ok {
+				err = w.writeRaw(line + "\n")
+				if err != nil {
+					return err
+				}
+				continue
 			}
 
 			err = w.writeRaw(property.Name + ": ")
@@ -4004,6 +4014,76 @@ func (w *Output) writeFrontMatter(node *content.FrontMatter) error {
 // frontMatterPropertiesChanged checks if the properties of front matter are
 // different from the properties in its text. Front matter without properties
 // can not be changed, as it holds YAML that Logseq does not read.
+// frontMatterLines are the lines of front matter, by the name of the
+// property on each line, with the text that the property is written as.
+type frontMatterLines map[string]frontMatterLine
+
+type frontMatterLine struct {
+	line    string
+	written string
+}
+
+// unchangedFrontMatterLines reads the lines of the text of front matter.
+func unchangedFrontMatterLines(raw string) frontMatterLines {
+	lines := frontMatterLines{}
+	defaults := defaultParseOptions()
+	for _, line := range strings.Split(strings.TrimSuffix(raw, "\n"), "\n") {
+		line = strings.TrimSuffix(line, "\r")
+		name, value, ok := strings.Cut(line, ":")
+		if !ok {
+			continue
+		}
+
+		name = strings.TrimSpace(name)
+		property, err := readFrontMatterProperty(name, strings.TrimLeft(value, " \t"), &defaults)
+		if err != nil || property == nil {
+			continue
+		}
+
+		written, ok := frontMatterValueText(property)
+		if !ok {
+			continue
+		}
+
+		lines[name] = frontMatterLine{line: line, written: written}
+	}
+
+	return lines
+}
+
+// lineOf gets the line of a property that has the same name and value as
+// when it was read.
+func (l frontMatterLines) lineOf(property *content.Property) (string, bool) {
+	line, ok := l[property.Name]
+	if !ok {
+		return "", false
+	}
+
+	written, ok := frontMatterValueText(property)
+	if !ok || written != line.written {
+		return "", false
+	}
+
+	return line.line, true
+}
+
+// frontMatterValueText gets the text that the value of a property is written
+// as, to compare two values.
+func frontMatterValueText(property *content.Property) (string, bool) {
+	var b strings.Builder
+	for child := property.FirstChild(); child != nil; child = child.NextSibling() {
+		text, err := AsString(child)
+		if err != nil {
+			return "", false
+		}
+
+		b.WriteString(text)
+		b.WriteString("\x00")
+	}
+
+	return b.String(), true
+}
+
 func frontMatterPropertiesChanged(node *content.FrontMatter) (bool, error) {
 	properties := node.FindProperties()
 	if properties == nil {
