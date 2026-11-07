@@ -434,6 +434,7 @@ var _ BlockNode = (*Blockquote)(nil)
 
 type Heading struct {
 	baseNodeWithChildren
+	previousLineAwareImpl
 
 	// Level is the level of this heading.
 	Level int

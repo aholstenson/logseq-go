@@ -1278,6 +1278,14 @@ func convertHeading(src []byte, node *ast.Heading) (*content.Heading, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	if inQuote(node) {
+		// In a quote, a heading can follow the line before it with no blank
+		// `>` line between them, as in "> # a\n> # b".
+		updatePreviousLine(src, node, heading)
+		keepBlankQuoteLineBefore(src, node, heading)
+	}
+
 	return heading, nil
 }
 
