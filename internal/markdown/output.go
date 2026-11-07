@@ -3779,7 +3779,7 @@ func (w *Output) writePropertyDrawer(node *content.Properties) error {
 		}
 
 		if property.FirstChild() != nil {
-			err = w.writeRaw(" ")
+			err = w.writeRaw(" " + property.SpaceBeforeValue)
 			if err != nil {
 				return err
 			}
@@ -3790,7 +3790,7 @@ func (w *Output) writePropertyDrawer(node *content.Properties) error {
 			}
 		}
 
-		err = w.writeRaw("\n")
+		err = w.writeRaw(property.TrailingSpace + "\n")
 		if err != nil {
 			return err
 		}
@@ -4362,11 +4362,27 @@ func (w *Output) writeLogbook(node *content.Logbook) error {
 		}
 	}
 
-	err = w.writeRaw(":END:")
+	end := ":END:"
+	if isEndLine(node.EndLine) {
+		end = node.EndLine
+	}
+
+	err = w.writeRaw(end)
 	if err != nil {
 		return err
 	}
 
 	w.endBlock()
 	return nil
+}
+
+// isEndLine checks if the line is an `:END:` line with less than four columns
+// of indentation, in any case.
+func isEndLine(line string) bool {
+	if strings.ContainsAny(line, "\r\n") {
+		return false
+	}
+
+	width, pos := util.IndentWidth([]byte(line), 0)
+	return width < 4 && strings.EqualFold(strings.TrimRight(line[pos:], " \t"), ":END:")
 }

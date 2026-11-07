@@ -68,9 +68,22 @@ func (p *propertyDrawerParser) Continue(node ast.Node, reader text.Reader, pc pa
 	}
 
 	property := &property{Name: string(line[pos+match[2] : pos+match[3]])}
+	lineEnd := len(bytes.TrimRight(line, "\r\n"))
 	if match[4] >= 0 && match[5] > match[4] {
 		start := segment.Start + pos + match[4]
 		property.Lines().Append(text.NewSegment(start, start+match[5]-match[4]))
+
+		// The spaces around the value are kept, so that the line is
+		// written back as it is. One space after the name is written
+		// anyway.
+		if space := line[pos+match[3]+1 : pos+match[4]]; len(space) > 1 && space[0] == ' ' {
+			property.SpaceBeforeValue = string(space[1:])
+		}
+		if pos+match[5] < lineEnd {
+			property.TrailingSpace = string(line[pos+match[5] : lineEnd])
+		}
+	} else if after := pos + match[3] + 1; after < lineEnd {
+		property.TrailingSpace = string(line[after:lineEnd])
 	}
 
 	node.AppendChild(node, property)

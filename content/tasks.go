@@ -1031,6 +1031,11 @@ type Logbook struct {
 	// StartLineText is the text after `:LOGBOOK:` on its line, as it is in
 	// the file, such as spaces. It is written back after `:LOGBOOK:`.
 	StartLineText string
+
+	// EndLine is the `:END:` line as it is in the file, with its indentation
+	// and the spaces after it. It is written back while it is an `:END:`
+	// line. If it is empty, `:END:` is written.
+	EndLine string
 }
 
 func NewLogbook(entries ...LogbookEntry) *Logbook {

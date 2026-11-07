@@ -1760,6 +1760,7 @@ func convertBeginEnd(src []byte, node *beginEnd) (content.Node, error) {
 func convertLogbook(src []byte, node *logbook) (content.Node, error) {
 	logbook := content.NewLogbook()
 	logbook.StartLineText = node.StartLineText
+	logbook.EndLine = node.EndLine
 	for i := 0; i < node.Lines().Len(); i++ {
 		line := node.Lines().At(i)
 		value := strings.TrimSuffix(string(line.Value(src)), "\n")

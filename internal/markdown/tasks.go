@@ -191,6 +191,10 @@ type logbook struct {
 	// line break.
 	StartLineText string
 
+	// EndLine is the `:END:` line as it is in the file, without the line
+	// break.
+	EndLine string
+
 	// indent is the position of `:LOGBOOK:` in the line that holds it, which
 	// is the indentation that is taken from the lines inside.
 	indent int
@@ -286,6 +290,7 @@ func (b *logbookParser) Continue(node ast.Node, reader text.Reader, pc parser.Co
 	// Check if the line starts with :END:
 	searchFor := []byte(":END:")
 	if bytes.HasPrefix(line[pos:], searchFor) && util.IsBlank(line[pos+len(searchFor):]) {
+		block.EndLine = strings.TrimRight(string(line), "\r\n")
 		newline := 1
 		if line[len(line)-1] != '\n' {
 			newline = 0
