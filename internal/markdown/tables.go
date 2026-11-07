@@ -66,6 +66,19 @@ func (t *tableParagraphTransformer) Transform(node *ast.Paragraph, reader text.R
 		return
 	}
 
+	// A line that starts in a tab that is split by the column of a list or
+	// a quote has padding: spaces for the part of the tab after the column.
+	// Goldmark finds the cells in the text with the padding, but uses those
+	// positions in the source, which has no padding, so the cells would get
+	// the wrong text. The space at the start of a row has no meaning in a
+	// table, so the padding is dropped.
+	for i := 0; i < lines.Len(); i++ {
+		if line := lines.At(i); line.Padding > 0 {
+			line.Padding = 0
+			lines.Set(i, line)
+		}
+	}
+
 	parent := node.Parent()
 	previous := node.PreviousSibling()
 	next := node.NextSibling()

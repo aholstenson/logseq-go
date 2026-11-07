@@ -115,7 +115,7 @@ func (f *footnoteDefinitionParser) Trigger() []byte {
 }
 
 func (f *footnoteDefinitionParser) Open(parent ast.Node, reader text.Reader, pc parser.Context) (ast.Node, parser.State) {
-	line, segment := reader.PeekLine()
+	line, _ := reader.PeekLine()
 	pos := pc.BlockOffset()
 	if pos < 0 {
 		return nil, parser.NoChildren
@@ -139,15 +139,16 @@ func (f *footnoteDefinitionParser) Open(parent ast.Node, reader text.Reader, pc 
 	}
 
 	// The content of the footnote starts after the colon, and is parsed as the
-	// children of the definition.
-	padding := segment.Padding
-	content := end + 1 - padding
+	// children of the definition. The line holds the padding of the reader,
+	// the part of a tab after the column of a container, and the reader
+	// skips the padding first when it advances.
+	content := end + 1
 	if content >= len(line) {
 		reader.Advance(content)
 		return node, parser.NoChildren
 	}
 
-	reader.AdvanceAndSetPadding(content, padding)
+	reader.Advance(content)
 	return node, parser.HasChildren
 }
 
