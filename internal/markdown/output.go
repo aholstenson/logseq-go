@@ -58,7 +58,7 @@ const lineEdgeRune = rune(-2)
 // escapeText is EscapePotentialMarkdown for a text with known characters
 // directly before and after it. Either can be unknownRune or lineEdgeRune.
 func escapeText(str string, before rune, after rune) string {
-	return escapeTextIn(str, "", before, after, false, true, nil, blockRefCanFollowRune(before))
+	return escapeTextIn(str, "", before, after, false, true, nil, blockRefCanFollowRune(before), false)
 }
 
 // blockRefCanFollowRune returns true if a block reference can start directly
@@ -76,11 +76,14 @@ func blockRefCanFollowRune(r rune) bool {
 // whether a block reference can start at the start of the text when it is
 // read back, see blockRefTextEscapes. If source is not empty, it is the text
 // as it is in the file, and its backslashes are kept, see sourceEscapes.
-func escapeTextIn(str string, source string, before rune, after rune, inFormatting bool, headings bool, outside markerOutside, refAtStart bool) string {
+func escapeTextIn(str string, source string, before rune, after rune, inFormatting bool, headings bool, outside markerOutside, refAtStart bool, inLabel bool) string {
 	escapes := map[int]bool{}
 	sourceEscapes(str, source, escapes)
 	mathEscapes(str, escapes)
 	bracketEscapes(str, escapes)
+	if inLabel {
+		labelBracketEscapes(str, escapes)
+	}
 	delimiterEscapes(str, before, after, outside, escapes)
 	markupEscapes(str, before, after, !inFormatting, headings, escapes)
 	if headings && !readsAsSource(str, source) {
@@ -1425,7 +1428,7 @@ func (w *Output) writeText(node *content.Text) error {
 		refAtStart = blockRefCanFollowRune(before)
 	}
 
-	value := escapeTextIn(node.Value, node.TextSource(), before, after, isInFormatting(node), !isInIndentedParagraph(node), outside, refAtStart)
+	value := escapeTextIn(node.Value, node.TextSource(), before, after, isInFormatting(node), !isInIndentedParagraph(node), outside, refAtStart, isInLinkLabel(node))
 	if strings.HasSuffix(value, "]") && !endsWithEscape([]byte(value)) && (after == '(' || after == '[') {
 		// The next node starts with `(` or `[`, which together with the
 		// closing bracket would be read back as a link.
@@ -1560,6 +1563,52 @@ func isInIndentedParagraph(node content.Node) bool {
 	}
 
 	return false
+}
+
+// isInLinkLabel returns true if the node is in the label of a link, an image,
+// a page link or a block reference, which is written between `[` and `]`.
+func isInLinkLabel(node content.Node) bool {
+	for p := node.Parent(); p != nil; p = p.Parent() {
+		switch p.(type) {
+		case *content.Link, *content.Image, *content.PageLink, *content.BlockRef:
+			return true
+		}
+	}
+
+	return false
+}
+
+// labelBracketEscapes finds the brackets in the text of a link label that
+// have no pair in the text. A `]` without a `[` before it would end the label,
+// and a `[` without a `]` after it would take the `]` that ends the label.
+// Brackets in pairs, as in "[a [b] c](u)", are a part of the label.
+func labelBracketEscapes(str string, escapes map[int]bool) {
+	if !strings.ContainsAny(str, "[]") {
+		return
+	}
+
+	var open []int
+	for i := 0; i < len(str); i++ {
+		if escapes[i] {
+			continue
+		}
+
+		switch str[i] {
+		case '[':
+			open = append(open, i)
+		case ']':
+			if len(open) == 0 {
+				escapes[i] = true
+				continue
+			}
+
+			open = open[:len(open)-1]
+		}
+	}
+
+	for _, i := range open {
+		escapes[i] = true
+	}
 }
 
 // isInFormatting returns true if the node is inside emphasis, strong text,
