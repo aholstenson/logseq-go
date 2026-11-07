@@ -258,7 +258,7 @@ func (b *Block) SetTaskStatus(status TaskStatus) {
 
 	if status == TaskStatusNone {
 		if existing != nil {
-			existing.RemoveSelf()
+			removeWithSpaceAfter(existing)
 		}
 		return
 	}
@@ -281,6 +281,19 @@ func (b *Block) useFirstLineForTask() {
 	}
 }
 
+// removeWithSpaceAfter removes a task marker or a priority, and the text of
+// only spaces and tabs after it, as in the extra space of "TODO  [#A]". The
+// writer writes one space after a marker or a priority, so such a text holds
+// the spaces after that one.
+func removeWithSpaceAfter(node Node) {
+	if text, ok := node.NextSibling().(*Text); ok && text.Value != "" &&
+		strings.Trim(text.Value, " \t") == "" && !text.SoftLineBreak && !text.HardLineBreak {
+		text.RemoveSelf()
+	}
+
+	node.RemoveSelf()
+}
+
 // Priority gets the priority of the task in this block, or PriorityNone if it
 // does not have one. A block can have a priority without a task marker.
 func (b *Block) Priority() Priority {
@@ -301,7 +314,7 @@ func (b *Block) SetPriority(priority Priority) {
 
 	if priority == PriorityNone {
 		if existing != nil {
-			existing.RemoveSelf()
+			removeWithSpaceAfter(existing)
 		}
 		return
 	}
