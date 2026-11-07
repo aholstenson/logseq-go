@@ -716,7 +716,79 @@ func (t *Transaction) keepUnchangedLines(page *pageImpl, data string) string {
 		return data
 	}
 
+	mergedParents, consistent := bulletParents(merged)
+	dataParents, _ := bulletParents(data)
+	if !consistent || !equalInts(mergedParents, dataParents) {
+		// The merged text mixes the indentation of the file with the tabs
+		// of the writer, and Logseq can read another outline from it.
+		return data
+	}
+
 	return merged
+}
+
+// equalInts returns true if both slices hold the same numbers in the same
+// order.
+func equalInts(a []int, b []int) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+
+	return true
+}
+
+// bulletParents gets the parent of each line with a bullet in the text, in
+// the way Logseq finds the outline of a page: the level of a bullet is one
+// more than the number of spaces and tabs before it, so that a tab counts the
+// same as one space. The parent is the index of the last bullet before it
+// with a lower level, or -1 for a top-level bullet.
+//
+// logseq-go reads indentation in columns, so a text that mixes tabs and
+// spaces can have another outline in Logseq than in logseq-go. consistent is
+// false if two bullets with the same parent have different indentation.
+func bulletParents(text string) (parents []int, consistent bool) {
+	var levels []int
+	var stack []int
+	childIndent := map[int]string{}
+	consistent = true
+	for _, line := range strings.Split(text, "\n") {
+		trimmed := strings.TrimLeft(line, " \t")
+		rest := strings.TrimSuffix(trimmed, "\r")
+		if rest != "-" && !strings.HasPrefix(rest, "- ") && !strings.HasPrefix(rest, "-\t") {
+			continue
+		}
+
+		// The stack holds the bullets that can be a parent of the next
+		// bullet, with their levels going up.
+		level := 1 + len(line) - len(trimmed)
+		for len(stack) > 0 && levels[stack[len(stack)-1]] >= level {
+			stack = stack[:len(stack)-1]
+		}
+
+		parent := -1
+		if len(stack) > 0 {
+			parent = stack[len(stack)-1]
+		}
+		stack = append(stack, len(levels))
+
+		indent := line[:len(line)-len(trimmed)]
+		if first, ok := childIndent[parent]; !ok {
+			childIndent[parent] = indent
+		} else if first != indent {
+			consistent = false
+		}
+
+		levels = append(levels, level)
+		parents = append(parents, parent)
+	}
+
+	return parents, consistent
 }
 
 func wasWritten(written []os.FileInfo, info os.FileInfo) bool {
