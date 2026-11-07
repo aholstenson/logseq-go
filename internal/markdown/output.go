@@ -74,13 +74,17 @@ func escapeTextIn(str string, before rune, after rune, inFormatting bool, headin
 	markupEscapes(str, before, !inFormatting, headings, escapes)
 	backslashEscapes(str, after, escapes)
 
+	// The bytes of the text are copied, not the decoded runes, so that bytes
+	// that are not valid UTF-8 are not changed.
 	out := strings.Builder{}
-	for i, r := range str {
+	for i := 0; i < len(str); {
+		_, size := utf8.DecodeRuneInString(str[i:])
 		if escapes[i] {
-			out.WriteRune('\\')
+			out.WriteByte('\\')
 		}
 
-		out.WriteRune(r)
+		out.WriteString(str[i : i+size])
+		i += size
 	}
 
 	return out.String()
@@ -871,15 +875,19 @@ func EscapeMacroQuotedArgument(str string) string {
 // escapeRunes puts a backslash in front of every rune the given function picks
 // out, passing it the rune before it for the cases that need that context.
 func escapeRunes(str string, f func(prev rune, r rune) bool) string {
+	// The bytes of the text are copied, not the decoded runes, so that bytes
+	// that are not valid UTF-8 are not changed.
 	out := strings.Builder{}
 	p := rune(0)
-	for _, r := range str {
+	for i := 0; i < len(str); {
+		r, size := utf8.DecodeRuneInString(str[i:])
 		if f(p, r) {
-			out.WriteRune('\\')
+			out.WriteByte('\\')
 		}
 
-		out.WriteRune(r)
+		out.WriteString(str[i : i+size])
 		p = r
+		i += size
 	}
 
 	return out.String()
