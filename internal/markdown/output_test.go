@@ -381,14 +381,14 @@ var _ = Describe("Output", func() {
 				err := writer.Write(content.NewLink("https://example.com", content.NewText("abc")).WithTitle("title"))
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(buf.String()).To(Equal("[abc](https://example.com 'title')"))
+				Expect(buf.String()).To(Equal(`[abc](https://example.com "title")`))
 			})
 
 			It("can write a link with a title that needs escaping", func() {
-				err := writer.Write(content.NewLink("https://example.com", content.NewText("abc")).WithTitle("title)"))
+				err := writer.Write(content.NewLink("https://example.com", content.NewText("abc")).WithTitle(`ti"tle`))
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(buf.String()).To(Equal("[abc](https://example.com 'title\\)')"))
+				Expect(buf.String()).To(Equal(`[abc](https://example.com "ti\"tle")`))
 			})
 
 		})
@@ -470,14 +470,14 @@ var _ = Describe("Output", func() {
 			err := writer.Write(content.NewImage("https://example.com", content.NewText("abc")).WithTitle("title"))
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(buf.String()).To(Equal("![abc](https://example.com 'title')"))
+			Expect(buf.String()).To(Equal(`![abc](https://example.com "title")`))
 		})
 
 		It("can write image with title that needs escaping", func() {
-			err := writer.Write(content.NewImage("https://example.com", content.NewText("abc")).WithTitle("title)"))
+			err := writer.Write(content.NewImage("https://example.com", content.NewText("abc")).WithTitle(`ti"tle`))
 			Expect(err).ToNot(HaveOccurred())
 
-			Expect(buf.String()).To(Equal("![abc](https://example.com 'title\\)')"))
+			Expect(buf.String()).To(Equal(`![abc](https://example.com "ti\"tle")`))
 		})
 
 		It("can write image with metadata", func() {

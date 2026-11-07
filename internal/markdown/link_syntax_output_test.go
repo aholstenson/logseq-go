@@ -76,8 +76,8 @@ var _ = Describe("Link syntax in saved blocks", func() {
 		written, err := markdown.AsString(block)
 		Expect(err).ToNot(HaveOccurred())
 
-		// Then the new URL is written, with the title in single quotes
-		Expect(written).To(Equal("- [x](http://b.com 'title')"))
+		// Then the new URL is written, with the title in double quotes
+		Expect(written).To(Equal(`- [x](http://b.com "title")`))
 	})
 
 	It("writes a link with a changed title in the default syntax", func() {
@@ -92,7 +92,7 @@ var _ = Describe("Link syntax in saved blocks", func() {
 		Expect(err).ToNot(HaveOccurred())
 
 		// Then the new title is written
-		Expect(written).To(Equal("- [x](http://a.com 'new')"))
+		Expect(written).To(Equal(`- [x](http://a.com "new")`))
 	})
 
 	It("writes a URL with spaces from the API in angle brackets", func() {

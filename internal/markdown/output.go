@@ -986,15 +986,18 @@ func mathEscapes(str string, escapes map[int]bool) {
 	}
 }
 
+// EscapeLinkURL escapes the destination of a link or an image that is
+// written without angle brackets and has balanced parentheses. Only the
+// backslashes that would be read as escapes are escaped.
 func EscapeLinkURL(str string) string {
-	return escapeRunes(str, func(prev rune, r rune) bool {
-		return r == '(' || r == ')'
-	})
+	return escapeBackslashes(str)
 }
 
+// EscapeLinkTitle escapes the title of a link or an image, which is written
+// in double quotes.
 func EscapeLinkTitle(str string) string {
-	return escapeRunes(str, func(prev rune, r rune) bool {
-		return r == '"' || r == '\'' || r == ')'
+	return escapeRunes(escapeBackslashes(str), func(prev rune, r rune) bool {
+		return r == '"'
 	})
 }
 
@@ -1970,12 +1973,12 @@ func (w *Output) writeDestination(node content.DestinationSourceAware, url strin
 	}
 
 	var err error
-	if strings.ContainsFunc(url, unicode.IsSpace) {
-		// A URL with spaces is only read as one destination in angle
-		// brackets.
-		err = w.writeRaw("<" + escapeRunes(url, func(prev rune, r rune) bool {
+	if strings.ContainsFunc(url, unicode.IsSpace) || strings.HasPrefix(url, "<") || !balancedParentheses(url) {
+		// A URL with spaces or with parentheses that are not balanced is
+		// only read as one destination in angle brackets.
+		err = w.writeRaw("<" + escapeBackslashes(escapeRunes(url, func(prev rune, r rune) bool {
 			return r == '<' || r == '>'
-		}) + ">")
+		})) + ">")
 	} else {
 		err = w.write(url, EscapeLinkURL)
 	}
@@ -1984,7 +1987,7 @@ func (w *Output) writeDestination(node content.DestinationSourceAware, url strin
 	}
 
 	if title != "" {
-		err = w.writeRaw(" '")
+		err = w.writeRaw(" \"")
 		if err != nil {
 			return err
 		}
@@ -1994,13 +1997,53 @@ func (w *Output) writeDestination(node content.DestinationSourceAware, url strin
 			return err
 		}
 
-		err = w.writeRaw("'")
+		err = w.writeRaw("\"")
 		if err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+// balancedParentheses returns true if each `(` in the text has a `)` after
+// it, and each `)` closes a `(` before it. A link destination with balanced
+// parentheses is read as one destination without escapes.
+func balancedParentheses(str string) bool {
+	depth := 0
+	for i := 0; i < len(str); i++ {
+		switch str[i] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth < 0 {
+				return false
+			}
+		}
+	}
+
+	return depth == 0
+}
+
+// escapeBackslashes escapes each backslash in the text that comes before
+// ASCII punctuation or at the end, which would otherwise be read back as an
+// escape. Other backslashes are read as they are.
+func escapeBackslashes(str string) string {
+	if !strings.Contains(str, "\\") {
+		return str
+	}
+
+	out := strings.Builder{}
+	for i := 0; i < len(str); i++ {
+		if str[i] == '\\' && (i+1 == len(str) || util.IsPunct(str[i+1])) {
+			out.WriteByte('\\')
+		}
+
+		out.WriteByte(str[i])
+	}
+
+	return out.String()
 }
 
 func (w *Output) writeAutoLink(node *content.AutoLink) error {
