@@ -1855,7 +1855,7 @@ func convertDrawer(src []byte, node *drawer) (content.Node, error) {
 		result.EndLine = node.EndLine
 	}
 
-	updatePreviousLine(src, node, result)
+	updatePreviousLineKeepingBlank(src, node, result)
 	return result, nil
 }
 
