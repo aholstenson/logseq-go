@@ -1,6 +1,7 @@
 package markdown
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 
@@ -49,6 +50,18 @@ const codeFenceAttribute = "logseq-code-fence"
 // after the opening fence of a code block, as it is in the file.
 const codeInfoSourceAttribute = "logseq-code-info"
 
+// codeIndentationAttribute is the name of the attribute that holds the spaces
+// before the opening fence of a code block.
+const codeIndentationAttribute = "logseq-code-indentation"
+
+// codeSourceAttribute is the name of the attribute that holds the lines of the
+// code of a code block as they are in the file, in a *bytes.Buffer.
+var codeSourceAttribute = []byte("logseq-code-source")
+
+// closingFenceAttribute is the name of the attribute that holds the line of
+// the closing fence of a code block as it is in the file.
+const closingFenceAttribute = "logseq-closing-fence"
+
 func (p *fencedCodeBlockParser) Open(parent ast.Node, reader text.Reader, pc parser.Context) (ast.Node, parser.State) {
 	line, _ := reader.PeekLine()
 	pos := pc.BlockOffset()
@@ -88,6 +101,8 @@ func (p *fencedCodeBlockParser) Open(parent ast.Node, reader text.Reader, pc par
 	}
 	info := strings.TrimRight(string(line[pos+length:]), "\r\n")
 	node.SetAttributeString(codeInfoSourceAttribute, info)
+	node.SetAttributeString(codeIndentationAttribute, string(line[:pos]))
+	node.SetAttribute(codeSourceAttribute, &bytes.Buffer{})
 
 	return node, state
 }
@@ -96,12 +111,21 @@ func (p *fencedCodeBlockParser) Continue(node ast.Node, reader text.Reader, pc p
 	if fence, ok := pc.Get(openFenceKey).(*openFence); ok && fence.node == node {
 		line, segment := reader.PeekLine()
 		if closesFence(line, fence) {
+			node.SetAttributeString(closingFenceAttribute, strings.TrimRight(string(line), "\r\n"))
 			newline := 0
 			if len(line) > 0 && line[len(line)-1] == '\n' {
 				newline = 1
 			}
 			reader.Advance(segment.Stop - segment.Start - newline + segment.Padding)
 			return parser.Close
+		}
+
+		// The line is kept as it is, before Goldmark removes the spaces of
+		// the indentation of the fence from it.
+		if value, ok := node.Attribute(codeSourceAttribute); ok {
+			if buf, ok := value.(*bytes.Buffer); ok {
+				buf.Write(line)
+			}
 		}
 	}
 

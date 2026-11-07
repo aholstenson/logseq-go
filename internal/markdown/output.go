@@ -2961,14 +2961,53 @@ func (w *Output) writeBlockquote(node *content.Blockquote) error {
 	return nil
 }
 
+// removeCodeIndentation removes up to the given number of spaces from the
+// start of each line of code, as the reader does for the indentation of the
+// opening fence.
+func removeCodeIndentation(code string, spaces int) string {
+	if spaces == 0 {
+		return code
+	}
+
+	lines := strings.SplitAfter(code, "\n")
+	for i, line := range lines {
+		n := 0
+		for n < spaces && n < len(line) && line[n] == ' ' {
+			n++
+		}
+
+		lines[i] = line[n:]
+	}
+
+	return strings.Join(lines, "")
+}
+
+// indentCodeLines puts the indentation of the opening fence before each line
+// of code that is not empty, so that the reader removes it again.
+func indentCodeLines(code string, indentation string) string {
+	lines := strings.SplitAfter(code, "\n")
+	for i, line := range lines {
+		if strings.TrimRight(line, "\r\n") != "" {
+			lines[i] = indentation + line
+		}
+	}
+
+	return strings.Join(lines, "")
+}
+
 func (w *Output) writeCodeBlock(node *content.CodeBlock) error {
 	err := w.startBlock(node, "")
 	if err != nil {
 		return err
 	}
 
+	indentation := node.Indentation
+	if width, _ := util.IndentWidth([]byte(indentation), 0); width >= 4 || strings.Trim(indentation, " ") != "" {
+		indentation = ""
+	}
+
 	fence := codeBlockFence(node.Code, node.Fence)
-	err = w.writeRaw(fence)
+	err = w.writeRaw(indentation + fence)
 	if err != nil {
 		return err
 	}
@@ -2983,20 +3022,34 @@ func (w *Output) writeCodeBlock(node *content.CodeBlock) error {
 		return err
 	}
 
-	err = w.writeRaw(node.Code)
+	code := node.Code
+	if source := node.CodeSource(); source != "" && removeCodeIndentation(source, len(indentation)) == node.Code {
+		// The lines as they are in the file, as some of them can have less
+		// indentation than the fence.
+		code = source
+	} else if indentation != "" {
+		code = indentCodeLines(code, indentation)
+	}
+
+	err = w.writeRaw(code)
 	if err != nil {
 		return err
 	}
 
 	// If the code does not end with a blank line, we add a newline
-	if !strings.HasSuffix(node.Code, "\n") {
+	if !strings.HasSuffix(code, "\n") {
 		err = w.writeRaw("\n")
 		if err != nil {
 			return err
 		}
 	}
 
-	err = w.writeRaw(fence)
+	closing := indentation + fence
+	if source := node.ClosingFenceSource(); source != "" && closesFence([]byte(source), &openFence{char: fence[0], length: len(fence)}) {
+		closing = source
+	}
+
+	err = w.writeRaw(closing)
 	if err != nil {
 		return err
 	}

@@ -21,8 +21,22 @@ type CodeBlock struct {
 	// Code is the raw value of the code block.
 	Code string
 
+	// Indentation is the spaces before the opening fence, after the
+	// indentation of the block or quote that holds the code block, such as
+	// the one space of " ```". A reader removes as many spaces from each
+	// line of the code, so the lines of the code are written with it too.
+	Indentation string
+
 	// infoSource is the text after the opening fence as it is in the file.
 	infoSource string
+
+	// codeSource is the lines of the code as they are in the file, see
+	// CodeSource.
+	codeSource string
+
+	// closingFenceSource is the line of the closing fence as it is in the
+	// file, see ClosingFenceSource.
+	closingFenceSource string
 }
 
 func NewCodeBlock(code string) *CodeBlock {
@@ -61,6 +75,35 @@ func (c *CodeBlock) InfoSource() string {
 // SetInfoSource sets the text after the opening fence. See InfoSource.
 func (c *CodeBlock) SetInfoSource(source string) {
 	c.infoSource = source
+}
+
+// CodeSource gets the lines of the code as they are in the file, with the
+// spaces at their start that the reader removes, see Indentation. It is
+// empty for a code block that was not read from a file. The lines are
+// written back when they still give the same Code, so that a line with less
+// indentation than the fence keeps it.
+func (c *CodeBlock) CodeSource() string {
+	return c.codeSource
+}
+
+// SetCodeSource sets the lines of the code as they are in the file. See
+// CodeSource.
+func (c *CodeBlock) SetCodeSource(source string) {
+	c.codeSource = source
+}
+
+// ClosingFenceSource gets the line of the closing fence as it is in the
+// file, with its indentation and the spaces after it, such as "  ````  ".
+// It is empty for a code block that was not read from a file. It is written
+// back when it still closes the fence that is written.
+func (c *CodeBlock) ClosingFenceSource() string {
+	return c.closingFenceSource
+}
+
+// SetClosingFenceSource sets the line of the closing fence as it is in the
+// file. See ClosingFenceSource.
+func (c *CodeBlock) SetClosingFenceSource(source string) {
+	c.closingFenceSource = source
 }
 
 // WithCode sets the code of the code block.

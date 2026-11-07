@@ -1357,6 +1357,17 @@ func convertFencedCodeBlock(src []byte, node *ast.FencedCodeBlock) (*content.Cod
 	if source, ok := node.AttributeString(codeInfoSourceAttribute); ok {
 		code.SetInfoSource(source.(string))
 	}
+	if indentation, ok := node.AttributeString(codeIndentationAttribute); ok {
+		code.Indentation = indentation.(string)
+	}
+	if value, ok := node.Attribute(codeSourceAttribute); ok {
+		if buf, ok := value.(*bytes.Buffer); ok {
+			code.SetCodeSource(buf.String())
+		}
+	}
+	if closing, ok := node.AttributeString(closingFenceAttribute); ok {
+		code.SetClosingFenceSource(closing.(string))
+	}
 
 	updatePreviousLine(node, code)
 
