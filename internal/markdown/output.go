@@ -1432,21 +1432,31 @@ func (w *Output) writePageRefText(node *content.PageRefText) error {
 }
 
 func (w *Output) writeText(node *content.Text) error {
+	// The texts next to each other on a line are written as one text, so
+	// that markup that would start in one and end in another is escaped,
+	// as in "[[a" and "]]".
+	first := node
+	value, source := node.Value, node.TextSource()
+	if !w.isolated {
+		if prev, ok := node.PreviousSibling().(*content.Text); ok && !prev.SoftLineBreak && !prev.HardLineBreak {
+			// The text was written with the text before it.
+			return nil
+		}
+
+		node, value, source = textRun(node)
+	}
+
 	before, after := unknownRune, unknownRune
 	var outside markerOutside
 	if !w.isolated {
-		before, after = w.textSurroundings(node, node.SoftLineBreak || node.HardLineBreak)
-		outside = w.markerOutsideOf(node)
+		before, _ = w.textSurroundings(first, first.SoftLineBreak || first.HardLineBreak)
+		_, after = w.textSurroundings(node, node.SoftLineBreak || node.HardLineBreak)
+		outside = joinMarkerOutside(w.markerOutsideOf(first), w.markerOutsideOf(node))
 	}
 
-	// A block reference can start at the start of the text, unless text that
+	// A block reference can start at the start of the run, as no text that
 	// it would continue comes before it.
-	refAtStart := true
-	if prev, ok := node.PreviousSibling().(*content.Text); ok && !prev.SoftLineBreak && !prev.HardLineBreak {
-		refAtStart = blockRefCanFollowRune(before)
-	}
-
-	value := escapeTextIn(node.Value, node.TextSource(), before, after, isInFormatting(node), !isInIndentedParagraph(node), outside, refAtStart, isInLinkLabel(node))
+	value = escapeTextIn(value, source, before, after, isInFormatting(node), !isInIndentedParagraph(node), outside, true, isInLinkLabel(node))
 	if strings.HasSuffix(value, "]") && !endsWithEscape([]byte(value)) && (after == '(' || after == '[') {
 		// The next node starts with `(` or `[`, which together with the
 		// closing bracket would be read back as a link.
@@ -1466,7 +1476,7 @@ func (w *Output) writeText(node *content.Text) error {
 		value = value[:len(value)-1] + `\` + value[len(value)-1:]
 	}
 
-	if image, ok := node.PreviousSibling().(*content.Image); ok && image.Metadata == "" &&
+	if image, ok := first.PreviousSibling().(*content.Image); ok && image.Metadata == "" &&
 		imageMetadataLength([]byte(value)) > 0 {
 		// The `{` directly after an image without metadata would be read
 		// back as the metadata of the image.
@@ -1556,6 +1566,50 @@ func (w *Output) writeText(node *content.Text) error {
 	}
 
 	return nil
+}
+
+// textRun gets the last text of the run of texts that starts with the text,
+// where no text but the last has a line break, and the value of the run. The
+// source of the run is the sources of its texts when they all have one, see
+// content.Text.TextSource.
+func textRun(first *content.Text) (*content.Text, string, string) {
+	last := first
+	value := first.Value
+	source := first.TextSource()
+	for !last.SoftLineBreak && !last.HardLineBreak {
+		next, ok := last.NextSibling().(*content.Text)
+		if !ok {
+			break
+		}
+
+		last = next
+		value += next.Value
+		if source != "" && next.TextSource() != "" {
+			source += next.TextSource()
+		} else {
+			source = ""
+		}
+	}
+
+	return last, value, source
+}
+
+// joinMarkerOutside gets the markerOutside of a run of texts, from the
+// markerOutside of its first text for the nodes before it, and of its last
+// text for the nodes after it.
+func joinMarkerOutside(first markerOutside, last markerOutside) markerOutside {
+	if first == nil && last == nil {
+		return nil
+	}
+
+	return func(c byte, after bool) bool {
+		outside := first
+		if after {
+			outside = last
+		}
+
+		return outside == nil || outside(c, after)
+	}
 }
 
 // endsLineOfContainer returns true if the text is the last node of a
