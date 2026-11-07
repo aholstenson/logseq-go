@@ -1449,6 +1449,7 @@ func (w *Output) writeText(node *content.Text) error {
 		value = `\` + value
 	}
 
+	lineBreak := (node.SoftLineBreak || node.HardLineBreak) && !endsLineOfContainer(node)
 	if node.SoftLineBreak && strings.HasSuffix(value, "  ") {
 		// Two spaces before a soft line break would make it a hard line
 		// break. The reader drops the spaces at the end of a line anyway.
@@ -1458,6 +1459,14 @@ func (w *Output) writeText(node *content.Text) error {
 	err := w.writeRaw(value)
 	if err != nil {
 		return err
+	}
+
+	if !lineBreak {
+		// No line follows the last text of a paragraph, a heading or the
+		// value of a property, such as after the text after the break was
+		// removed. A break there would be written as an empty line, or as
+		// a backslash that is read back as text.
+		return nil
 	}
 
 	if node.SoftLineBreak {
@@ -1518,6 +1527,22 @@ func (w *Output) writeText(node *content.Text) error {
 	}
 
 	return nil
+}
+
+// endsLineOfContainer returns true if the text is the last node of a
+// paragraph, a heading or the value of a property, so that a line break after
+// it has no line to go to.
+func endsLineOfContainer(node *content.Text) bool {
+	if node.NextSibling() != nil {
+		return false
+	}
+
+	switch node.Parent().(type) {
+	case *content.Paragraph, *content.Heading, *content.Property:
+		return true
+	}
+
+	return false
 }
 
 // isInIndentedParagraph returns true if the node is in a paragraph that is
