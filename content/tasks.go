@@ -269,6 +269,16 @@ func (b *Block) SetTaskStatus(status TaskStatus) {
 	}
 
 	b.ensureTaskParagraph().PrependChild(NewTaskMarker(status))
+	b.useFirstLineForTask()
+}
+
+// useFirstLineForTask makes the content of the block start on the line of
+// its bullet, as Logseq reads a task marker or a priority only there. A block
+// read from "-\n  a" has an empty line of its bullet, see WithEmptyFirstLine.
+func (b *Block) useFirstLineForTask() {
+	if b.HasEmptyFirstLine() {
+		b.WithEmptyFirstLine(false, "")
+	}
 }
 
 // Priority gets the priority of the task in this block, or PriorityNone if it
@@ -303,6 +313,7 @@ func (b *Block) SetPriority(priority Priority) {
 
 	node := NewTaskPriority(priority)
 	paragraph := b.ensureTaskParagraph()
+	b.useFirstLineForTask()
 	if marker, ok := paragraph.FirstChild().(*TaskMarker); ok {
 		paragraph.InsertChildAfter(node, marker)
 		return
