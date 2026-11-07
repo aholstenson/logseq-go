@@ -557,6 +557,21 @@ func (t *taskDatePositions) Transform(node *ast.Document, reader text.Reader, pc
 	})
 
 	for _, date := range ignored {
+		// The paragraph parser records the indentation of the first line of
+		// a paragraph, see paragraphParser.Open, so the same is done for the
+		// line of the date.
+		source := reader.Source()
+		lineStart := bytes.LastIndexByte(source[:date.Segment.Start], '\n') + 1
+		indentation := date.indentation
+		if item, ok := blockItemOf(date.Parent()); ok {
+			if value, _, ok := blockLineIndentation(source, item, lineStart); ok {
+				indentation = value
+			}
+		}
+		if indentation != "" {
+			addLineIndentation(pc, lineStart, indentation)
+		}
+
 		paragraph := ast.NewParagraph()
 		paragraph.Lines().Append(date.Segment)
 		paragraph.Lines().AppendAll(date.Lines().Sliced(0, date.Lines().Len()))
