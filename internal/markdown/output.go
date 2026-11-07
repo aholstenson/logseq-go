@@ -735,9 +735,20 @@ func bracketEscapes(str string, escapes map[int]bool) {
 	}
 
 	ends := &pageLinkEnds{str: str, escapes: escapes}
+
+	// openers is the number of `[` that are not escaped before the position,
+	// and escapedOpeners the number of escaped ones. A `]` can only end the
+	// text of a link that a `[` that is not escaped opens.
+	openers, escapedOpeners := 0, 0
 	for i := 0; i < len(str); i++ {
 		switch str[i] {
 		case '[':
+			if escapes[i] {
+				escapedOpeners++
+				continue
+			}
+
+			openers++
 			if i+1 >= len(str) {
 				continue
 			}
@@ -760,7 +771,9 @@ func bracketEscapes(str string, escapes map[int]bool) {
 
 			// Logseq has no reference links or link reference definitions,
 			// so only a `]` that ends the text of an inline link is escaped.
-			if str[i+1] == '(' && closesLink(str[i+1:]) {
+			// When only escaped `[` come before it, nothing opens the link,
+			// unless the `[` is in a node before the text.
+			if str[i+1] == '(' && closesLink(str[i+1:]) && (openers > 0 || escapedOpeners == 0) {
 				escapes[i] = true
 			}
 		}
@@ -968,7 +981,8 @@ func mathEscapes(str string, escapes map[int]bool) {
 	src := []byte(str)
 	scanner := newMathScanner(src)
 	for i := 0; i < len(src); {
-		if src[i] != '$' {
+		if src[i] != '$' || escapes[i] {
+			// An escaped `$`, as kept from the file, does not open math.
 			i++
 			continue
 		}
