@@ -3354,13 +3354,20 @@ func (w *Output) writeCodeBlock(node *content.CodeBlock) error {
 		indentation = ""
 	}
 
+	info := codeBlockInfo(node)
 	fence := codeBlockFence(node.Code, node.Fence)
+	if fence[0] == '`' && strings.Contains(info, "`") {
+		// The text after a fence of backticks can not have a backtick, so
+		// a fence of tildes is used.
+		fence = codeBlockFence(node.Code, "~~~")
+	}
+
 	err = w.writeRaw(indentation + fence)
 	if err != nil {
 		return err
 	}
 
-	err = w.writeRaw(codeBlockInfo(node))
+	err = w.writeRaw(info)
 	if err != nil {
 		return err
 	}
