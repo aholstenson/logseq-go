@@ -1335,6 +1335,7 @@ func convertProperties(src []byte, node *properties) (*content.Properties, error
 			WithPageRefsIgnored(p.PageRefsIgnored).
 			WithQuoted(p.Quoted).
 			WithDirective(p.Directive).
+			WithInvalidName(p.InvalidName).
 			WithSpaceBeforeValue(p.SpaceBeforeValue).
 			WithTrailingSpace(p.TrailingSpace).
 			WithNoSpaceAfterSeparator(p.NoSpaceAfterSeparator)

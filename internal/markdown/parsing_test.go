@@ -2555,12 +2555,21 @@ var _ = Describe("Parsing", func() {
 				Entry("a namespace", "ns/name"),
 			)
 
-			DescribeTable("keeps names that Logseq does not allow as text",
+			DescribeTable("drops names that Logseq does not allow",
 				func(name string) {
-					block, err := markdown.ParseString(name + ":: value")
+					input := name + ":: [[value]]"
+					block, err := markdown.ParseString(input)
 					Expect(err).ToNot(HaveOccurred())
 
-					Expect(block.FindProperties()).To(BeNil())
+					// Then the line is not a property, and its value refers
+					// to no page
+					if properties := block.FindProperties(); properties != nil {
+						Expect(properties.Get(name)).To(BeEmpty())
+					}
+					Expect(block.Children().PageReferences()).To(BeEmpty())
+
+					// And the text does not change on save
+					Expect(parseAndOutput(input)).To(Equal(input))
 				},
 				Entry("a # as the first character", "#tag"),
 				Entry("a comma", "a,b"),
@@ -2579,8 +2588,91 @@ var _ = Describe("Parsing", func() {
 				Entry("a slash last", "a/"),
 				Entry("two slashes", "a/b/c"),
 				Entry("a digit after the slash", "a/1"),
-				Entry("a colon", "a:b"),
 			)
+
+			It("keeps a line with a colon in the name as text", func() {
+				// Given a name with a colon, which mldoc does not read as a name
+				block, err := markdown.ParseString("a:b:: value")
+				Expect(err).ToNot(HaveOccurred())
+
+				// Then the line is not a property line
+				Expect(block.FindProperties()).To(BeNil())
+			})
+
+			Describe("Property lines with a name that Logseq rejects", func() {
+				// refTargets parses the input and returns the targets of all
+				// page references in the first block.
+				refTargets := func(input string) []string {
+					root, err := markdown.ParseString(input)
+					Expect(err).ToNot(HaveOccurred())
+					Expect(root.Blocks()).ToNot(BeEmpty())
+
+					targets := make([]string, 0)
+					for _, ref := range root.Blocks()[0].Children().PageReferences() {
+						targets = append(targets, ref.(content.PageRef).GetTo())
+					}
+					return targets
+				}
+
+				It("keeps the properties after a line with an invalid name in the same group", func() {
+					// Given a property line with an invalid name between two valid ones
+					input := "- a\n  b:: c\n  #d:: e\n  f:: g"
+
+					root, err := markdown.ParseString(input)
+					Expect(err).ToNot(HaveOccurred())
+
+					// Then the block has the properties b and f, the same as Logseq
+					properties := root.Blocks()[0].FindProperties()
+					Expect(properties).ToNot(BeNil())
+					Expect(properties.Get("b")).ToNot(BeEmpty())
+					Expect(properties.Get("f")).ToNot(BeEmpty())
+
+					// And the invalid line makes no tag
+					Expect(refTargets(input)).ToNot(ContainElement("d"))
+
+					// And the text does not change on save
+					Expect(parseAndOutput(input)).To(Equal(input))
+				})
+
+				It("makes no reference from the value of a property line with an invalid name", func() {
+					// Given a property line whose name has a parenthesis
+					// Then Logseq drops the entry and its references
+					Expect(refTargets("- a\n  b(x:: [[e]]")).To(BeEmpty())
+				})
+
+				It("still makes references from the valid properties around it", func() {
+					// Given an invalid line between properties with links
+					// Then only the valid properties ref their pages
+					Expect(refTargets("- a\n  b:: [[c]]\n  a~b:: [[z]] #t\n  f:: [[g]]")).To(ConsistOf("c", "g"))
+				})
+
+				It("reads a line that starts with a page link as a line with an invalid name", func() {
+					// Given a property line whose name is a page link
+					input := "- a\n  [[b]]:: c\n  f:: g"
+
+					// Then the link is not a reference, and f is a property
+					Expect(refTargets(input)).To(BeEmpty())
+
+					root, err := markdown.ParseString(input)
+					Expect(err).ToNot(HaveOccurred())
+					Expect(root.Blocks()[0].FindProperties().Get("f")).ToNot(BeEmpty())
+					Expect(parseAndOutput(input)).To(Equal(input))
+				})
+
+				It("reads a group with only invalid names as the first group", func() {
+					// Given an invalid property line, a line that is not a
+					// property, and then a valid property
+					input := "- x\n  ns/1x:: a\n  ns/1x::\"q\"\n  collapsed:: y"
+
+					root, err := markdown.ParseString(input)
+					Expect(err).ToNot(HaveOccurred())
+
+					// Then collapsed is in the second group, which Logseq does
+					// not read
+					Expect(root.Blocks()[0].FindProperties().Get("collapsed")).To(BeEmpty())
+					Expect(parseAndOutput(input)).To(Equal(input))
+				})
+			})
 
 			It("can parse property with a value of several words", func() {
 				block, err := markdown.ParseString("key:: a longer value")

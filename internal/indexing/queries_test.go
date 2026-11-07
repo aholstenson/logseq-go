@@ -456,6 +456,23 @@ var _ = Describe("Queries", func() {
 			Expect(searchPages(idx, indexing.HasProperty("status"))).To(HaveLen(1))
 			Expect(searchPages(idx, indexing.HasProperty("STATUS"))).To(HaveLen(1))
 		})
+
+		It("does not match a property with a name that Logseq does not keep", func() {
+			// Given a block with a property line whose name has a parenthesis
+			indexPage(idx, "pages/a.md", "Page A",
+				content.NewBlock(
+					content.NewParagraph(content.NewText("content")),
+					content.NewProperties(
+						content.NewProperty("a(b", content.NewText("c")).WithInvalidName(true),
+						content.NewProperty("status", content.NewText("done")),
+					),
+				),
+			)
+
+			// Then only the valid property is indexed
+			Expect(searchBlocks(idx, indexing.HasProperty("a(b"))).To(BeEmpty())
+			Expect(searchBlocks(idx, indexing.HasProperty("status"))).To(HaveLen(1))
+		})
 	})
 
 	Describe("Page properties", func() {

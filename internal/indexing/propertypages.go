@@ -47,7 +47,7 @@ func (p propertyPages) titlesOf(properties *content.Properties) []string {
 	titles := make([]string, 0)
 	for _, node := range properties.Children() {
 		property, ok := node.(*content.Property)
-		if !ok || utils.IsBuiltInProperty(property.Name) {
+		if !ok || property.InvalidName || utils.IsBuiltInProperty(property.Name) {
 			continue
 		}
 

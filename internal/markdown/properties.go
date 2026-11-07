@@ -16,11 +16,23 @@ import (
 // starts.
 //
 // Logseq finds a property in two steps, and both are done here. First its
-// parser, mldoc, takes the name to be all the text up to `::` that is not a
-// colon, a space or a line break. Then Logseq keeps the property only if its
-// name is a valid property name, see validPropertyName. A line with a name that
-// is not valid is kept as text.
+// parser, mldoc, finds the name, see findPropertyKey. Then Logseq keeps the
+// property only if its name is a valid property name, see validPropertyName.
 func findPropertyName(line string) (name string, end int, ok bool) {
+	name, end, ok = findPropertyKey(line)
+	if !ok || !validPropertyName(name) {
+		return "", 0, false
+	}
+
+	return name, end, true
+}
+
+// findPropertyKey finds the name of a property at the start of a line in the
+// same way as mldoc, the parser of Logseq: the name is all the text up to
+// `::` that is not a colon, a space or a line break. The name is not checked,
+// so it can be a name that Logseq does not keep, such as `#tag` or `a(b`.
+// It returns the name and where the text after the `::` starts.
+func findPropertyKey(line string) (name string, end int, ok bool) {
 	for i := 0; i < len(line); i++ {
 		switch line[i] {
 		case ':':
@@ -28,12 +40,7 @@ func findPropertyName(line string) (name string, end int, ok bool) {
 				return "", 0, false
 			}
 
-			name = line[:i]
-			if !validPropertyName(name) {
-				return "", 0, false
-			}
-
-			return name, i + 2, true
+			return line[:i], i + 2, true
 		case ' ', '\t', '\r', '\n', '\f', '\x1a':
 			return "", 0, false
 		}
@@ -112,6 +119,10 @@ type property struct {
 
 	// Directive is whether the property is written as `#+name: value`.
 	Directive bool
+
+	// InvalidName is whether Logseq does not keep the property, as its name
+	// is not a valid property name, see validPropertyName.
+	InvalidName bool
 
 	// SpaceBeforeValue is the spaces and tabs between the separator and the
 	// value that are not part of the value. See skipSpaceBeforeValue.
@@ -389,6 +400,13 @@ func (t *propertiesASTTransformer) transformTextBlockOrParagraph(node ast.Node, 
 	var currentProperties *properties
 	var currentProperty *property
 
+	// The lines of the paragraph are kept, as the paragraph can be split, and
+	// they are needed to find where a line starts that does not start with
+	// text. lineBreakAt is where the text of the line before ends, or -1 on
+	// the first line.
+	lines := node.Lines()
+	lineBreakAt := -1
+
 	var next ast.Node
 	for child := node.FirstChild(); child != nil; child = next {
 		next = child.NextSibling()
@@ -414,10 +432,11 @@ func (t *propertiesASTTransformer) transformTextBlockOrParagraph(node ast.Node, 
 				textNode.SetSoftLineBreak(false)
 
 				wasPreviousLinebreak = true
+				lineBreakAt = textNode.Segment.Stop
 			}
 		} else {
 			textNode, isText := child.(*ast.Text)
-			if !isText {
+			if !isText && !wasPreviousLinebreak {
 				node = maybeSplitParagraph(node, currentProperties, child)
 
 				currentProperties = nil
@@ -428,28 +447,44 @@ func (t *propertiesASTTransformer) transformTextBlockOrParagraph(node ast.Node, 
 			if wasPreviousLinebreak {
 				// Potentially a new property. The name is found in the source
 				// of the line, as Goldmark can split the name into several
-				// nodes, such as at an underscore.
-				name, valueStart, ok := findPropertyAt(reader.Source(), textNode.Segment.Start)
+				// nodes, such as at an underscore, or start the line with a
+				// node that is not text, such as the tag in `#tag:: x`.
+				lineStart := -1
+				if isText {
+					lineStart = textNode.Segment.Start
+				} else if start, found := lineStartAfter(lines, reader.Source(), lineBreakAt); found {
+					lineStart = start
+				}
+
+				name, valueStart, ok := "", 0, false
+				if lineStart >= 0 {
+					name, valueStart, ok = findPropertyAt(reader.Source(), lineStart)
+				}
+
 				directive := false
-				if !ok && (currentProperties != nil || atPageStart(node)) {
+				if !ok && isText && (currentProperties != nil || atPageStart(node)) {
 					// A directive is a property before the first bullet of
 					// a page, and in a group of properties.
-					name, valueStart, ok = findDirectiveAt(reader.Source(), textNode.Segment.Start)
+					name, valueStart, ok = findDirectiveAt(reader.Source(), lineStart)
 					directive = ok
 				}
 
 				var rest ast.Node
 				var spaceBeforeValue string
 				if ok {
+					nameEnd := lineStart + len(name)
 					valueStart, spaceBeforeValue = skipSpaceBeforeValue(reader.Source(), valueStart)
-					rest, ok = nodeAfterName(textNode, valueStart)
+					rest, ok = nodeAfterName(child, lineStart, nameEnd, valueStart)
 				}
 
 				if !ok {
 					// Not a property
 					node = maybeSplitParagraph(node, currentProperties, child)
 					currentProperties = nil
-					wasPreviousLinebreak = textNode.HardLineBreak() || textNode.SoftLineBreak()
+					wasPreviousLinebreak = isText && (textNode.HardLineBreak() || textNode.SoftLineBreak())
+					if wasPreviousLinebreak {
+						lineBreakAt = textNode.Segment.Stop
+					}
 					continue
 				}
 
@@ -476,9 +511,10 @@ func (t *propertiesASTTransformer) transformTextBlockOrParagraph(node ast.Node, 
 				currentProperty = &property{}
 				currentProperty.Name = name
 				currentProperty.Directive = directive
+				currentProperty.InvalidName = !directive && !validPropertyName(name)
 				currentProperty.SpaceBeforeValue = spaceBeforeValue
 				currentProperty.TrailingSpace, currentProperty.NoSpaceAfterSeparator =
-					propertyLineSpace(reader.Source(), textNode.Segment.Start, directive)
+					propertyLineSpace(reader.Source(), lineStart, directive)
 
 				currentProperties.AppendChild(currentProperties, currentProperty)
 
@@ -495,6 +531,7 @@ func (t *propertiesASTTransformer) transformTextBlockOrParagraph(node ast.Node, 
 					following := nameNode.NextSibling()
 					if nameText, ok := nameNode.(*ast.Text); ok && (nameText.HardLineBreak() || nameText.SoftLineBreak()) {
 						lineEnded = true
+						lineBreakAt = nameText.Segment.Stop
 					}
 
 					node.RemoveChild(node, nameNode)
@@ -517,6 +554,9 @@ func (t *propertiesASTTransformer) transformTextBlockOrParagraph(node ast.Node, 
 				}
 			} else {
 				wasPreviousLinebreak = textNode.HardLineBreak() || textNode.SoftLineBreak()
+				if wasPreviousLinebreak {
+					lineBreakAt = textNode.Segment.Stop
+				}
 			}
 		}
 	}
@@ -533,6 +573,9 @@ func (t *propertiesASTTransformer) transformTextBlockOrParagraph(node ast.Node, 
 //
 // The name is followed by `::` and a space, after which the value starts. If
 // nothing follows the `::` on the line the property has an empty value.
+//
+// The name is found in the same way as mldoc, see findPropertyKey, so it can
+// be a name that Logseq does not keep. Use validPropertyName to check it.
 func findPropertyAt(source []byte, start int) (name string, valueStart int, ok bool) {
 	line := source[start:]
 	if i := bytes.IndexByte(line, '\n'); i >= 0 {
@@ -540,7 +583,7 @@ func findPropertyAt(source []byte, start int) (name string, valueStart int, ok b
 	}
 	line = bytes.TrimSuffix(line, []byte("\r"))
 
-	name, end, ok := findPropertyName(string(line))
+	name, end, ok := findPropertyKey(string(line))
 	if !ok {
 		return "", 0, false
 	}
@@ -617,23 +660,32 @@ func skipSpaceBeforeValue(source []byte, valueStart int) (int, string) {
 }
 
 // nodeAfterName finds the first node that holds a part of the value of a
-// property, when the name of the property starts with the given node and the
-// value starts at the given offset into the source. It returns nil if the
-// value is empty, or if the line ends before the value.
+// property, when the name of the property starts with the given node. The
+// line starts at lineStart, the name ends at nameEnd, and the value starts at
+// valueStart, which are offsets into the source. It returns nil if the value
+// is empty, or if the line ends before the value.
+//
+// A node such as a tag or a link to a page has no text of its own. Such a
+// node is a part of the name if the node after it starts before the end of
+// the name, as with the tag in `#tag:: x`.
 //
 // It is not possible to take the name out when a node that is not text holds
 // both a part of the name and a part of the value, such as emphasis that
 // starts in the name, so then ok is false.
-func nodeAfterName(first *ast.Text, valueStart int) (rest ast.Node, ok bool) {
+func nodeAfterName(first ast.Node, lineStart int, nameEnd int, valueStart int) (rest ast.Node, ok bool) {
 	// covered is where the text of the nodes before this one ends.
-	covered := first.Segment.Start
-	for n := ast.Node(first); n != nil; n = n.NextSibling() {
+	covered := lineStart
+	for n := first; n != nil; n = n.NextSibling() {
 		start, stop, ok := nodeRange(n)
 		if !ok {
-			// A node such as a link to a page has no text of its own, but if
-			// the name ends before it, the node is the start of the value.
+			// If the name ends before the node, the node is the start of the
+			// value.
 			if covered >= valueStart {
 				return n, true
+			}
+
+			if followingStart, found := startOfNodeAfter(n); found && followingStart <= nameEnd {
+				continue
 			}
 
 			return nil, false
@@ -663,6 +715,40 @@ func nodeAfterName(first *ast.Text, valueStart int) (rest ast.Node, ok bool) {
 	}
 
 	return nil, true
+}
+
+// startOfNodeAfter finds where the text of the first node after the given
+// node starts in the source, skipping the nodes that have no text of their
+// own. It returns false if no node after it has text.
+func startOfNodeAfter(n ast.Node) (int, bool) {
+	for following := n.NextSibling(); following != nil; following = following.NextSibling() {
+		if start, _, ok := nodeRange(following); ok {
+			return start, true
+		}
+	}
+
+	return 0, false
+}
+
+// lineStartAfter finds where the text of the first line of a paragraph that
+// starts after the given offset into the source begins, after its spaces and
+// tabs. Use -1 as the offset to find the first line.
+func lineStartAfter(lines *text.Segments, source []byte, offset int) (int, bool) {
+	for i := 0; i < lines.Len(); i++ {
+		line := lines.At(i)
+		if line.Start <= offset {
+			continue
+		}
+
+		start := line.Start
+		for start < line.Stop && (source[start] == ' ' || source[start] == '\t') {
+			start++
+		}
+
+		return start, true
+	}
+
+	return 0, false
 }
 
 // nodeRange finds the part of the source that the text in a node comes from.

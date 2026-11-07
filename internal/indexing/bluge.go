@@ -903,7 +903,8 @@ func blockID(page *Page, block *content.Block) string {
 func (i *BlugeIndex) transferProperties(doc *bluge.Document, properties *content.Properties, store bool) {
 	for _, node := range properties.Children() {
 		prop, ok := node.(*content.Property)
-		if !ok {
+		if !ok || prop.InvalidName {
+			// Logseq drops a property with a name that it does not keep
 			continue
 		}
 

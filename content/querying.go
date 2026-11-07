@@ -117,7 +117,7 @@ func (n NodeList) PageReferences() NodeList {
 	refs := make(NodeList, 0)
 	afterTaskDate := false
 	for _, node := range n {
-		if property, ok := node.(*Property); ok && (property.PageRefsIgnored || property.Quoted) {
+		if property, ok := node.(*Property); ok && (property.PageRefsIgnored || property.Quoted || property.InvalidName) {
 			continue
 		}
 

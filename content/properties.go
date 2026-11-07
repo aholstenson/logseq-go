@@ -63,7 +63,7 @@ func (p *Properties) WithPreviousLineType(t PreviousLineType) *Properties {
 func (p *Properties) GetAsNode(key string) *Property {
 	key = NormalizePropertyName(key)
 	for _, child := range p.Children() {
-		if property, ok := child.(*Property); ok && NormalizePropertyName(property.Name) == key {
+		if property, ok := child.(*Property); ok && !property.InvalidName && NormalizePropertyName(property.Name) == key {
 			return property
 		}
 	}
@@ -150,6 +150,15 @@ type Property struct {
 	// directives in Markdown files, and uses them as page properties.
 	Directive bool
 
+	// InvalidName is whether the name of this property is one that Logseq
+	// does not keep, such as `#tag` or `a(b` in `a(b:: c`. Logseq reads such a
+	// line as a part of the group of properties, so the properties after it
+	// are still in the same group, but it drops the property and the pages
+	// named in its value. Such a property is not found by name with
+	// Properties.Get, and its value refers to no page. It is kept so that the
+	// line does not change when it is written.
+	InvalidName bool
+
 	// SpaceBeforeValue is the spaces and tabs that are written after the
 	// separator and its one space, before the value, such as the second space
 	// in `id::  <uuid>`. Logseq does not read them as part of the value. They
@@ -209,6 +218,13 @@ func (p *Property) WithDirective(directive bool) *Property {
 	return p
 }
 
+// WithInvalidName sets whether the name of this property is one that Logseq
+// does not keep, see InvalidName.
+func (p *Property) WithInvalidName(invalid bool) *Property {
+	p.InvalidName = invalid
+	return p
+}
+
 // WithSpaceBeforeValue sets the spaces and tabs that are written before the
 // value, after the separator and its one space.
 func (p *Property) WithSpaceBeforeValue(space string) *Property {
@@ -241,6 +257,9 @@ func (p *Property) debug(p2 *debugPrinter) {
 	}
 	if p.Directive {
 		p2.Field("Directive", "true")
+	}
+	if p.InvalidName {
+		p2.Field("InvalidName", "true")
 	}
 	if p.SpaceBeforeValue != "" {
 		p2.Field("SpaceBeforeValue", p.SpaceBeforeValue)

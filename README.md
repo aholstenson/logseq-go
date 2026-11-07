@@ -119,9 +119,12 @@ graph, err := logseq.Open(ctx, "path/to/graph", logseq.WithConfig(logseq.Config{
 ```
 
 Property names follow the rules of Logseq. A name can hold letters of any
-language, digits and most punctuation, such as `ändring::` or `done?::`. A line
-with a name that Logseq does not allow, such as `a@b::` or `#tag::`, is read as
-text. Logseq makes names lower case and reads an underscore as a dash, so
+language, digits and most punctuation, such as `ändring::` or `done?::`. Logseq
+drops a property with a name that it does not allow, such as `a@b::` or
+`#tag::`, and the pages in its value are not references. The line is still a
+part of the group of properties, so the properties after it are kept. Such a
+property has `Property.InvalidName` set, and `Properties.Get` does not find it.
+Logseq makes names lower case and reads an underscore as a dash, so
 `Properties.Get("my-prop")` and the query `(property my-prop)` both find
 `My_Prop::`. The name is written back as it was read.
 
