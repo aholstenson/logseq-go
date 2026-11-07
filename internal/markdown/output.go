@@ -2044,27 +2044,45 @@ func (w *Output) writeFootnoteDefinition(node *content.FootnoteDefinition) error
 }
 
 func (w *Output) writeMath(node *content.Math) error {
-	opening, closing := "$", "$"
-	switch {
-	case node.Backslashes && node.Displayed:
-		opening, closing = `\[`, `\]`
-	case node.Backslashes:
-		opening, closing = `\(`, `\)`
-	case node.Displayed:
-		opening, closing = "$$", "$$"
+	forms := [][2]string{{"$", "$"}, {`\(`, `\)`}}
+	if node.Displayed {
+		forms = [][2]string{{"$$", "$$"}, {`\[`, `\]`}}
+	}
+	if node.Backslashes {
+		forms[0], forms[1] = forms[1], forms[0]
 	}
 
-	err := w.writeRaw(opening)
+	// The form of the math is used if its value has no closing marker and
+	// no space at its ends. Otherwise the form that reads back as the same
+	// math is used, as the value "a $ b" can not be written between dollar
+	// signs. If no form reads back, the form of the math is used.
+	value := node.Value
+	simple := value != "" && strings.TrimSpace(value) == value
+	for i, form := range forms {
+		text := form[0] + value + form[1]
+		if (i == 0 && simple && !strings.Contains(value, form[1])) || mathReadsBack(text, node) {
+			return w.writeRaw(text)
+		}
+	}
+
+	return w.writeRaw(forms[0][0] + value + forms[0][1])
+}
+
+// mathReadsBack checks if the text is read as one math node with the value
+// of the node.
+func mathReadsBack(text string, node *content.Math) bool {
+	root, err := ParseString("- " + text)
 	if err != nil {
-		return err
+		return false
 	}
 
-	err = w.writeRaw(node.Value)
-	if err != nil {
-		return err
+	maths := root.Children().FilterDeep(content.IsOfType[*content.Math]())
+	if len(maths) != 1 {
+		return false
 	}
 
-	return w.writeRaw(closing)
+	math := maths[0].(*content.Math)
+	return math.Value == node.Value && math.Displayed == node.Displayed
 }
 
 func (w *Output) writeMathBlock(node *content.MathBlock) error {
@@ -2371,6 +2389,13 @@ func (w *Output) writePageLink(node *content.PageLink) error {
 
 	if source := node.ToSource(); source != "" && pageLinkTargetReadsBack(source, node.To) {
 		err = w.writeRaw(source)
+	} else if node.HasLabel() && !balancedParentheses(node.To) {
+		// In the parentheses of a link, a `)` that has no `(` before it
+		// would end the link, so the parentheses are escaped. Logseq reads
+		// `[l]([[a\) b]])` as a link to the page `a) b`.
+		err = w.writeRaw(escapeRunes(EscapePageLinkTitle(node.To), func(prev rune, r rune) bool {
+			return r == '(' || r == ')'
+		}))
 	} else {
 		err = w.write(node.To, EscapePageLinkTitle)
 	}
