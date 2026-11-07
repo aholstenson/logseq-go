@@ -18,9 +18,16 @@ func pageTitlesEqual(a string, b string) bool {
 
 // retargetPageReferences points every reference to the page `from` in the given
 // tree at the page `to`, returning the number of references that changed.
+//
+// A link to a Markdown file, such as `[from](from.md)`, is left as it is, as
+// Logseq does not change these links when it renames a page.
 func retargetPageReferences(root content.HasChildren, from string, to string) int {
 	changed := 0
 	for _, node := range root.Children().PageReferences() {
+		if _, ok := node.(*content.FileLinkRef); ok {
+			continue
+		}
+
 		ref := node.(content.PageRef)
 		if !pageTitlesEqual(ref.GetTo(), from) {
 			continue

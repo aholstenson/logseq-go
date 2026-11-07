@@ -3827,6 +3827,73 @@ var _ = Describe("Parsing", func() {
 		})
 	})
 
+	Describe("Markdown links to Markdown files", func() {
+		// pageRefTitles returns the title of every page the parsed text refers to.
+		pageRefTitles := func(input string) []string {
+			block, err := markdown.ParseString(input)
+			Expect(err).ToNot(HaveOccurred())
+
+			titles := make([]string, 0)
+			for _, ref := range block.Children().PageReferences() {
+				titles = append(titles, ref.(content.PageRef).GetTo())
+			}
+			return titles
+		}
+
+		It("refers to the page named by the label of a relative link to a .md file", func() {
+			// Given a Markdown link to a relative .md file
+			// When it is parsed
+			// Then it refers to the page named by its label, the same as Logseq
+			Expect(pageRefTitles("- [lbl](../pages/foo.md)")).To(ConsistOf("lbl"))
+		})
+
+		It("makes no page reference from a web link to a .md file", func() {
+			// Given a Markdown link to a .md file on the web
+			// When it is parsed
+			// Then it refers to no page, the same as Logseq
+			Expect(pageRefTitles("- [lbl](https://x.com/a.md)")).To(BeEmpty())
+		})
+
+		DescribeTable("refers to the page named by the label, the same as Logseq",
+			func(input string, expected string) {
+				Expect(pageRefTitles(input)).To(ConsistOf(expected))
+			},
+			Entry("a link to a file in the same folder", "- [lbl](page.md)", "lbl"),
+			Entry("a link with file: and no slashes", "- [lbl](file:../pages/foo.md)", "lbl"),
+			Entry("a link in angle brackets with a space", "- [lbl](<a b.md>)", "lbl"),
+			Entry("a link that ends in upper case .MD", "- [lbl](a.MD)", "lbl"),
+			Entry("a link to a .markdown file", "- [lbl](a.markdown)", "lbl"),
+			Entry("a link with a title", `- [lbl](a.md "title")`, "lbl"),
+			Entry("a label with spaces", "- [My page](a.md)", "My page"),
+			Entry("a label with an escaped character", `- [x\*y](a.md)`, "x*y"),
+			Entry("a label with brackets", "- [a [b] c](a.md)", "a [b] c"),
+			Entry("a label that starts with a code span", "- [`x` y](a.md)", "x"),
+			Entry("a link inside bold text", "- **see [lbl](a.md)**", "lbl"),
+		)
+
+		DescribeTable("makes no page reference, the same as Logseq",
+			func(input string) {
+				Expect(pageRefTitles(input)).To(BeEmpty())
+			},
+			Entry("a link with a protocol", "- [lbl](file:///a/foo.md)"),
+			Entry("a link with an empty protocol", "- [lbl](://a.md)"),
+			Entry("a link to a part of a file", "- [lbl](a.md#part)"),
+			Entry("a link to a file named only .MD", "- [lbl](.MD)"),
+			Entry("a link to a file of another type", "- [lbl](a.org)"),
+			Entry("a link with an empty label", "- [](a.md)"),
+			Entry("a label that is only emphasis", "- [*x*](a.md)"),
+			Entry("a link in a block property", "- a\n  k:: [lbl](a.md)"),
+			Entry("a link in a page property", "tags:: [lbl](a.md)\n\n- a"),
+		)
+
+		It("gives the label text before a code span as the title", func() {
+			// Given a link to a .md file with text and then a code span in the label
+			// When it is parsed
+			// Then the title is the text before the code span, also its space, the same as Logseq
+			Expect(pageRefTitles("- [a `x`](a.md)")).To(ConsistOf("a "))
+		})
+	})
+
 	Describe("Block references directly after a word", func() {
 		// blockRefIDs returns the id of every block reference in the parsed text.
 		blockRefIDs := func(input string) []string {

@@ -341,6 +341,38 @@ var _ = Describe("Transaction", func() {
 			// Then the inner link points at c and no backslash is added
 			Expect(readPage("r.md")).To(Equal("- [[a [[c]]]]\n"))
 		})
+
+		It("leaves a link to a Markdown file with the old title as its label", func() {
+			// Given page r with a page link to old and a link to old.md labelled old
+			graph = openGraphWithPages(dir, map[string]string{
+				"old.md": "- content of old\n",
+				"r.md":   "- see [[old]] and [old](old.md)\n",
+			})
+
+			// When page old is renamed to new
+			tx := graph.NewTransaction()
+			Expect(tx.RenamePage(ctx, "old", "new")).To(Succeed())
+			Expect(tx.Save()).To(Succeed())
+
+			// Then the page link points at new and the file link is not changed, the same as Logseq
+			Expect(readPage("r.md")).To(Equal("- see [[new]] and [old](old.md)\n"))
+		})
+
+		It("does not write a page whose only reference is a link to a Markdown file", func() {
+			// Given page r that refers to old only with a link to old.md labelled old
+			graph = openGraphWithPages(dir, map[string]string{
+				"old.md": "- content of old\n",
+				"r.md":   "- see [old](old.md)\n",
+			})
+
+			// When page old is renamed to new
+			tx := graph.NewTransaction()
+			Expect(tx.RenamePage(ctx, "old", "new")).To(Succeed())
+			Expect(tx.Save()).To(Succeed())
+
+			// Then page r is not changed
+			Expect(readPage("r.md")).To(Equal("- see [old](old.md)\n"))
+		})
 	})
 
 	Describe("RenamePage with namespace children", func() {

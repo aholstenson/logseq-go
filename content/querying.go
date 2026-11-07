@@ -102,6 +102,10 @@ func IsPageReference() NodePredicate {
 // of the date, and the text on the lines after it, until a node that is not
 // text. Logseq reads that content and the date as one paragraph that starts
 // with a date, and it does not take references from such a paragraph.
+//
+// A link to a Markdown file, such as `[My page](my_page.md)`, refers to the
+// page named by its label, see FileLinkRef. Logseq does not read such a
+// reference from the value of a property.
 func (n NodeList) PageReferences() NodeList {
 	refs := make(NodeList, 0)
 	afterTaskDate := false
@@ -129,6 +133,12 @@ func (n NodeList) PageReferences() NodeList {
 		if IsPageReference()(node) {
 			refs = append(refs, node)
 			refs = append(refs, nestedPageRefsOf(node.(PageRef))...)
+		}
+
+		if link, ok := node.(*Link); ok {
+			if ref := fileLinkRefOf(link); ref != nil {
+				refs = append(refs, ref)
+			}
 		}
 
 		if children, ok := node.(HasChildren); ok {

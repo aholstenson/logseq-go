@@ -30,6 +30,15 @@ var _ = Describe("References of blocks", func() {
 		Expect(previewsOf(searchBlocks(idx, indexing.References("Target")))).To(ConsistOf("link Target"))
 	})
 
+	It("matches the block with a link to a Markdown file labelled with the title", func() {
+		indexPage(idx, "pages/b.md", "Page B",
+			textBlock([]content.Node{content.NewText("file "), content.NewLink("../pages/target.md", content.NewText("Target"))}),
+			textBlock([]content.Node{content.NewText("web "), content.NewLink("https://x.com/target.md", content.NewText("Target"))}),
+		)
+
+		Expect(previewsOf(searchBlocks(idx, indexing.References("Target")))).To(ConsistOf("link Target", "file Target"))
+	})
+
 	It("matches only the block with the tag", func() {
 		Expect(previewsOf(searchBlocks(idx, indexing.ReferencesTag("tagged")))).To(ConsistOf("tag #tagged"))
 	})
