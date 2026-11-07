@@ -1530,6 +1530,11 @@ func (w *Output) writeText(node *content.Text) error {
 			}
 		}
 
+		if markers := node.LazyLineMarkers; markers > 0 && markers < len(w.quoteLevels) {
+			// The line keeps the markers of the outer quotes.
+			level = w.quoteLevels[markers]
+		}
+
 		if level >= 0 {
 			w.out.SkipIndentationOnNextLine(level)
 		}

@@ -544,7 +544,7 @@ func convertChildren(src []byte, node ast.Node, target content.HasChildren) erro
 				merged.SoftLineBreak = text.SoftLineBreak()
 				merged.TrailingSpace = trailingSpaceOf(src, text)
 				merged.BackslashLineBreak = isBackslashLineBreak(src, text)
-				merged.LazyLine = isLazyLineAfter(src, text)
+				merged.LazyLine, merged.LazyLineMarkers = lazyLineAfter(src, text)
 				merged.LazyBlockLine = isLazyBlockLineAfter(src, text)
 				merged.NextLineIndentation = nextLineIndentationOf(src, text)
 				continue
@@ -1045,38 +1045,55 @@ func convertText(src []byte, node *ast.Text) (*content.Text, error) {
 	}
 	text.TrailingSpace = trailingSpaceOf(src, node)
 	text.BackslashLineBreak = isBackslashLineBreak(src, node)
-	text.LazyLine = isLazyLineAfter(src, node) || isLazyFootnoteLineAfter(src, node)
+	text.LazyLine, text.LazyLineMarkers = lazyLineAfter(src, node)
+	text.LazyLine = text.LazyLine || isLazyFootnoteLineAfter(src, node)
 	text.LazyBlockLine = isLazyBlockLineAfter(src, node)
 	text.NextLineIndentation = nextLineIndentationOf(src, node)
 	return text, nil
 }
 
-// isLazyLineAfter checks if the line after the line break of a text in a
-// quote is written without the `>` marker, see content.Text.LazyLine.
-func isLazyLineAfter(src []byte, node *ast.Text) bool {
+// lazyLineAfter checks if the line after the line break of a text in a
+// quote is written with fewer `>` markers than the quotes that hold the text,
+// see content.Text.LazyLine. It also returns the number of markers that the
+// line has, see content.Text.LazyLineMarkers.
+func lazyLineAfter(src []byte, node *ast.Text) (bool, int) {
 	if !node.SoftLineBreak() && !node.HardLineBreak() {
-		return false
+		return false, 0
 	}
 
-	inQuote := false
+	depth := 0
 	for p := node.Parent(); p != nil; p = p.Parent() {
 		if _, ok := p.(*ast.Blockquote); ok {
-			inQuote = true
-			break
+			depth++
 		}
 	}
 
-	if !inQuote {
-		return false
+	if depth == 0 {
+		return false, 0
 	}
 
 	i := bytes.IndexByte(src[node.Segment.Stop:], '\n')
 	if i < 0 {
-		return false
+		return false, 0
 	}
 
-	next := bytes.TrimLeft(src[node.Segment.Stop+i+1:], " \t")
-	return len(next) > 0 && next[0] != '>'
+	next := src[node.Segment.Stop+i+1:]
+	markers := 0
+	for {
+		next = bytes.TrimLeft(next, " \t")
+		if len(next) == 0 || next[0] != '>' {
+			break
+		}
+
+		markers++
+		next = next[1:]
+	}
+
+	if len(next) == 0 || next[0] == '\n' || next[0] == '\r' || markers >= depth {
+		return false, 0
+	}
+
+	return true, markers
 }
 
 // trailingSpaceOfLines returns the spaces and tabs at the end of the last line

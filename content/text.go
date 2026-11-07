@@ -37,6 +37,13 @@ type Text struct {
 	// the text has no line break.
 	LazyLine bool
 
+	// LazyLineMarkers is the number of `>` markers that a lazy line of a
+	// nested quote still has, as the one marker before `b` in "> > a\n> b".
+	// The markers of the outer quotes are written, and the others are left
+	// out. If it is zero, the line is written without any marker. It is not
+	// used if LazyLine is false.
+	LazyLineMarkers int
+
 	// NextLineIndentation is the spaces and tabs at the start of the line
 	// after the line break of the text, as in the two spaces before `b` in
 	// "a\n  b". It does not include the indentation of the block or quote
