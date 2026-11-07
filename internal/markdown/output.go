@@ -2779,6 +2779,29 @@ func (w *Output) writeParagraph(node *content.Paragraph) error {
 	return nil
 }
 
+// listMarker gets the marker that a list is written with. A list directly
+// after a list of the same kind with the same marker would be read back as a
+// part of that list, so it gets the other marker of its kind: `)` for `.`,
+// and `+` for `*`, and the other way round.
+func listMarker(list *content.List) byte {
+	marker := list.Marker
+	previous, ok := list.PreviousSibling().(*content.List)
+	if !ok || previous.Type != list.Type || listMarker(previous) != marker {
+		return marker
+	}
+
+	switch marker {
+	case '.':
+		return ')'
+	case ')':
+		return '.'
+	case '*':
+		return '+'
+	default:
+		return '*'
+	}
+}
+
 // listNumbers gets the numbers that the items of an ordered list are written
 // with. The numbers of a list read from a file are kept as they are, see
 // content.ListItem.Number. If items were added, or the first number can no
@@ -2890,9 +2913,9 @@ func (w *Output) writeList(node *content.List) error {
 
 		var marker string
 		if node.Type == content.ListTypeOrdered {
-			marker = numbers[i-1] + string(node.Marker)
+			marker = numbers[i-1] + string(listMarker(node))
 		} else {
-			marker = string(node.Marker)
+			marker = string(listMarker(node))
 			if node.Marker == '-' {
 				if _, ok := node.Parent().(*content.Block); ok {
 					// A `-` line in the content of a block starts a block.
