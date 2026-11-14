@@ -1446,7 +1446,9 @@ func macroNodeOf(node *macro) content.Node {
 		}
 	}
 
-	return content.NewMacro(node.Name, node.Arguments...)
+	converted := content.NewMacro(node.Name, node.Arguments...)
+	converted.SetArgumentsSource(node.RawArguments)
+	return converted
 }
 
 func convertEmphasis(src []byte, node *ast.Emphasis) (content.HasChildren, error) {

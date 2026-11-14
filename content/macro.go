@@ -46,6 +46,12 @@ type Macro struct {
 
 	// Arguments gets the arguments of this macro.
 	Arguments []string
+
+	// argumentsSource is the text of the arguments as it is in the file, see
+	// RawArguments, and sourceArguments are the arguments that it was split
+	// into.
+	argumentsSource string
+	sourceArguments []string
 }
 
 // NewMacro creates a new macro with the given name and arguments.
@@ -66,6 +72,83 @@ func (m *Macro) WithName(name string) *Macro {
 func (m *Macro) WithArguments(args ...string) *Macro {
 	m.Arguments = args
 	return m
+}
+
+// RawArguments gets the text of the arguments of the macro, which is all of
+// the text after the name, without the spaces around it. Unlike Arguments, it
+// keeps the spaces around the commas, as in `a , b` of `{{m a , b}}`. Some
+// macros use all of this text as one value.
+//
+// For a macro that was read from a file, it is the text in the file while
+// Arguments are not changed. Otherwise it is the text that the arguments are
+// written as: the arguments joined with ", ", and an argument that has a
+// comma and no quotes in quotes, as in `a, "b, c"`.
+func (m *Macro) RawArguments() string {
+	if m.sourceArguments != nil && equalArguments(m.Arguments, m.sourceArguments) {
+		return m.argumentsSource
+	}
+
+	return macroArgumentsText(m.Arguments)
+}
+
+// SetArgumentsSource sets the text of the arguments of the macro as it is in
+// the file, see RawArguments. The arguments of the macro must be the ones that
+// the text is split into, as the text is used only while they are not
+// changed. The reader sets it when it reads a macro.
+func (m *Macro) SetArgumentsSource(source string) {
+	m.argumentsSource = source
+	m.sourceArguments = append([]string{}, m.Arguments...)
+}
+
+// macroArgumentsText gets the text that the arguments of a macro are written
+// as. An argument with a comma is quoted, so that it is not split, unless it
+// has its quotes, as an argument that was read from a file does.
+func macroArgumentsText(arguments []string) string {
+	var b strings.Builder
+	for i, argument := range arguments {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+
+		if !isQuotedMacroArgument(argument) && strings.ContainsRune(argument, ',') {
+			b.WriteString(`"` + strings.ReplaceAll(argument, `"`, `\"`) + `"`)
+			continue
+		}
+
+		b.WriteString(argument)
+	}
+
+	return b.String()
+}
+
+// isQuotedMacroArgument returns true if the argument starts with a quote and
+// ends with the first quote after it that is not escaped.
+func isQuotedMacroArgument(argument string) bool {
+	if len(argument) < 2 || argument[0] != '"' {
+		return false
+	}
+
+	for i := 1; i < len(argument); i++ {
+		if argument[i] == '"' && argument[i-1] != '\\' {
+			return i == len(argument)-1
+		}
+	}
+
+	return false
+}
+
+func equalArguments(a []string, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+
+	return true
 }
 
 func (m *Macro) debug(p *debugPrinter) {
