@@ -167,4 +167,73 @@ var _ = Describe("Text that starts a line and looks like block syntax", func() {
 		// Then the heading marker is escaped once
 		Expect(write(root)).To(Equal("- a\n  \\# b"))
 	})
+
+	It("keeps a dash after a lone carriage return as text", func() {
+		// Given a block with one line of text
+		root := parse("- a")
+
+		// When the text is set to `x`, a carriage return and `- b`, and the block is written and read again
+		findText(root, "a").WithValue("x\r- b")
+		output, block := readBackOneBlock(root)
+
+		// Then the block has no list and its text is `x`, a line break and `- b`
+		Expect(block.Children().FindDeep(content.IsOfType[*content.List]())).To(BeNil(), "output: %q", output)
+		Expect(textOf(block)).To(Equal("x\n- b"), "output: %q", output)
+	})
+
+	It("keeps a property name after a lone carriage return as text", func() {
+		// Given a block with one line of text
+		root := parse("- a")
+
+		// When the text is set to `x`, a carriage return and `b:: c`, and the block is written and read again
+		findText(root, "a").WithValue("x\rb:: c")
+		output, block := readBackOneBlock(root)
+
+		// Then the block has no property `b`
+		if properties := block.FindProperties(); properties != nil {
+			Expect(properties.Get("b")).To(BeEmpty(), "output: %q", output)
+		}
+	})
+
+	It("keeps a property name that starts in emphasis as text", func() {
+		// Given a paragraph of emphasis `a` and the text `b:: c`
+		root := content.NewBlock(content.NewBlock(content.NewParagraph(
+			content.NewEmphasis(content.NewText("a")),
+			content.NewText("b:: c"),
+		)))
+
+		// When it is written and read again
+		output, block := readBackOneBlock(root)
+
+		// Then the block has no property, and its text is `ab:: c`
+		Expect(block.Children().FindDeep(content.IsOfType[*content.Properties]())).To(BeNil(), "output: %q", output)
+		Expect(textOf(block)).To(Equal("ab:: c"), "output: %q", output)
+	})
+
+	It("keeps a property name that has emphasis in the middle as text", func() {
+		// Given a paragraph of the text `a`, emphasis `b` and the text `c:: d`
+		root := content.NewBlock(content.NewBlock(content.NewParagraph(
+			content.NewText("a"),
+			content.NewEmphasis(content.NewText("b")),
+			content.NewText("c:: d"),
+		)))
+
+		// When it is written and read again
+		output, block := readBackOneBlock(root)
+
+		// Then the block has no property
+		Expect(block.Children().FindDeep(content.IsOfType[*content.Properties]())).To(BeNil(), "output: %q", output)
+		Expect(textOf(block)).To(Equal("abc:: d"), "output: %q", output)
+	})
+
+	It("does not escape `::` after a space on the line", func() {
+		// Given a paragraph of emphasis `a` and the text ` b:: c`
+		root := content.NewBlock(content.NewBlock(content.NewParagraph(
+			content.NewEmphasis(content.NewText("a")),
+			content.NewText(" b:: c"),
+		)))
+
+		// When it is written, Then the colons are not escaped
+		Expect(write(root)).To(Equal("- *a* b:: c"))
+	})
 })

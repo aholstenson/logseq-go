@@ -58,7 +58,7 @@ const lineEdgeRune = rune(-2)
 // escapeText is EscapePotentialMarkdown for a text with known characters
 // directly before and after it. Either can be unknownRune or lineEdgeRune.
 func escapeText(str string, before rune, after rune) string {
-	return escapeTextIn(str, "", before, after, false, true, nil, blockRefCanFollowRune(before), false)
+	return escapeTextIn(str, textContext{before: before, after: after, headings: true, refAtStart: blockRefCanFollowRune(before)})
 }
 
 // blockRefCanFollowRune returns true if a block reference can start directly
@@ -67,30 +67,56 @@ func blockRefCanFollowRune(r rune) bool {
 	return r == lineEdgeRune || (r >= 0 && strings.ContainsRune(blockRefPrefixes, r))
 }
 
-// escapeTextIn is escapeText for a text that can be inside formatting, such
-// as emphasis. The text of formatting has no tags when it is read back, so a
-// `#` in it is not escaped. If headings is false, the text is on lines that
-// cannot start a heading when read back, so a `#` at the start of a line is
-// not escaped for that. If outside is not nil, it tells if a marker can be
-// in the nodes before or after the text, see markerOutside. refAtStart is
-// whether a block reference can start at the start of the text when it is
-// read back, see blockRefTextEscapes. If source is not empty, it is the text
-// as it is in the file, and its backslashes are kept, see sourceEscapes.
-func escapeTextIn(str string, source string, before rune, after rune, inFormatting bool, headings bool, outside markerOutside, refAtStart bool, inLabel bool) string {
+// textContext tells what is around a text that is escaped, see escapeTextIn.
+type textContext struct {
+	// source is the text as it is in the file, or empty if it is not known.
+	// Its backslashes are kept, see sourceEscapes.
+	source string
+	// before and after are the characters directly before and after the
+	// text. Either can be unknownRune or lineEdgeRune.
+	before rune
+	after  rune
+	// inFormatting is true for a text inside formatting, such as emphasis.
+	// The text of formatting has no tags when it is read back, so a `#` in it
+	// is not escaped.
+	inFormatting bool
+	// headings is false if the text is on lines that cannot start a heading
+	// when read back, so a `#` at the start of a line is not escaped for that.
+	headings bool
+	// outside tells if a marker can be in the nodes before or after the
+	// text, see markerOutside. It can be nil.
+	outside markerOutside
+	// refAtStart is whether a block reference can start at the start of the
+	// text when it is read back, see blockRefTextEscapes.
+	refAtStart bool
+	// inLabel is true for a text in the label of a link, see
+	// labelBracketEscapes.
+	inLabel bool
+	// linePrefix is the Markdown that is written on the line before the
+	// text, when the line does not start with the text. It is empty if the
+	// text starts the line or if it is not known.
+	linePrefix string
+}
+
+// escapeTextIn is escapeText for a text with more known context, see
+// textContext.
+func escapeTextIn(str string, ctx textContext) string {
+	source, before, after := ctx.source, ctx.before, ctx.after
 	escapes := map[int]bool{}
 	sourceEscapes(str, source, escapes)
 	mathEscapes(str, escapes)
 	bracketEscapes(str, escapes)
-	if inLabel {
+	if ctx.inLabel {
 		labelBracketEscapes(str, escapes)
 	}
-	delimiterEscapes(str, before, after, outside, escapes)
-	markupEscapes(str, before, after, !inFormatting, headings, escapes)
-	if headings && !readsAsSource(str, source) {
+	delimiterEscapes(str, before, after, ctx.outside, escapes)
+	markupEscapes(str, before, after, !ctx.inFormatting, ctx.headings, escapes)
+	if ctx.headings && !readsAsSource(str, source) {
 		lineStartEscapes(str, before, after, escapes)
+		propertyKeyEscapes(str, ctx.linePrefix, escapes)
 	}
 	backslashEscapes(str, after, escapes)
-	blockRefTextEscapes(str, refAtStart, escapes)
+	blockRefTextEscapes(str, ctx.refAtStart, escapes)
 
 	// The bytes of the text are copied, not the decoded runes, so that bytes
 	// that are not valid UTF-8 are not changed.
@@ -156,7 +182,9 @@ func readsAsSource(str string, source string) bool {
 // A `#` that starts a heading is found by markupEscapes.
 func lineStartEscapes(str string, before rune, after rune, escapes map[int]bool) {
 	for start := 0; start < len(str); {
-		end := strings.IndexByte(str[start:], '\n')
+		// The reader ends a line at a line feed, at a carriage return and at
+		// both of them together.
+		end := strings.IndexAny(str[start:], "\r\n")
 		if end < 0 {
 			end = len(str)
 		} else {
@@ -175,6 +203,9 @@ func lineStartEscapes(str string, before rune, after rune, escapes map[int]bool)
 		}
 
 		start = end + 1
+		if strings.HasPrefix(str[end:], "\r\n") {
+			start++
+		}
 	}
 }
 
@@ -239,6 +270,38 @@ func lineStartEscape(line string, after rune) int {
 	}
 
 	return -1
+}
+
+// propertyKeyEscapes finds the colon that must be escaped so that the first
+// line of a text that does not start its line does not end a property key.
+// linePrefix is the Markdown that is written before the text on its line, see
+// textContext. The reader reads the line `*a*b:: c` as a property, so the
+// `::` of the text `b:: c` after emphasis is escaped.
+func propertyKeyEscapes(str string, linePrefix string, escapes map[int]bool) {
+	if linePrefix == "" || !strings.Contains(str, "::") {
+		return
+	}
+
+	line := str
+	if end := strings.IndexAny(str, "\r\n"); end >= 0 {
+		line = str[:end]
+	}
+
+	// Up to three spaces can come before a property, see lineStartEscape.
+	trimmed := strings.TrimLeft(linePrefix, " ")
+	if len(linePrefix)-len(trimmed) > 3 {
+		return
+	}
+
+	name, _, ok := findPropertyKey(trimmed + line)
+	if !ok {
+		return
+	}
+
+	// The second colon, so that the line has no `::`.
+	if i := len(name) + 1 - len(trimmed); i >= 0 && i < len(str) {
+		escapes[i] = true
+	}
 }
 
 // asCharacter gets the character that a rune next to a text acts as for the
@@ -470,7 +533,7 @@ func isPriorityText(str string) bool {
 // ends or a space comes after them, so the `#` of "##x" is not escaped when
 // the tag "#x" follows it.
 func startsHeading(str string, i int, previous rune, after rune) bool {
-	if previous != unknownRune && previous != lineEdgeRune && previous != '\n' {
+	if previous != unknownRune && previous != lineEdgeRune && previous != '\n' && previous != '\r' {
 		return false
 	}
 
@@ -1468,7 +1531,21 @@ func (w *Output) writeText(node *content.Text) error {
 
 	// A block reference can start at the start of the run, as no text that
 	// it would continue comes before it.
-	value = escapeTextIn(value, source, before, after, isInFormatting(node), !isInIndentedParagraph(node), outside, true, isInLinkLabel(node))
+	ctx := textContext{
+		source:       source,
+		before:       before,
+		after:        after,
+		inFormatting: isInFormatting(node),
+		headings:     !isInIndentedParagraph(node),
+		outside:      outside,
+		refAtStart:   true,
+		inLabel:      isInLinkLabel(node),
+	}
+	if !w.isolated && before != lineEdgeRune && before != '\n' && strings.Contains(value, "::") {
+		ctx.linePrefix, _ = w.linePrefix(first)
+	}
+
+	value = escapeTextIn(value, ctx)
 	if strings.HasSuffix(value, "]") && !endsWithEscape([]byte(value)) && (after == '(' || after == '[') {
 		// The next node starts with `(` or `[`, which together with the
 		// closing bracket would be read back as a link.
@@ -1575,6 +1652,39 @@ func (w *Output) writeText(node *content.Text) error {
 	}
 
 	return nil
+}
+
+// linePrefix gets the Markdown that is written on the line of a node in a
+// paragraph before the node. The markers that open formatting or a label
+// around the node stand for themselves as `x`, which, like them, is not a
+// space or a colon. Returns false if the start of the line is not known.
+func (w *Output) linePrefix(node content.Node) (string, bool) {
+	prefix := ""
+	for n := node; ; {
+		for prev := n.PreviousSibling(); prev != nil; prev = prev.PreviousSibling() {
+			if text, ok := prev.(*content.Text); ok && (text.SoftLineBreak || text.HardLineBreak) {
+				return prefix, true
+			}
+
+			written := w.writeIsolated(prev)
+			if i := strings.LastIndexAny(written, "\r\n"); i >= 0 {
+				return written[i+1:] + prefix, true
+			}
+
+			prefix = written + prefix
+		}
+
+		switch parent := n.Parent().(type) {
+		case *content.Paragraph:
+			return prefix, true
+		case *content.Emphasis, *content.Strong, *content.Strikethrough, *content.Highlight,
+			*content.Link, *content.PageLink, *content.BlockRef:
+			prefix = "x" + prefix
+			n = parent
+		default:
+			return "", false
+		}
+	}
 }
 
 // closingRunRest checks if the escaped value of a run of texts that starts
