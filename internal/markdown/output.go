@@ -418,6 +418,39 @@ func markupEscapes(str string, rest string, before rune, after rune, tags bool, 
 			}
 		}
 	}
+
+	if tags {
+		tagBeforeEscapeEscapes(str, rest, before, lastPageLinkClose, escapes)
+	}
+}
+
+// tagBeforeEscapeEscapes finds the `#` marks that start a tag because the `#`
+// after them is escaped. A `#` before a `#` does not start a tag, but a `#`
+// before a backslash does, so the text `##b`, written as `#\#b`, would be
+// read back as two tags. The marks are looked at from the end, so that each
+// `#` of a longer run is found.
+func tagBeforeEscapeEscapes(str string, rest string, before rune, lastPageLinkClose int, escapes map[int]bool) {
+	for i := len(str) - 2; i >= 0; i-- {
+		if str[i] != '#' || str[i+1] != '#' || escapes[i] || !escapes[i+1] {
+			continue
+		}
+
+		previous := before
+		if i > 0 {
+			previous, _ = utf8.DecodeLastRuneInString(str[:i])
+		}
+
+		// The backslash moves a later `]]` one byte on.
+		closeAt := lastPageLinkClose
+		if closeAt > i {
+			closeAt++
+		}
+
+		written := str[:i+1] + "\\" + str[i+1:] + rest
+		if startsTag(written, i, previous, closeAt) {
+			escapes[i] = true
+		}
+	}
 }
 
 // blockRefTextEscapes removes the escapes from the text that is read back as
