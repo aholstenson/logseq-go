@@ -1640,6 +1640,17 @@ func (w *Output) writeText(node *content.Text) error {
 		value = value[:len(value)-1] + `\]`
 	}
 
+	if strings.HasSuffix(value, "!") && !endsWithEscape([]byte(value)) && !node.SoftLineBreak && !node.HardLineBreak && startsLinkWithLabel(node.NextSibling()) {
+		// A `!` directly before a link would make the link an image.
+		value = value[:len(value)-1] + `\!`
+	}
+
+	if _, ok := first.PreviousSibling().(*content.FootnoteRef); ok && strings.HasPrefix(value, "(") {
+		// A footnote reference directly before `(` would be read back as
+		// the label of a link, as in `[^1](a)`.
+		value = `\` + value
+	}
+
 	if ref, ok := node.NextSibling().(*content.BlockRef); ok && !ref.HasLabel() &&
 		!node.SoftLineBreak && !node.HardLineBreak && value != "" && !blockRefCanFollow([]byte(value)) && isASCIIPunctuation(rune(value[len(value)-1])) {
 		// A block reference directly after text is read back as text, but
@@ -1797,6 +1808,19 @@ func (w *Output) restOfParagraph(node content.Node) string {
 			return rest.String()
 		}
 	}
+}
+
+// startsLinkWithLabel returns true if the node is written as a link with a
+// label in square brackets, which a `!` before it would make an image.
+func startsLinkWithLabel(node content.Node) bool {
+	switch node := node.(type) {
+	case *content.Link:
+		return true
+	case *content.BlockRef:
+		return node.HasLabel()
+	}
+
+	return false
 }
 
 // closingRunRest checks if the escaped value of a run of texts that starts
