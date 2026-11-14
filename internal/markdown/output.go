@@ -1633,7 +1633,11 @@ func (w *Output) writeText(node *content.Text) error {
 		ctx.rest = w.restOfParagraph(node)
 	}
 
+	raw := value
 	value = escapeTextIn(value, ctx)
+	if !readsAsSource(raw, source) {
+		value = markerEdgeEscapes(first, node, value)
+	}
 	if strings.HasSuffix(value, "]") && !endsWithEscape([]byte(value)) && (after == '(' || after == '[') {
 		// The next node starts with `(` or `[`, which together with the
 		// closing bracket would be read back as a link.
@@ -1808,6 +1812,36 @@ func (w *Output) restOfParagraph(node content.Node) string {
 			return rest.String()
 		}
 	}
+}
+
+// markerEdgeEscapes escapes the first and the last character of the escaped
+// value of a run of texts, from first to last, where it is the marker
+// character of the strikethrough or the highlight that the run starts or ends.
+// Such a character would join the run of markers of that node, as in the
+// highlight of the text `^` that would be written as `^^^^^`.
+func markerEdgeEscapes(first *content.Text, last *content.Text, value string) string {
+	var marker byte
+	switch parent := first.Parent().(type) {
+	case *content.Strikethrough:
+		marker = '~'
+	case *content.Highlight:
+		marker = '^'
+		if parent.EqualSigns {
+			marker = '='
+		}
+	default:
+		return value
+	}
+
+	if last.NextSibling() == nil && strings.HasSuffix(value, string(marker)) && !endsWithEscape([]byte(value)) {
+		value = value[:len(value)-1] + "\\" + string(marker)
+	}
+
+	if first.PreviousSibling() == nil && strings.HasPrefix(value, string(marker)) {
+		value = "\\" + value
+	}
+
+	return value
 }
 
 // startsLinkWithLabel returns true if the node is written as a link with a
