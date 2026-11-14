@@ -1744,7 +1744,7 @@ func convertHTMLBlock(src []byte, node *ast.HTMLBlock) (*content.RawHTMLBlock, e
 }
 
 func convertImage(src []byte, node *ast.Image) (*content.Image, error) {
-	image := content.NewImage(string(node.Destination))
+	image := content.NewImage(unescapePunctuation(node.Destination))
 	image.Title = unescapePunctuation(node.Title)
 	if metadata, ok := node.AttributeString(imageMetadataAttribute); ok {
 		image.Metadata = metadata.(string)

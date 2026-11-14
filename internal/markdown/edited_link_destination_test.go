@@ -77,4 +77,37 @@ var _ = Describe("Destinations of changed links and images", func() {
 		// When it is read and written without a change, Then the text is the same
 		Expect(write(parse(input))).To(Equal(input))
 	})
+
+	firstImage := func(root *content.Block) *content.Image {
+		image := root.Children().FindDeep(content.IsOfType[*content.Image]())
+		Expect(image).ToNot(BeNil())
+		return image.(*content.Image)
+	}
+
+	It("reads a backslash before a parenthesis in an image URL as an escape", func() {
+		// When an image URL has escaped parentheses
+		root := parse(`- ![](a\(b\).png)`)
+
+		// Then the URL has no backslashes
+		Expect(firstImage(root).URL).To(Equal("a(b).png"))
+	})
+
+	It("keeps an image URL with escaped parentheses the same over round trips", func() {
+		// Given an image URL with escaped parentheses
+		root := parse(`- ![](a\(b\).png)`)
+
+		// When it is written and read again several times
+		for i := 0; i < 3; i++ {
+			output := write(root)
+			root = parse(output)
+
+			// Then the URL does not change
+			Expect(firstImage(root).URL).To(Equal("a(b).png"))
+		}
+	})
+
+	It("keeps a backslash before a letter in an image URL", func() {
+		root := parse(`- ![](a\b.png)`)
+		Expect(firstImage(root).URL).To(Equal(`a\b.png`))
+	})
 })
