@@ -3128,15 +3128,12 @@ func listMarker(list *content.List) byte {
 }
 
 // listNumbers gets the numbers that the items of an ordered list are written
-// with. The numbers of a list read from a file are kept as they are, see
-// content.ListItem.Number. If items were added, or the first number can no
-// longer start the list, the items are numbered again in the style of the
-// list: the same number for each item if all numbered items have the same
-// number, or else one more for each item from the number of the first
-// numbered item.
-//
-// A list directly after a line of text can only start with 1, as the text
-// would otherwise go on with the line of the item.
+// with. The numbers of the items are kept when every item has a valid number,
+// see validListNumber. Otherwise the items are numbered from the first valid
+// number, or from one, or all get that number when the items with a number
+// all have the same one, as in "1. a\n1. b". A computed number that has the
+// value of the number of its item is written as that number, so that leading
+// zeros are kept.
 func listNumbers(list *content.List) []string {
 	var items []*content.ListItem
 	for child := list.FirstChild(); child != nil; child = child.NextSibling() {
@@ -3145,19 +3142,14 @@ func listNumbers(list *content.List) []string {
 		}
 	}
 
-	interrupts := false
-	if _, ok := list.PreviousSibling().(*content.Paragraph); ok && list.PreviousLineType() == content.PreviousLineTypeNonBlank {
-		interrupts = true
-	}
-
 	keep := len(items) > 0
 	for _, item := range items {
-		if item.Number == "" {
+		if !validListNumber(item.Number) {
 			keep = false
 		}
 	}
 
-	if keep && (!interrupts || isListNumberOne(items[0].Number)) {
+	if keep {
 		numbers := make([]string, len(items))
 		for i, item := range items {
 			numbers[i] = item.Number
@@ -3171,35 +3163,57 @@ func listNumbers(list *content.List) []string {
 	numbered := 0
 	first := ""
 	for _, item := range items {
-		if item.Number == "" {
+		if !validListNumber(item.Number) {
 			continue
 		}
 
 		numbered++
 		if first == "" {
 			first = item.Number
-			if n, err := strconv.Atoi(item.Number); err == nil {
-				start = n
-			}
+			start, _ = strconv.Atoi(item.Number)
 		} else if item.Number != first {
 			same = false
 		}
 	}
 
-	if interrupts {
-		start = 1
-	}
-
 	numbers := make([]string, len(items))
-	for i := range items {
+	for i, item := range items {
+		value := start + i
 		if same && numbered > 1 {
-			numbers[i] = strconv.Itoa(start)
-		} else {
-			numbers[i] = strconv.Itoa(start + i)
+			value = start
+		}
+
+		numbers[i] = strconv.Itoa(value)
+		if n, err := strconv.Atoi(item.Number); err == nil && validListNumber(item.Number) && n == value {
+			numbers[i] = item.Number
 		}
 	}
 
 	return numbers
+}
+
+// validListNumber returns true if the number can be the number of an ordered
+// list item, which is one to nine digits.
+func validListNumber(number string) bool {
+	if number == "" || len(number) > 9 {
+		return false
+	}
+
+	for i := 0; i < len(number); i++ {
+		if number[i] < '0' || number[i] > '9' {
+			return false
+		}
+	}
+
+	return true
+}
+
+// listFollowsParagraphLine returns true if the list is written on the line
+// directly after a paragraph. Only an ordered list that starts with one can
+// start there, as other text is read as more lines of the paragraph.
+func listFollowsParagraphLine(list *content.List) bool {
+	_, ok := list.PreviousSibling().(*content.Paragraph)
+	return ok && list.PreviousLineType() == content.PreviousLineTypeNonBlank
 }
 
 // isListNumberOne returns true if the number of a list item is one, which can
@@ -3210,15 +3224,24 @@ func isListNumberOne(number string) bool {
 }
 
 func (w *Output) writeList(node *content.List) error {
-	err := w.startBlock(node, "")
-	if err != nil {
-		return err
-	}
-
 	var numbers []string
 	if node.Type == content.ListTypeOrdered {
 		numbers = listNumbers(node)
 	}
+
+	if len(numbers) > 0 && !isListNumberOne(numbers[0]) && listFollowsParagraphLine(node) && w.out.HasWrittenAtCurrentIndent() {
+		// A list that does not start with one would be read as more lines
+		// of the paragraph, so a blank line keeps the list and its numbers.
+		if err := w.out.WriteString("\n\n"); err != nil {
+			return err
+		}
+
+		w.out.PushIndentation("")
+	} else if err := w.startBlock(node, ""); err != nil {
+		return err
+	}
+
+	var err error
 
 	i := 0
 	for child := node.FirstChild(); child != nil; child = child.NextSibling() {
