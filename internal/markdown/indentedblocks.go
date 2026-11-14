@@ -52,6 +52,13 @@ func (p *indentedBlocksParser) Trigger() []byte {
 }
 
 func (p *indentedBlocksParser) Open(parent ast.Node, reader text.Reader, pc parser.Context) (ast.Node, parser.State) {
+	if !holdsBlocks(parent) || !inBlockContent(parent) && !isDocument(parent) {
+		// Only a page, a block or bullets that are indented under content
+		// hold blocks. In other content, such as a list item with a `*`
+		// marker or a quote, the lines are read as that content.
+		return nil, parser.NoChildren
+	}
+
 	for n := parent; n != nil; n = n.Parent() {
 		if _, ok := n.(*footnoteDefinition); ok {
 			// A footnote holds no blocks, so its lines are read as text.
@@ -99,6 +106,13 @@ func (p *indentedBlocksParser) CanInterruptParagraph() bool {
 
 func (p *indentedBlocksParser) CanAcceptIndentedLine() bool {
 	return true
+}
+
+// isDocument returns true if the node is the document, which is the page or
+// the block that is read.
+func isDocument(node ast.Node) bool {
+	_, ok := node.(*ast.Document)
+	return ok
 }
 
 // advanceIndent moves the reader past the given number of columns of

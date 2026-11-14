@@ -3234,10 +3234,15 @@ func (w *Output) writeList(node *content.List) error {
 		}
 
 		// The lines after the first line of the item are indented as far
-		// as its text starts.
+		// as its text starts. After more than four columns of space, the
+		// text starts one column after the marker, and the rest of the space
+		// is indentation of the text.
 		width := len(marker)
 		for i := 0; i < len(space); i++ {
 			width = nextColumn(width, space[i])
+		}
+		if width-len(marker) > 4 {
+			width = len(marker) + 1
 		}
 
 		w.out.PushIndentation(strings.Repeat(" ", width))

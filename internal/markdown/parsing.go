@@ -1636,7 +1636,7 @@ func hasEmptyMarkerLine(src []byte, node ast.Node, marker string) bool {
 
 func convertListItem(src []byte, node ast.Node) (*content.ListItem, error) {
 	item := content.NewListItem()
-	marker, space := listMarkerSpace(src, node)
+	marker, space := listMarkerSpaceOf(src, node, true)
 	item.MarkerSpace = space
 	item.EmptyFirstLine = node.FirstChild() != nil && hasEmptyMarkerLine(src, node, marker)
 	if node.PreviousSibling() != nil && hasBlankLineBeforeBullet(src, node) {

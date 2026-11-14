@@ -445,6 +445,12 @@ func bulletSpace(src []byte, item ast.Node) string {
 // of them start the text with indentation of its own. The space is "" when
 // there is one space, no text, or no space, as in "-## Title".
 func listMarkerSpace(src []byte, item ast.Node) (string, string) {
+	return listMarkerSpaceOf(src, item, false)
+}
+
+// listMarkerSpaceOf is listMarkerSpace. If wide is true, spaces and tabs that
+// are more than four columns wide are found too, as in "*\t\t-".
+func listMarkerSpaceOf(src []byte, item ast.Node, wide bool) (string, string) {
 	value, ok := item.Attribute(bulletLineStartAttribute)
 	if !ok {
 		return "", ""
@@ -499,7 +505,7 @@ func listMarkerSpace(src []byte, item ast.Node) (string, string) {
 	}
 
 	space := string(line[markerEnd:end])
-	if space == " " || end >= len(line) || column-textColumn > 4 {
+	if space == " " || end >= len(line) || (column-textColumn > 4 && !wide) {
 		return marker, ""
 	}
 
