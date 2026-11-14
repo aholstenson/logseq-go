@@ -50,7 +50,7 @@ var _ = Describe("Marker characters at the edge of a strikethrough or a highligh
 			})
 			Expect(found).ToNot(BeNil(), "output: %q", output)
 			Expect(found).To(BeAssignableToTypeOf(node), "output: %q", output)
-			Expect(textOf(root)).To(Equal("a " + value + " b"), "output: %q", output)
+			Expect(textOf(root)).To(Equal("a "+value+" b"), "output: %q", output)
 		},
 		Entry("a highlight of `^`", content.NewHighlight(content.NewText("^")), "^"),
 		Entry("a highlight of `=` with equal signs", equalSigns(content.NewText("=")), "="),

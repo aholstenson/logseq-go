@@ -40,7 +40,9 @@ var _ = Describe("Task parts added to a block that starts with another node", fu
 		},
 		"clock": {
 			func(b *content.Block) { b.SetTaskStatusWithClock(content.TaskStatusDoing, at) },
-			func(b *content.Block) bool { return b.RunningClock() != nil && b.TaskStatus() == content.TaskStatusDoing },
+			func(b *content.Block) bool {
+				return b.RunningClock() != nil && b.TaskStatus() == content.TaskStatusDoing
+			},
 		},
 		"property": {
 			func(b *content.Block) { b.Properties().Set("k", content.NewText("v")) },
