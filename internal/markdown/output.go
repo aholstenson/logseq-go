@@ -121,6 +121,9 @@ func escapeTextIn(str string, ctx textContext) string {
 		lineStartEscapes(str, before, after, escapes)
 		propertyKeyEscapes(str, ctx.linePrefix, escapes)
 	}
+	if !ctx.inLabel && !readsAsSource(str, source) {
+		bareURLEscapes(str, ctx.rest, before, escapes)
+	}
 	backslashEscapes(str, after, escapes)
 	blockRefTextEscapes(str, ctx.refAtStart, escapes)
 
@@ -307,6 +310,42 @@ func propertyKeyEscapes(str string, linePrefix string, escapes map[int]bool) {
 	// The second colon, so that the line has no `::`.
 	if i := len(name) + 1 - len(trimmed); i >= 0 && i < len(str) {
 		escapes[i] = true
+	}
+}
+
+// bareURLEscapes finds the colons of the URLs in the text that would be read
+// back as links. The reader makes a link from a URL that starts with
+// `http:`, `https:` or `ftp:` at the start of a line or after a space, `*`,
+// `_`, `~` or `(`, see the linkify parser of Goldmark. With the colon
+// escaped, as in `http\://a.com`, the URL is read back as text. rest is the
+// Markdown after the text, see textContext. A label is not read for URLs,
+// so the caller leaves out the text of a label.
+func bareURLEscapes(str string, rest string, before rune, escapes map[int]bool) {
+	if !strings.Contains(str, ":") {
+		return
+	}
+
+	full := str + rest
+	for i := 0; i < len(str); i++ {
+		if str[i] != 'h' && str[i] != 'f' {
+			continue
+		}
+
+		previous := before
+		if i > 0 {
+			previous, _ = utf8.DecodeLastRuneInString(str[:i])
+		}
+
+		if previous != unknownRune && !unicode.IsSpace(asCharacter(previous)) && !strings.ContainsRune("*_~(", previous) {
+			continue
+		}
+
+		for _, scheme := range []string{"http", "https", "ftp"} {
+			colon := i + len(scheme)
+			if colon < len(str) && strings.HasPrefix(str[i:], scheme+":") && !escapes[colon] && urlRegexp.MatchString(full[i:]) {
+				escapes[colon] = true
+			}
+		}
 	}
 }
 
