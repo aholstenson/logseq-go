@@ -131,6 +131,13 @@ func (w *writer) updateTrailingSpaceIndex() {
 	w.trailingSpaceIndex = 0
 }
 
+// MarkWritten records that something was written at the current indentation
+// level, for text that was written to the output directly, see
+// HasWrittenAtCurrentIndent.
+func (w *writer) MarkWritten() {
+	w.didWrite[len(w.didWrite)-1] = true
+}
+
 func (w *writer) HasWrittenAtCurrentIndent() bool {
 	return w.didWrite[len(w.didWrite)-1]
 }

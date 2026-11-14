@@ -3553,6 +3553,12 @@ func (w *Output) writeBlockquote(node *content.Blockquote) error {
 		if err != nil {
 			return err
 		}
+
+		if empty {
+			// The marker is all that the quote writes, so a node after the
+			// quote starts on a new line.
+			w.out.MarkWritten()
+		}
 	} else if empty || node.BlankFirstLine {
 		err = w.out.WriteIndentationOnly()
 		if err != nil {
