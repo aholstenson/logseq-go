@@ -92,7 +92,9 @@ var _ = Describe("Tasks", func() {
 			)))
 		})
 
-		It("adds a date after the properties and content of the block", func() {
+		It("adds a date after the properties that start the block", func() {
+			// The properties are on the line of the bullet, and Logseq reads
+			// a date only on the lines directly after it.
 			block := content.NewBlock(
 				content.NewProperties(content.NewProperty("id", content.NewText("1"))),
 				content.NewParagraph(content.NewText("Task")),
@@ -101,8 +103,24 @@ var _ = Describe("Tasks", func() {
 
 			Expect(block).To(EqualNode(content.NewBlock(
 				content.NewProperties(content.NewProperty("id", content.NewText("1"))),
-				content.NewParagraph(content.NewText("Task")),
 				content.NewDeadline(date),
+				content.NewParagraph(content.NewText("Task")),
+			)))
+		})
+
+		It("adds a date directly after the other date, before properties", func() {
+			block := content.NewBlock(
+				content.NewParagraph(content.NewText("Task")),
+				content.NewScheduled(date),
+				content.NewProperties(content.NewProperty("id", content.NewText("1"))),
+			)
+			block.SetDeadline(content.NewDeadline(date))
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewParagraph(content.NewText("Task")),
+				content.NewScheduled(date),
+				content.NewDeadline(date),
+				content.NewProperties(content.NewProperty("id", content.NewText("1"))),
 			)))
 		})
 
@@ -204,7 +222,9 @@ var _ = Describe("Tasks", func() {
 			Expect(block.IsTask()).To(BeTrue())
 		})
 
-		It("finds the marker after properties", func() {
+		It("ignores a marker after properties that start the block", func() {
+			// The properties are on the line of the bullet, and Logseq reads
+			// a marker only on that line.
 			block := content.NewBlock(
 				content.NewProperties(content.NewProperty("id", content.NewText("1"))),
 				content.NewParagraph(
@@ -213,7 +233,21 @@ var _ = Describe("Tasks", func() {
 				),
 			)
 
-			Expect(block.TaskStatus()).To(Equal(content.TaskStatusTodo))
+			Expect(block.TaskStatus()).To(Equal(content.TaskStatusNone))
+		})
+
+		It("adds a marker before properties that start the block", func() {
+			block := content.NewBlock(
+				content.NewProperties(content.NewProperty("id", content.NewText("1"))),
+				content.NewParagraph(content.NewText("Task")),
+			)
+			block.SetTaskStatus(content.TaskStatusTodo)
+
+			Expect(block).To(EqualNode(content.NewBlock(
+				content.NewParagraph(content.NewTaskMarker(content.TaskStatusTodo)),
+				content.NewProperties(content.NewProperty("id", content.NewText("1"))),
+				content.NewParagraph(content.NewText("Task")),
+			)))
 		})
 
 		It("ignores a marker that is not at the start of the paragraph", func() {

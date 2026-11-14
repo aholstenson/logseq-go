@@ -336,21 +336,16 @@ func (b *Block) SetPriority(priority Priority) {
 }
 
 // taskParagraph gets the node that holds the marker and priority of a task.
-// This is the first paragraph of the block, or the heading that starts the
-// block, as in `- ## TODO Project`. Properties before it are skipped, but any
-// other node means that the block cannot hold a marker.
+// This is the paragraph or the heading that starts the block, as in
+// `- ## TODO Project`. Logseq reads a marker only on the line of the bullet,
+// so a block that starts with any other node, such as properties or a table,
+// cannot hold a marker.
 func (b *Block) taskParagraph() HasChildren {
-	for node := b.FirstChild(); node != nil; node = node.NextSibling() {
-		switch n := node.(type) {
-		case *Paragraph:
-			return n
-		case *Heading:
-			return n
-		case *Properties:
-			continue
-		default:
-			return nil
-		}
+	switch n := b.FirstChild().(type) {
+	case *Paragraph:
+		return n
+	case *Heading:
+		return n
 	}
 
 	return nil
@@ -796,6 +791,13 @@ func (b *Block) setTaskDate(dateType TaskDateType, date *TaskDate) {
 		return
 	}
 
+	if other := b.taskDate(otherTaskDateType(dateType)); other != nil {
+		// Logseq reads the dates of a task only in one group of lines, so
+		// the date goes directly after the other date.
+		b.InsertChildAfter(date, other)
+		return
+	}
+
 	// Logseq keeps these dates directly after the first line of the task, so
 	// place the date after the properties, the first line of the first
 	// paragraph and any date that is already there. Logseq ignores a date
@@ -812,6 +814,15 @@ func (b *Block) setTaskDate(dateType TaskDateType, date *TaskDate) {
 			b.InsertChildAfter(rest, date)
 		}
 	}
+}
+
+// otherTaskDateType gets the type of date that is not the given type.
+func otherTaskDateType(dateType TaskDateType) TaskDateType {
+	if dateType == TaskDateTypeScheduled {
+		return TaskDateTypeDeadline
+	}
+
+	return TaskDateTypeScheduled
 }
 
 // splitAfterFirstLine takes the lines after the first line out of the
@@ -981,14 +992,19 @@ func (b *Block) Logbook() *Logbook {
 // the properties and dates that follow it. The first content is the node that
 // starts the block, such as a paragraph or a heading. The dates and the
 // logbook of a task go after this node, as a line before the first content
-// moves the content off the line of the bullet. It returns nil if the block
-// has no such node.
+// moves the content off the line of the bullet. Properties that start the
+// block are its first content, as they are on the line of the bullet. It
+// returns nil if the block has no such node.
 func (b *Block) firstContentEnd() Node {
 	var after Node
 	seenContent := false
 	for node := b.FirstChild(); node != nil; node = node.NextSibling() {
 		switch node.(type) {
-		case *Properties, *TaskDate:
+		case *Properties:
+			if node == b.FirstChild() {
+				seenContent = true
+			}
+		case *TaskDate:
 		case *Block:
 			return after
 		default:
