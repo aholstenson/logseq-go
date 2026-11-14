@@ -96,6 +96,12 @@ type textContext struct {
 	// text, when the line does not start with the text. It is empty if the
 	// text starts the line or if it is not known.
 	linePrefix string
+	// rest is the Markdown that is written after the text up to the end of
+	// its paragraph, see Output.restOfParagraph. A marker in the text can
+	// pair with a marker in it, as the `{{` of the text `{{a` with the `}}`
+	// of a later text. It is empty if nothing comes after the text or if it
+	// is not known.
+	rest string
 }
 
 // escapeTextIn is escapeText for a text with more known context, see
@@ -104,13 +110,13 @@ func escapeTextIn(str string, ctx textContext) string {
 	source, before, after := ctx.source, ctx.before, ctx.after
 	escapes := map[int]bool{}
 	sourceEscapes(str, source, escapes)
-	mathEscapes(str, escapes)
+	mathEscapes(str, ctx.rest, escapes)
 	bracketEscapes(str, escapes)
 	if ctx.inLabel {
 		labelBracketEscapes(str, escapes)
 	}
 	delimiterEscapes(str, before, after, ctx.outside, escapes)
-	markupEscapes(str, before, after, !ctx.inFormatting, ctx.headings, escapes)
+	markupEscapes(str, ctx.rest, before, after, !ctx.inFormatting, ctx.headings, escapes)
 	if ctx.headings && !readsAsSource(str, source) {
 		lineStartEscapes(str, before, after, escapes)
 		propertyKeyEscapes(str, ctx.linePrefix, escapes)
@@ -346,17 +352,22 @@ func backslashEscapes(str string, after rune, escapes map[int]bool) {
 // markupEscapes finds the characters in the text that would start a tag, a
 // heading, a block reference, a macro, code or HTML when read back. Tags are
 // only looked for if tags is true, and headings only if headings is true.
-func markupEscapes(str string, before rune, after rune, tags bool, headings bool, escapes map[int]bool) {
+// rest is the Markdown after the text, see textContext. The markup can end
+// in it, as in the text `{{a` before the text `}}`.
+func markupEscapes(str string, rest string, before rune, after rune, tags bool, headings bool, escapes map[int]bool) {
 	if !strings.ContainsAny(str, "#({`<") {
 		return
 	}
 
+	// The text and what comes after it, as the reader sees them.
+	full := str + rest
+
 	// Where the closing markers are last found. A marker that opens before
 	// one of them can be closed. Finding them once keeps a long text with
 	// many opening markers fast to write.
-	lastMacroClose := strings.LastIndex(str, "}}")
+	lastMacroClose := strings.LastIndex(full, "}}")
 	lastPageLinkClose := strings.LastIndex(str, "]]")
-	lastAngleClose := strings.LastIndexByte(str, '>')
+	lastAngleClose := strings.LastIndexByte(full, '>')
 
 	// backticksEscaped is whether all backticks from a position on have been
 	// escaped, which is at most once.
@@ -370,7 +381,7 @@ func markupEscapes(str string, before rune, after rune, tags bool, headings bool
 				previous, _ = utf8.DecodeLastRuneInString(str[:i])
 			}
 
-			if (tags && startsTag(str, i, previous, lastPageLinkClose)) || (headings && startsHeading(str, i, previous, after)) {
+			if (tags && startsTag(full, i, previous, lastPageLinkClose)) || (headings && startsHeading(str, i, previous, after)) {
 				escapes[i] = true
 			}
 		case '(':
@@ -378,7 +389,7 @@ func markupEscapes(str string, before rune, after rune, tags bool, headings bool
 				escapes[i] = true
 			}
 		case '{':
-			if strings.HasPrefix(str[i:], "{{") && lastMacroClose >= i+2 && macroCanStartAt(str, i, escapes) && startsMacro(str[i:]) {
+			if strings.HasPrefix(str[i:], "{{") && lastMacroClose >= i+2 && macroCanStartAt(str, i, escapes) && startsMacro(full[i:]) {
 				escapes[i] = true
 			}
 		case '`':
@@ -387,7 +398,7 @@ func markupEscapes(str string, before rune, after rune, tags bool, headings bool
 				end++
 			}
 
-			if !backticksEscaped && backtickRunAt(str, end, end-i) >= 0 {
+			if !backticksEscaped && backtickRunAt(full, end, end-i) >= 0 {
 				// A backslash does not escape a backtick inside code, so an
 				// escaped backtick can still close code that a backtick
 				// that is not escaped opens. All of them are escaped.
@@ -1035,15 +1046,17 @@ func skipLinkSpace(str string, i int) int {
 // mathEscapes finds the dollar signs of the parts of a text that would be
 // read back as a LaTeX formula, so that text such as `$x$` stays text. The
 // dollar signs within a formula are escaped as well, as leaving one of them
-// alone would let it pair up with something later in the text.
-func mathEscapes(str string, escapes map[int]bool) {
+// alone would let it pair up with something later in the text. rest is the
+// Markdown after the text, see textContext. A formula can end in it, as in
+// the text `$a` before the text `b$`.
+func mathEscapes(str string, rest string, escapes map[int]bool) {
 	if !strings.Contains(str, "$") {
 		return
 	}
 
-	src := []byte(str)
+	src := []byte(str + rest)
 	scanner := newMathScanner(src)
-	for i := 0; i < len(src); {
+	for i := 0; i < len(str); {
 		if src[i] != '$' || escapes[i] {
 			// An escaped `$`, as kept from the file, does not open math.
 			i++
@@ -1056,7 +1069,7 @@ func mathEscapes(str string, escapes map[int]bool) {
 			continue
 		}
 
-		for k := i; k < i+length; k++ {
+		for k := i; k < i+length && k < len(str); k++ {
 			if src[k] == '$' {
 				escapes[k] = true
 			}
@@ -1544,6 +1557,9 @@ func (w *Output) writeText(node *content.Text) error {
 	if !w.isolated && before != lineEdgeRune && before != '\n' && strings.Contains(value, "::") {
 		ctx.linePrefix, _ = w.linePrefix(first)
 	}
+	if !w.isolated && after != lineEdgeRune && (strings.ContainsAny(value, "{`$<") || strings.HasSuffix(value, "#")) {
+		ctx.rest = w.restOfParagraph(node)
+	}
 
 	value = escapeTextIn(value, ctx)
 	if strings.HasSuffix(value, "]") && !endsWithEscape([]byte(value)) && (after == '(' || after == '[') {
@@ -1683,6 +1699,30 @@ func (w *Output) linePrefix(node content.Node) (string, bool) {
 			n = parent
 		default:
 			return "", false
+		}
+	}
+}
+
+// restOfParagraph gets the Markdown that is written after a node up to the end
+// of its paragraph, heading or property value. The markers that close
+// formatting or a label around the node stand for themselves as `.`, which,
+// like them, is punctuation. The nodes after it are written on their own, so
+// the result can have more escapes than the output, which only matters for
+// a backslash.
+func (w *Output) restOfParagraph(node content.Node) string {
+	var rest strings.Builder
+	for n := node; ; {
+		for next := n.NextSibling(); next != nil; next = next.NextSibling() {
+			rest.WriteString(w.writeIsolated(next))
+		}
+
+		switch parent := n.Parent().(type) {
+		case *content.Emphasis, *content.Strong, *content.Strikethrough, *content.Highlight,
+			*content.Link, *content.PageLink, *content.BlockRef:
+			rest.WriteByte('.')
+			n = parent
+		default:
+			return rest.String()
 		}
 	}
 }

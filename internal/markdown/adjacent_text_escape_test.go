@@ -66,4 +66,120 @@ var _ = Describe("Texts next to each other that join into markup", func() {
 		// When it is written, Then both markers are escaped
 		Expect(write(paragraph)).To(Equal("\\*ab\\*"))
 	})
+
+	It("does not make a macro from texts on both sides of emphasis", func() {
+		// Given a paragraph of the text `{{a`, emphasis `x` and the text `}}`
+		paragraph := content.NewParagraph(content.NewText("{{a"), content.NewEmphasis(content.NewText("x")), content.NewText("}}"))
+
+		// When it is written and read again
+		output := write(paragraph)
+		root := readBack(output)
+
+		// Then the paragraph has no macro, and keeps the emphasis
+		Expect(root.Children().FindDeep(content.IsOfType[*content.Macro]())).To(BeNil(), "output: %q", output)
+		Expect(root.Children().FindDeep(content.IsOfType[*content.Emphasis]())).ToNot(BeNil(), "output: %q", output)
+		Expect(textOf(root)).To(Equal("{{ax}}"), "output: %q", output)
+	})
+
+	It("does not make code from backticks on both sides of a link", func() {
+		// Given a paragraph of the text `` `a ``, a link and the text `` b` ``
+		paragraph := content.NewParagraph(content.NewText("`a"), content.NewLink("u", content.NewText("l")), content.NewText("b`"))
+
+		// When it is written and read again
+		output := write(paragraph)
+		root := readBack(output)
+
+		// Then the paragraph has no code and keeps the link
+		Expect(root.Children().FindDeep(content.IsOfType[*content.CodeSpan]())).To(BeNil(), "output: %q", output)
+		Expect(root.Children().FindDeep(content.IsOfType[*content.Link]())).ToNot(BeNil(), "output: %q", output)
+	})
+
+	It("does not make code from a backtick in strong text and one after it", func() {
+		// Given a paragraph of strong text `` `a `` and the text `` b` ``
+		paragraph := content.NewParagraph(content.NewStrong(content.NewText("`a")), content.NewText("b`"))
+
+		// When it is written and read again
+		output := write(paragraph)
+		root := readBack(output)
+
+		// Then the paragraph has no code and keeps the strong text
+		Expect(root.Children().FindDeep(content.IsOfType[*content.CodeSpan]())).To(BeNil(), "output: %q", output)
+		Expect(root.Children().FindDeep(content.IsOfType[*content.Strong]())).ToNot(BeNil(), "output: %q", output)
+	})
+
+	It("does not make code from a backtick before a code span", func() {
+		// Given a paragraph of the text `` `a ``, the code `x` and the text `` b` ``
+		paragraph := content.NewParagraph(content.NewText("`a"), content.NewCodeSpan("x"), content.NewText("b`"))
+
+		// When it is written and read again
+		output := write(paragraph)
+		root := readBack(output)
+
+		// Then the paragraph has one code span, `x`
+		spans := root.Children().FilterDeep(content.IsOfType[*content.CodeSpan]())
+		Expect(spans).To(HaveLen(1), "output: %q", output)
+		Expect(spans[0].(*content.CodeSpan).Value).To(Equal("x"), "output: %q", output)
+	})
+
+	It("does not make code from backticks on two lines", func() {
+		// Given a paragraph of the line `` `a `` and the line `` b` ``
+		first := content.NewText("`a")
+		first.SoftLineBreak = true
+		paragraph := content.NewParagraph(first, content.NewText("b`"))
+
+		// When it is written and read again
+		output := write(paragraph)
+		root := readBack(output)
+
+		// Then the paragraph has no code
+		Expect(root.Children().FindDeep(content.IsOfType[*content.CodeSpan]())).To(BeNil(), "output: %q", output)
+	})
+
+	It("does not make math from dollar signs on both sides of emphasis", func() {
+		// Given a paragraph of the text `$a`, emphasis `x` and the text `b$`
+		paragraph := content.NewParagraph(content.NewText("$a"), content.NewEmphasis(content.NewText("x")), content.NewText("b$"))
+
+		// When it is written and read again
+		output := write(paragraph)
+		root := readBack(output)
+
+		// Then the paragraph has no math and keeps the emphasis
+		Expect(root.Children().FindDeep(content.IsOfType[*content.Math]())).To(BeNil(), "output: %q", output)
+		Expect(root.Children().FindDeep(content.IsOfType[*content.Emphasis]())).ToNot(BeNil(), "output: %q", output)
+	})
+
+	It("does not make math from a dollar sign before inline math", func() {
+		// Given a paragraph of the text `$a`, the math `x` and the text `b$`
+		paragraph := content.NewParagraph(content.NewText("$a"), content.NewMath("x"), content.NewText("b$"))
+
+		// When it is written and read again
+		output := write(paragraph)
+		root := readBack(output)
+
+		// Then the paragraph has one formula, `x`
+		formulas := root.Children().FilterDeep(content.IsOfType[*content.Math]())
+		Expect(formulas).To(HaveLen(1), "output: %q", output)
+		Expect(formulas[0].(*content.Math).Value).To(Equal("x"), "output: %q", output)
+	})
+
+	It("does not make a tag from a `#` before emphasis", func() {
+		// Given a paragraph of the text `#` and emphasis `x`
+		paragraph := content.NewParagraph(content.NewText("#"), content.NewEmphasis(content.NewText("x")))
+
+		// When it is written and read again
+		output := write(paragraph)
+		root := readBack(output)
+
+		// Then the paragraph has no tag and keeps the emphasis
+		Expect(root.Children().FindDeep(content.IsOfType[*content.Hashtag]())).To(BeNil(), "output: %q", output)
+		Expect(root.Children().FindDeep(content.IsOfType[*content.Emphasis]())).ToNot(BeNil(), "output: %q", output)
+	})
+
+	It("does not escape `{{` that nothing after it closes", func() {
+		// Given a paragraph of the text `{{a` and emphasis `x`
+		paragraph := content.NewParagraph(content.NewText("{{a"), content.NewEmphasis(content.NewText("x")))
+
+		// When it is written, Then the braces are not escaped
+		Expect(write(paragraph)).To(Equal("{{a*x*"))
+	})
 })
